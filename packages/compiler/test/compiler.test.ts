@@ -296,6 +296,17 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
     expect(two.elements.filter(e => e.tag === "span")).toHaveLength(1);
   });
 
+  it("rejects nonprimitive dynamic children instead of silently coercing views or arrays to text", () => {
+    const view = compile({ fileName, source:
+      "function App(){ const nested = <span>hi</span>; return <main>{nested}</main>; }" });
+    expect(view.js).toHaveLength(0);
+    expect(view.diagnostics.some(d => d.code === "ZC2110")).toBe(true);
+    const array = compile({ fileName, source:
+      "function App(){ const items = [1, 2]; return <main>{items}</main>; }" });
+    expect(array.js).toHaveLength(0);
+    expect(array.diagnostics.some(d => d.code === "ZC2110")).toBe(true);
+  });
+
   it("fails closed on JSX embedded in an unsupported expression", () => {
     const source = "function App() { return <main>{[<span>one</span>, <span>two</span>]}</main>; }";
     const result = compile({ fileName, source });
