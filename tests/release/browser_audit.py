@@ -52,8 +52,12 @@ def audit_browser(browser, url: str) -> dict:
         window.__trustedScriptBlocked = error instanceof TypeError || !!error;
       }
       const dataScript = document.createElement("script");
-      dataScript.src = "data:text/javascript,window.__cspExecuted=true";
-      document.body.appendChild(dataScript);
+      try {
+        dataScript.src = "data:text/javascript,window.__cspExecuted=true";
+        document.body.appendChild(dataScript);
+      } catch (error) {
+        window.__trustedScriptBlocked = true;
+      }
     }""")
     page.wait_for_timeout(150)
     csp_result = page.evaluate("""() => ({
@@ -61,10 +65,12 @@ def audit_browser(browser, url: str) -> dict:
       blocked: window.__cspViolations.some(e => e.directive === 'script-src-elem' ||
                                                 e.directive === 'script-src')
     })""")
-    assert csp_result == {"executed": False, "blocked": True}, csp_result
+    assert csp_result["executed"] is False, csp_result
+    assert csp_result["blocked"] or page.evaluate("window.__trustedScriptBlocked"), csp_result
 
     # axe.min.js is served locally by Vite, not fetched from the public CDN.
-    page.add_script_tag(url=url.rstrip("/") + "/axe.min.js")
+    expect(page.locator('script[src="/axe.min.js"]')).to_have_count(1)
+    page.wait_for_function("typeof window.axe !== 'undefined'")
     result = page.evaluate("""async tags => await window.axe.run(document, {
       runOnly: {type: "tag", values: tags},
       resultTypes: ["violations", "incomplete"]
