@@ -54,7 +54,10 @@ export async function dispatch(input: TransportInput): Promise<ProxyOutgoing> {
     port: input.origin.port || (input.origin.protocol === "https:" ? 443 : 80),
     method: input.method,
     path: input.path,
-    headers: input.requestHeaders,
+    // Node auto-frames streamed POST/PUT/PATCH bodies, but not DELETE/OPTIONS.
+    // Incoming framing headers are stripped; explicitly frame every streamed
+    // request, including DELETE and OPTIONS, with generated chunked encoding.
+    headers: input.body ? { ...input.requestHeaders, "transfer-encoding": "chunked" } : input.requestHeaders,
     agent: false,
     // The TLS hostname stays approved while lookup returns only the validated IP.
     lookup: (_hostname, lookupOptions, callback) => {
