@@ -6,7 +6,7 @@ import {runCli, runProjectScript} from "../src/index";
 import {CliError, parseArgs} from "../src/args";
 import {generatorPlan, generateFiles} from "../src/generators";
 import {safeRelativePath, validateProjectName} from "../src/fs-safe";
-import {scaffoldPlan, scaffoldProject, type Versions} from "../src/scaffold";
+import {assertFrameworkReady, getInstalledVersions, scaffoldPlan, scaffoldProject, type Versions} from "../src/scaffold";
 import {diagnoseProject} from "../src/doctor";
 const tempRoots: string[] = [];
 const versions: Versions = {core: "workspace:^", dom: "workspace:^", signals: "workspace:^", styles: "workspace:^", "vite-plugin": "workspace:^"};
@@ -136,10 +136,11 @@ describe("doctor and process delegation", () => {
   });
   it.skipIf(process.env.ZAAKIY_CLEAN_BUILD !== "1")("runs clean installation, generated TS typecheck and Vite build after dependent packages are released", async () => {
     const root = await temp();
-    await scaffoldProject({cwd: root, name: "release-check", preset: "minimal", manager: "npm", versions, dryRun: false, force: false});
-    // Enable only after real release integration and substitute published versions.
+    await assertFrameworkReady();
+    const releasedVersions = await getInstalledVersions(false);
+    await scaffoldProject({cwd: root, name: "release-check", preset: "minimal", manager: "npm", versions: releasedVersions, dryRun: false, force: false});
     const {execFileSync} = await import("node:child_process");
-    execFileSync("npm", ["install", "--ignore-scripts"], {cwd: join(root, "release-check"), stdio: "inherit"});
+    execFileSync("npm", ["install"], {cwd: join(root, "release-check"), stdio: "inherit"});
     execFileSync("npm", ["run", "typecheck"], {cwd: join(root, "release-check"), stdio: "inherit"});
     execFileSync("npm", ["run", "build"], {cwd: join(root, "release-check"), stdio: "inherit"});
   });

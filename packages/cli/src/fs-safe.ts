@@ -70,7 +70,7 @@ export async function writeProject(parent: string, name: string, files: readonly
   const root = resolve(parent);
   const target = safeDestination(root, validateProjectName(name));
   const plan = validatePlan(target, files);
-  if (options.dryRun) return plan.map(file => join(name, file.path));
+  if (options.dryRun) return plan.map(file => name + "/" + file.path);
   await mkdir(root, {recursive: true});
   await ensureNoSymlinkAncestors(dirname(root), root);
   if (await exists(target) && !options.force) throw new CliError("PROJECT_EXISTS", "Directory already exists: " + target + " (use --force to replace explicitly)");
@@ -123,17 +123,18 @@ export async function writeGenerated(rootPath: string, files: readonly PlannedWr
       await ensureNoSymlinkAncestors(root, destination);
       if (await exists(destination)) {
         const backup = join(stage, "backup-" + randomUUID());
-        await writeFile(backup, await readFile(destination), {flag: "wx"});
+        await rename(destination, backup);
         backups.set(destination, backup);
+        touched.push(destination);
       }
       await rename(safeDestination(stage, file.path), destination);
-      touched.push(destination);
+      if (!backups.has(destination)) touched.push(destination);
     }
     return plan.map(file => file.path);
   } catch (error) {
     for (const destination of touched.reverse()) {
       const backup = backups.get(destination);
-      if (backup) await rename(backup, destination);
+      if (backup) {await rm(destination, {force: true}); await rename(backup, destination);}
       else await rm(destination, {force: true});
     }
     throw error;

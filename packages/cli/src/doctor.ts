@@ -1,4 +1,5 @@
 import {createRequire} from "node:module";
+import {spawnSync} from "node:child_process";
 import {readFile, stat} from "node:fs/promises";
 import {join} from "node:path";
 import type {CliDiagnostic} from "./types.js";
@@ -17,6 +18,14 @@ export async function diagnoseProject(cwd: string): Promise<CliDiagnostic[]> {
   if ((nodeVersion[0] ?? 0) < 20 || ((nodeVersion[0] ?? 0) === 20 && (nodeVersion[1] ?? 0) < 19)) {
     issues.push(diagnostic("NODE_UNSUPPORTED", "Node.js 20.19 or newer is required."));
   }
+  const manager = process.env.npm_config_user_agent?.split("/")[0] ?? "npm";
+  if (["npm", "pnpm", "yarn"].includes(manager)) {
+    const command = process.platform === "win32" ? manager + ".cmd" : manager;
+    const result = spawnSync(command, ["--version"], {encoding: "utf8", shell: process.platform === "win32"});
+    const major = Number((result.stdout ?? "").split(".")[0]);
+    const minimum = manager === "pnpm" ? 10 : manager === "yarn" ? 4 : 10;
+    if (result.status !== 0 || !Number.isInteger(major) || major < minimum) issues.push(diagnostic("PACKAGE_MANAGER_UNSUPPORTED", manager + " " + minimum + "+ is required."));
+  } else issues.push(diagnostic("PACKAGE_MANAGER_UNKNOWN", "Unrecognized package manager " + manager, "warning"));
   const required = ["package.json", "tsconfig.json", "vite.config.ts", "zaakiy.config.ts", "index.html", "src/main.tsx", "src/App.tsx"];
   for (const name of required) {
     const path = join(cwd, name);
