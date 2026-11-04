@@ -59,3 +59,5 @@ function GroupRow(props: { live: () => { id: string; name: string } }) {
 ```
 
 This pattern preserves the existing strongly typed `ComponentCall` props and v1 IR. The compiler rewrites the zero-arg getter to the keyed item's stable signal cell and rejects direct values that could become stale. Components must explicitly derive or access reactive state within owner-managed bindings; the compiler does **not** transform arbitrary component functions into rerendering views.
+
+Integration gate: retest this extension against the current merged Compat, Store and Async packages; do not rely solely on an older foundation-only run.
