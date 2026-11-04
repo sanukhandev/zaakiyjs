@@ -116,6 +116,22 @@ importers:
         specifier: ^26.1.0
         version: 26.1.0
 
+  packages/router:
+    dependencies:
+      '@zaakiyjs/core':
+        specifier: workspace:^
+        version: link:../core
+      '@zaakiyjs/signals':
+        specifier: workspace:^
+        version: link:../signals
+    devDependencies:
+      '@zaakiyjs/dom':
+        specifier: workspace:^
+        version: link:../dom
+      jsdom:
+        specifier: ^26.1.0
+        version: 26.1.0
+
   packages/signals: {}
 
   packages/store:
