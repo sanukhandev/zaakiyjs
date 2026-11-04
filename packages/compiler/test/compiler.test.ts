@@ -224,6 +224,16 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
     const unsafe = compile({ fileName,
       source: "function App() { return <div dangerouslySetInnerHTML={{__html: '<img>'}} />; }" });
     expect(unsafe.diagnostics.some(d => d.code === "ZC1003")).toBe(true);
+    const scriptHref = compile({ fileName,
+      source: 'function App() { return <div href="javascript:alert(1)" />; }' });
+    expect(scriptHref.js).toHaveLength(0);
+    expect(scriptHref.diagnostics.some(d => d.code === "ZC1005")).toBe(true);
+    const variableHref = compile({ fileName,
+      source: 'function App() { const href = "/safe"; return <div href={href} />; }' });
+    expect(variableHref.diagnostics.some(d => d.code === "ZC1005")).toBe(true);
+    const inlineHandler = compile({ fileName,
+      source: 'function App() { return <div onload="alert(1)" />; }' });
+    expect(inlineHandler.diagnostics.some(d => d.code === "ZC1006")).toBe(true);
   });
 
   it("rejects unsafe unknown reactive calls and TypeScript type errors", () => {
