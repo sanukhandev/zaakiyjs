@@ -189,6 +189,60 @@ describe("review regression: scope, cancellation and disposal races", () => {
     await Promise.all([resourceRejection, taskRejection]);
   });
 
+  it("never starts a cancelled task that was waiting for its first microtask", async () => {
+    const execute = vi.fn(async () => 9);
+    const task = createTask({ owner: null, execute });
+    const operation = task.run(1);
+    const rejected = expect(operation).rejects.toMatchObject({ kind: "manual" });
+    task.cancel();
+    await rejected;
+    expect(execute).not.toHaveBeenCalled();
+    task.dispose();
+  });
+
+  it("never starts a resource loader cancelled before the initial microtask", async () => {
+    const load = vi.fn(async () => 3);
+    const resource = createResource({ owner: null, load });
+    const operation = resource.refresh();
+    const rejected = expect(operation).rejects.toMatchObject({ kind: "manual" });
+    resource.cancel();
+    await rejected;
+    expect(load).not.toHaveBeenCalled();
+    resource.dispose();
+  });
+
+  it("rejects native Promises rather than throwing when an owned cache was disposed", async () => {
+    const scope = {};
+    const cache = createResourceCache({ owner: null, scope });
+    const resource = createResource({
+      owner: null, cache, cacheScope: scope, cacheKey: () => "tenant:item",
+      load: async () => 3
+    });
+    cache.dispose();
+    const operation = resource.refresh();
+    expect(operation).toBeInstanceOf(Promise);
+    await expect(operation).rejects.toMatchObject({ code: "DISPOSED" });
+    expect(resource.error.value?.code).toBe("DISPOSED");
+    resource.dispose();
+  });
+
+  it("turns a throwing cache-key factory into a typed rejected Promise", async () => {
+    const scope = {};
+    const cache = createResourceCache({ owner: null, scope });
+    const failure = new Error("key factory failed");
+    const resource = createResource({
+      owner: null, cache, cacheScope: scope,
+      cacheKey: () => { throw failure; },
+      load: async () => 3
+    });
+    const operation = resource.refresh();
+    expect(operation).toBeInstanceOf(Promise);
+    await expect(operation).rejects.toMatchObject({ code: "RESOURCE_FAILED", cause: failure });
+    expect(resource.status.value).toBe("error");
+    resource.dispose();
+    cache.dispose();
+  });
+
   it("does not turn ordinary task failures into cancellation", async () => {
     const failure = new TypeError("business rule failed");
     const task = createTask({

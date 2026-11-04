@@ -336,7 +336,7 @@ describe("scoped cache and shared in-flight work", () => {
     const work = r.refresh();
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1));
     r.dispose();
-    await expect(work).rejects.toMatchObject({ kind: "owner" });
+    await expect(work).rejects.toMatchObject({ kind: "manual" });
     disposeOwner(root);
     expect(cache.disposed).toBe(true);
   });
