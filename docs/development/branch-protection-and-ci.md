@@ -38,11 +38,11 @@ Alternatively, navigate to **Repository Settings → Rules → Rulesets → New 
 - `pnpm typecheck`: strictly typechecks repository bootstrap tooling and runs every package's typecheck.
 - `pnpm build`: compiles repository bootstrap tooling and builds workspace packages in dependency order.
 - New `packages/*`, `apps/*`, and `examples/*` workspaces must declare working `lint`, `typecheck`, `build` scripts. Never use no-op commands to claim green CI.
-- This repo currently has **no framework packages**. Passing bootstrap checks validates CI tooling only, not runtime/compiler functionality.
+- This repo now contains **seven M0 contract-only packages**. Passing checks validates ESM/type contracts and workspace wiring only, not runtime/compiler functionality.
 
 ## Reproducibility bootstrap exception
 
-The repository has no lockfile or packages yet. Workflow installs with `--no-frozen-lockfile` **only while `pnpm-lock.yaml` is absent**; as soon as `packages/*` begins, the workspace contract requires a committed lockfile, and CI automatically switches to `--frozen-lockfile`. Generate the lockfile with pinned pnpm, review it and commit it as part of the first package PR. This temporary bootstrap exception is not a declaration of reproducible framework builds.
+M0 commits a generated pnpm 10.20.0 lockfile. Each required CI job runs `pnpm install --frozen-lockfile`; an absent or stale lockfile is a hard failure. The temporary lockfile-generation workflow removed itself and is **not** part of the ongoing CI pipeline. The build job also runs M0 package export and cross-package contract tests. This validates dependency locking, not functional framework implementation.
 
 ## Verify after enabling protection
 

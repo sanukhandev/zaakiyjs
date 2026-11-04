@@ -48,6 +48,12 @@ function visit(name, path = []) {
   state.set(name, "done");
 }
 for (const name of manifestByName.keys()) visit(name);
+const root = JSON.parse(readFileSync("package.json", "utf8"));
+for (const name of expected) {
+  if (root.devDependencies?.[`@zaakiyjs/${name}`] !== "workspace:^") {
+    fail(`Root contract consumer must link @zaakiyjs/${name} through workspace:^ devDependency`);
+  }
+}
 if (!existsSync("pnpm-lock.yaml")) fail("M0 source packages require committed pnpm-lock.yaml");
 const changeset = JSON.parse(readFileSync(".changeset/config.json", "utf8"));
 if (changeset.fixed?.length || changeset.linked?.length) fail("Changesets must remain independently versioned");

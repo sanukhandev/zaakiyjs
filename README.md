@@ -3,7 +3,7 @@
 
 > **AI-assisted. Compiler-first. Signal-driven. Native DOM.**
 >
-> **Project status: Architecture and engineering specification — not yet implemented or published.** The APIs, CLI commands, package names and performance budgets below are product targets, not working functionality. No claim is made that ZaakiyJS is the first AI frontend framework.
+> **Project status: M0 seven-package contract/toolchain scaffold — runtime, compiler and CLI functionality still not implemented or published.** The APIs, CLI commands, package names and performance budgets below are product targets, not working functionality. No claim is made that ZaakiyJS is the first AI frontend framework.
 
 ZaakiyJS is a proposed, independent **TypeScript/TSX frontend framework** inspired by React, Angular and Vue, designed to compile declarative components into precise native DOM updates. It combines a fine-grained reactive runtime, SOLID/MVVM application architecture, brand-driven CSS, integrated networking/async primitives, hybrid SEO rendering and optional **reviewed Gemini optimization**.
 
