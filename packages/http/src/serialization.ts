@@ -69,7 +69,11 @@ export async function parseResponse(response: Response, requested: ResponseType,
   if (!bytes.byteLength) return null;
   const mode = modeFrom(response, requested);
   if (mode === "arrayBuffer") return bytes.buffer;
-  if (mode === "blob") return new Blob([bytes], { type: response.headers.get("content-type") ?? "" });
+  if (mode === "blob") {
+    const binary = new ArrayBuffer(bytes.byteLength);
+    new Uint8Array(binary).set(bytes);
+    return new Blob([binary], { type: response.headers.get("content-type") ?? "" });
+  }
   const decoded = new TextDecoder().decode(bytes);
   if (mode === "text") return decoded;
   if (mode === "json") {
