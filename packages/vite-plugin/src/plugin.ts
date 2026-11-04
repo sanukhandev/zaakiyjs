@@ -21,7 +21,6 @@ import {
 
 const PUBLIC_CSS_ID = "virtual:zaakiy-styles.css";
 const INTERNAL_CSS_ID = "\u0000virtual:zaakiy-styles.css";
-const OUTPUT_CSS_FILE = "assets/zaakiy-styles.css";
 const MANIFEST_FILE = "zaakiy-assets.json";
 
 interface CompiledModule {
@@ -83,6 +82,10 @@ function diagnosticError(d: CompilerDiagnostic, fallback: string): Error & {
 export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
   if (options.cssVirtualId !== undefined && options.cssVirtualId !== PUBLIC_CSS_ID) {
     throw new Error("ZV0001: CSS virtual ID is frozen as " + PUBLIC_CSS_ID);
+  }
+  const cssOutputFile = options.cssFileName ?? "assets/zaakiy-styles.css";
+  if (!/^assets\/(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_-]+\.css$/.test(cssOutputFile)) {
+    throw new Error("ZV0002: cssFileName must be an assets/ path with a .css extension, without traversal or URL segments");
   }
   const filter = createFilter(
     options.include?.length ? [...options.include] : /\.[cm]?tsx$/,
@@ -166,9 +169,20 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
     });
     if (key === lastStyleKey) return;
     const result = await invokeStyles({ tokens, config: brand, minify });
-    if (result.diagnostics.length) {
-      const error = result.diagnostics[0];
-      if (error) throw new Error("[" + error.code + "] " + error.message);
+    for (const diagnostic of result.diagnostics) {
+      const metadata = diagnostic as unknown as {
+        readonly severity?: "error" | "warning";
+        readonly file?: string;
+        readonly offset?: number;
+      };
+      const location = metadata.file
+        ? " (" + metadata.file + (metadata.offset === undefined ? "" : ":" + metadata.offset) + ")"
+        : "";
+      const message = "[" + diagnostic.code + "] " + diagnostic.message + location;
+      if (metadata.severity === "error" || diagnostic.code === "ZSTY_DYNAMIC_CLASS") {
+        throw new Error(message);
+      }
+      resolved?.logger.warn(message);
     }
     css = [result.css.trim(), extra].filter(Boolean).join("\n");
     // A concatenated compiler CSS fragment cannot inherit the styles-only map.
@@ -237,7 +251,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         if (!/<\/head\s*>/i.test(html)) {
           throw new Error("ZV2010: HTML entry has no </head> for Zaakiy CSS linkage");
         }
-        const href = ((resolved?.base ?? "/") + OUTPUT_CSS_FILE)
+        const href = ((resolved?.base ?? "/") + cssOutputFile)
           .replaceAll("&", "&amp;").replaceAll('"', "&quot;");
         return html.replace(
           /<\/head\s*>/i,
@@ -247,7 +261,10 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
     },
 
     async transform(source, id, transformOptions) {
-      if (!isTsx(id) || transformOptions?.ssr) return null;
+      if (!isTsx(id)) return null;
+      if (transformOptions?.ssr) {
+        this.error("ZV1008: Zaakiy TSX SSR transform is unsupported; do not fall back to generic JSX lowering (" + id + ")");
+      }
       const file = simpleFile(id);
       const key = JSON.stringify([
         file, source, configRevision,
@@ -279,7 +296,15 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       if (asset.map) {
         try {
           const parsed: unknown = JSON.parse(asset.map);
-          if (!parsed || typeof parsed !== "object") throw new Error("Invalid map object");
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            throw new Error("Invalid map object");
+          }
+          const map = parsed as Record<string, unknown>;
+          if (map.version !== 3 || !Array.isArray(map.sources) ||
+              map.sources.some((source: unknown) => typeof source !== "string") ||
+              typeof map.mappings !== "string") {
+            throw new Error("Source map must be version 3 with sources and mappings");
+          }
         } catch {
           this.error("ZV1006: Malformed source map returned by compiler for " + file);
         }
@@ -339,11 +364,11 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       const content = compiledCssMap && resolved?.build.sourcemap
         ? css + "\n/*# sourceMappingURL=zaakiy-styles.css.map */\n"
         : css;
-      this.emitFile({ type: "asset", fileName: OUTPUT_CSS_FILE, source: content });
+      this.emitFile({ type: "asset", fileName: cssOutputFile, source: content });
       if (compiledCssMap && resolved?.build.sourcemap) {
         this.emitFile({
           type: "asset",
-          fileName: OUTPUT_CSS_FILE + ".map",
+          fileName: cssOutputFile + ".map",
           source: compiledCssMap
         });
       }
@@ -363,9 +388,9 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
           return null;
         })
         .filter((item): item is GeneratedAssetRecord => item !== null);
-      assets.push({ fileName: OUTPUT_CSS_FILE, kind: "css" });
+      assets.push({ fileName: cssOutputFile, kind: "css" });
       if (compiledCssMap && resolved?.build.sourcemap) {
-        assets.push({ fileName: OUTPUT_CSS_FILE + ".map", kind: "map" });
+        assets.push({ fileName: cssOutputFile + ".map", kind: "map" });
       }
       assets.push({ fileName: MANIFEST_FILE, kind: "manifest" });
       const manifest: ZaakiyAssetManifest = {

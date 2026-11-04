@@ -7,6 +7,8 @@ export interface ZaakiyViteOptions {
   readonly exclude?: readonly string[];
   readonly cssVirtualId?: string;
   readonly browserTargets?: readonly string[];
+  /** Relative file path for the single generated CSS asset, under assets/. */
+  readonly cssFileName?: string;
 }
 export interface GeneratedAssetRecord {
   readonly fileName: string;

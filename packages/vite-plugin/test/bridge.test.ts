@@ -27,8 +27,12 @@ describe("M0 Vite/compiler/styles contract bridge", () => {
     expect(plugin.enforce).toBe("pre");
   });
 
-  it("rejects attempts to change the frozen virtual CSS ID", () => {
+  it("rejects incompatible virtual CSS IDs and unsafe CSS output paths", () => {
     expect(() => zaakiyPlugin({ cssVirtualId: "virtual:custom.css" })).toThrow("ZV0001");
+    expect(() => zaakiyPlugin({ cssFileName: "../secret.css" })).toThrow("ZV0002");
+    expect(() => zaakiyPlugin({ cssFileName: "assets/../../secret.css" })).toThrow("ZV0002");
+    expect(() => zaakiyPlugin({ cssFileName: "https://host/styles.css" })).toThrow("ZV0002");
+    expect(zaakiyPlugin({ cssFileName: "assets/theme/brand.css" }).name).toBe("zaakiy:compiler");
   });
 
   it("accepts typed brand tokens and rejects malformed brand data", () => {
@@ -42,6 +46,14 @@ describe("M0 Vite/compiler/styles contract bridge", () => {
 
   it("reads versioned style token metadata without pretending the compiler implemented extraction", () => {
     expect(styleTokensFromResult(emptyResult, "fixture.tsx")).toEqual([]);
+    // Actual compiler branch emits sorted string[] rather than M0 object tokens.
+    expect(styleTokensFromResult({
+      ...emptyResult,
+      manifest: { styleTokens: ["flex", "gap-4"] }
+    }, "fixture.tsx")).toEqual([
+      { token: "flex", file: "fixture.tsx", offset: 0 },
+      { token: "gap-4", file: "fixture.tsx", offset: 0 }
+    ]);
     expect(styleTokensFromResult({
       ...emptyResult,
       manifest: { styleTokens: [{ token: "flex", file: "fixture.tsx", offset: 42 }] }

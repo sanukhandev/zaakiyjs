@@ -96,6 +96,13 @@ export function styleTokensFromResult(result: CompileResult, file: string): Extr
     throw new Error("ZV2004: Compiler manifest.styleTokens must be an array");
   }
   return tokens.map((item: unknown): ExtractedStyleToken => {
+    // The actual foundation compiler collects sorted, deduplicated strings.
+    // M0's styles contract requires file/offset, so use the compilation file
+    // and a documented unknown offset (0) when the compiler omits provenance.
+    if (typeof item === "string") {
+      if (!item.trim()) throw new Error("ZV2005: Empty style token in compiler manifest");
+      return { token: item, file, offset: 0 };
+    }
     if (!record(item) || typeof item.token !== "string" || !item.token.trim() ||
         typeof item.offset !== "number" || !Number.isSafeInteger(item.offset) ||
         item.offset < 0 || (item.file !== undefined && typeof item.file !== "string")) {

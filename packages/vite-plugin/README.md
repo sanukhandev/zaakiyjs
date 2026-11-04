@@ -31,9 +31,10 @@ For this M0-based draft, the executable factory is exposed via the package `./pl
 - `configFile`: optional path to a trusted `StyleConfig` default export. The default is an empty `brand` rather than executing arbitrary project config during a build. Configuration is loaded by Vite in Node, never embedded into client JS. On change, development fully reloads.
 - `include` / `exclude`: standard Vite/Rollup filter patterns; only `.tsx` and `.mtsx` files are eligible by default. Ordinary JS/TS is delegated to Vite.
 - `browserTargets`: forwarded to the native TSX compiler and included in the compilation cache key.
+- `cssFileName`: optional safe CSS asset path under `assets/`, default `assets/zaakiy-styles.css`. Directory traversal and URL-like values are rejected.
 - `cssVirtualId`: frozen to `virtual:zaakiy-styles.css`; other values fail rather than creating incompatible public imports.
 
-No mandatory Tailwind, React Fast Refresh, or browser-side compiler is included. Unsupported SSR transform, arbitrary custom CSS output names and per-entry CSS splitting are not yet supported.
+No mandatory Tailwind, React Fast Refresh, or browser-side compiler is included. Unsupported SSR transform (explicitly rejected, never delegated to another JSX compiler), arbitrary custom CSS output names and per-entry CSS splitting are not yet supported.
 
 ## Integration contract and blocking prerequisites
 
@@ -41,10 +42,10 @@ The compiler's *result* and the styles *result* are frozen in M0, but the execut
 
 - `@zaakiyjs/compiler.compile(request: CompileRequest): CompileResult | Promise<CompileResult>` returning one JS asset per transformed TSX module, IR version 1, a valid source map when requested, and diagnostics with original TSX spans.
 - `@zaakiyjs/styles.compileStyles(request: StyleCompilerRequest): StyleCompilerResult | Promise<StyleCompilerResult>` performing utility CSS validation/deduplication without Tailwind.
-- A provisional compiler manifest key `styleTokens` containing `ExtractedStyleToken[]`. This metadata shape must be explicitly frozen or replaced with the agreed transport before final acceptance.
+- A compiler manifest `styleTokens` key containing either `string[]` (as emitted by the current compiler implementation branch) or `ExtractedStyleToken[]` (as described by the M0 styles contract). Strings receive the source file and offset 0 because the compiler does not expose token spans. Accurate token diagnostics require a coordinated compiler change.
 - Executable `@zaakiyjs/dom/compiler` runtime ABI with compatible owner cleanup, exported by the independent DOM package.
 
-No alternative implementation is substituted when a dependency is absent or reports invalid output. The entire PR remains **draft** until the real packages are merged and jointly tested.
+No alternative implementation is substituted when a dependency is absent or reports invalid output. Style errors and dynamic CSS classes fail; other style warnings are surfaced without rejecting valid builds. The entire PR remains **draft** until the real packages are merged and jointly tested.
 
 ## Caching, errors, HMR, security
 
@@ -62,6 +63,6 @@ pnpm --filter @zaakiyjs/vite-plugin build
 pnpm --filter @zaakiyjs/vite-plugin test
 ```
 
-The package-local Vitest suite runs the actual Vite dev server and production build against `tests/fixtures/basic/`. While compiler/styles are types-only, successful compilation tests are skipped and **real Vite refusal** tests verify the fail-closed boundary. After the implementations land, run full Vite+DOM browser integration for: TSX, source maps, invalid JSX, utility CSS deduplication, brand overrides and invalidation, multi-module import graphs, HMR ownership disposal, AI/server dependency absence, and identical production hashes across pinned builds. **These acceptance gates are pending, not passed.**
+The root CI Vitest suite and the package-local Vitest suite both run the actual Vite dev server and production build against `tests/fixtures/basic/`. While compiler/styles are types-only, successful compilation tests are skipped and **real Vite refusal** tests verify the fail-closed boundary. After the implementations land, run full Vite+DOM browser integration for: TSX, source maps, invalid JSX, utility CSS deduplication, brand overrides and invalidation, multi-module import graphs, HMR ownership disposal, AI/server dependency absence, and identical production hashes across pinned builds. **These acceptance gates are pending, not passed.**
 
 Release intent: independent minor bump via Changesets after the integration gate, not automatic publication.
