@@ -204,6 +204,54 @@ describe("@zaakiyjs/store", () => {
     }
   });
 
+  it("composes nested wrapped actions without duplicate notifications", () => {
+    const owner = createOwner();
+    let invokeInner = () => {};
+    const store = createStore({
+      owner,
+      state: { value: 0 },
+      actions: ({ get, set }) => ({
+        inner() { set("value", get("value") + 1); },
+        outer() { invokeInner(); invokeInner(); }
+      })
+    });
+    invokeInner = () => store.actions.inner();
+    const observed: number[] = [];
+    const stop = effect(() => { observed.push(store.state.value.value); });
+    store.actions.outer();
+    flushSync();
+    expect(observed).toEqual([0, 2]);
+    stop.dispose();
+    disposeOwner(owner);
+  });
+
+  it("supports real component, feature and route store lifetimes", () => {
+    const app = createOwner();
+    const route = createOwner(app);
+    const feature = createOwner(route);
+    const screen = createOwner(feature);
+    const sibling = createOwner(route);
+    const make = (owner: OwnerScope, name: string) => createStore({
+      owner,
+      state: { name },
+      actions: ({ set }) => ({ rename(value: string) { set("name", value); } })
+    });
+    const token = createStoreContext<ReturnType<typeof make>>("ScopedProfile");
+    const rootStore = make(app, "global");
+    const featureStore = make(feature, "feature");
+    provideStore(app, token, rootStore);
+    provideStore(feature, token, featureStore);
+    expect(requireStore(screen, token)).toBe(featureStore);
+    expect(requireStore(sibling, token)).toBe(rootStore);
+    featureStore.actions.rename("feature-2");
+    expect(rootStore.state.name.value).toBe("global");
+    disposeOwner(feature);
+    expect(featureStore.disposed).toBe(true);
+    expect(rootStore.disposed).toBe(false);
+    expect(requireStore(sibling, token).state.name.value).toBe("global");
+    disposeOwner(app);
+  });
+
   it("supports route and feature overrides without cross-feature leakage", () => {
     const app = createOwner();
     const route = createOwner(app);
