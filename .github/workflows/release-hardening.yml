@@ -1,0 +1,146 @@
+name: Release Hardening
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-hardening-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  packed-consumer:
+    name: release / packed-consumer-and-reproducibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Frozen workspace install
+        run: pnpm install --frozen-lockfile
+      - name: Reproduce a frozen offline install
+        run: pnpm install --offline --frozen-lockfile
+      - name: Build every package
+        run: pnpm build
+      - name: Record reproducible output hashes
+        shell: bash
+        run: |
+          node scripts/release/hash-build.mjs > /tmp/zaakiy-build-1.sha256
+          pnpm exec turbo run build --force
+          node scripts/release/hash-build.mjs > /tmp/zaakiy-build-2.sha256
+          diff -u /tmp/zaakiy-build-1.sha256 /tmp/zaakiy-build-2.sha256
+      - name: Build actual tarballs and consume outside monorepo
+        env:
+          ZAAKIY_RELEASE_REPORT: .generated/packed-consumer-report.json
+        run: node scripts/release/verify-packages.mjs
+      - name: Audit production dependency vulnerabilities
+        run: pnpm audit --prod --audit-level high
+      - name: Upload packed consumer and hash evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-package-evidence
+          path: |
+            .generated/packed-consumer-report.json
+            /tmp/zaakiy-build-1.sha256
+            /tmp/zaakiy-build-2.sha256
+          if-no-files-found: ignore
+
+  security-accessibility:
+    name: release / csp-axe-heap
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Frozen workspace install and build
+        run: pnpm install --frozen-lockfile && pnpm build
+      - name: Scaffold independent real Vite app
+        run: node packages/cli/dist/bin.js start --project release-app --template minimal --workspace --path apps --package-manager pnpm
+      - name: Link release consumer workspace and fixtures
+        shell: bash
+        run: |
+          pnpm install --no-frozen-lockfile
+          cp tests/browser/fixture/App.tsx apps/release-app/src/App.tsx
+          cp tests/browser/fixture/main.tsx apps/release-app/src/main.tsx
+      - name: Install strict CSP before production compilation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          file = Path("apps/release-app/index.html")
+          html = file.read_text()
+          csp = (
+              "default-src 'none'; script-src 'self'; style-src 'self'; "
+              "img-src 'self' data:; connect-src 'self'; font-src 'self'; "
+              "base-uri 'self'; object-src 'none'; "
+              "require-trusted-types-for 'script'"
+          )
+          assert "<head>" in html
+          file.write_text(html.replace("<head>", "<head>\n    <meta http-equiv=\"Content-Security-Policy\" content=\"" + csp + "\">"))
+          PY
+      - name: Pin axe-core and serve it as a local test-only static asset
+        shell: bash
+        run: |
+          mkdir -p apps/release-app/public
+          npm pack axe-core@4.14.0 --pack-destination "$RUNNER_TEMP" --silent
+          tar -xOzf "$RUNNER_TEMP/axe-core-4.14.0.tgz" package/axe.min.js > apps/release-app/public/axe.min.js
+          test -s apps/release-app/public/axe.min.js
+      - name: Strict fixture typecheck and optimized production build
+        run: pnpm --dir apps/release-app typecheck && pnpm --dir apps/release-app build
+      - name: Install pinned Playwright and three matching browsers
+        run: |
+          python3 -m pip install 'playwright==1.64.1'
+          python3 -m playwright install --with-deps chromium firefox webkit
+      - name: Gate CSP, automated WCAG rules, keyboard and Chrome heap
+        shell: bash
+        run: |
+          pnpm --dir apps/release-app exec vite preview --host 127.0.0.1 --port 4189 --strictPort > /tmp/zaakiy-release-preview.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in {1..60}; do
+            if curl -fsS http://127.0.0.1:4189/ >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then cat /tmp/zaakiy-release-preview.log; exit 1; fi
+          python3 tests/release/browser_audit.py --base-url http://127.0.0.1:4189
+      - name: Ensure build-time code absent from shipped browser assets
+        shell: bash
+        run: |
+          test -f apps/release-app/dist/index.html
+          if grep -R -E '@zaakiyjs/(ai|proxy|compiler|vite-plugin)' apps/release-app/dist/assets --include='*.js'; then
+            echo "Build-time module reference leaked into consumer bundle"
+            exit 1
+          fi
+      - name: Upload security, accessibility and heap results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-security-heap-evidence
+          path: |
+            .generated/release-browser-report.json
+            /tmp/zaakiy-release-preview.log
+          if-no-files-found: ignore
