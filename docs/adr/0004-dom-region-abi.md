@@ -48,3 +48,7 @@ SSR/hydration marker reuse, multi-root keyed templates, async per-item factories
 ## Migration
 
 No previously published compiled code exists; ABI v1 adds optional region functions without changing frozen primitive signatures. Future generated output must advertise `domAbiVersion` and reject incompatible runtime versions instead of importing unavailable helpers.
+
+## M1 authoring update — ADR 0005
+
+[ADR 0005](0005-tsx-control-flow-intrinsics.md) now defines a restricted typed `<Show>` and `<For>` syntax using this existing additive v1 region ABI. Their source lowering is verified with real Signals/Core/DOM and Chromium Vite acceptance; this does not imply full arbitrary-child JSX, nested keyed loops, multi-root templates or Firefox/WebKit release support.

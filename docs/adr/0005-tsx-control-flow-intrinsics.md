@@ -28,11 +28,11 @@ function App() {
 }
 ```
 
-**Explicit import required:** Only named `Show`/`For` imports from `@zaakiyjs/core` (including aliases) are special. Unrelated local components with those names are never rewritten. These functions throw if invoked outside the compiler, so an uncompiled JSX tree cannot silently execute a virtual DOM runtime.
+**Explicit import required:** Only named `Show`/`For` imports from `@zaakiyjs/core` (including aliases) are special. Unrelated local components with those names are never rewritten; lexical shadows of core imports are also never treated as intrinsics. These functions throw if invoked outside the compiler, so an uncompiled JSX tree cannot silently execute a virtual DOM runtime.
 
 **Show:** `when` is a required boolean JSX expression; one native element child is required. `fallback` is optional and must be a single native JSX element or `null`. A conditional region owns its branch scope, disposes the inactive branch before removal and does not reinitialize the active branch when the predicate stays unchanged.
 
-**For:** `each` accepts a readonly array; `by` is a required typed selector returning a primitive `PropertyKey`; the single JSX child must be an arrow render function with one named item argument and a single native element result. Each keyed item has a scope-owned signal; same-key replacements update targeted text/properties without reinitializing the element, and DOM reorders reuse existing focused nodes. The DOM ABI validates duplicate keys before mutation. Event handlers read the current item signal.
+**For:** `each` accepts a readonly array; `by` is a required inline arrow or stable named function reference returning a primitive `PropertyKey`; arbitrary calls and accessors are refused to avoid extra side-effectful selector evaluation. the single JSX child must be an arrow render function with one named item argument and a single native element result. Each keyed item has a scope-owned signal; same-key replacements update targeted text/properties without reinitializing the element, and DOM reorders reuse existing focused nodes. The DOM ABI validates duplicate keys before mutation. Event handlers read the current item signal.
 
 **Fail closed:** JSX spreads, multiple sibling roots, destructured/async render callbacks, nested keyed loops, reactive keyed class/attributes, conditional children that directly contain another region, fragments and unsupported component children must produce deterministic compilation errors rather than silent JSX runtime fallbacks. Use a native element wrapper where necessary.
 
