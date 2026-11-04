@@ -1,16 +1,17 @@
-/** M0 TYPE CONTRACT ONLY. Ownership, context and components are not operational. */
-import type { ReadonlySignal, WritableSignal, ComputedSignal, EffectHandle, EffectOptions } from "@zaakiyjs/signals";
-export type { ReadonlySignal, WritableSignal, ComputedSignal, EffectHandle, EffectOptions };
-export const foundationStatus = { package: "@zaakiyjs/core", implemented: false } as const;
-export type OwnerState = "created" | "initialized" | "mounted" | "active" | "deactivated" | "suspended" | "disposed";
-export interface OwnerScope {
-  readonly parent: OwnerScope | null;
-  readonly state: OwnerState;
-  readonly disposed: boolean;
-  dispose(): void;
-}
-export interface ContextToken<T> { readonly key: symbol; readonly description?: string; readonly __type?: T }
-export type Cleanup = () => void;
-export interface ViewNode { readonly __zaakiyViewNode: unique symbol }
-export type Component<Props extends object = Record<string, never>> = (props: Readonly<Props>) => ViewNode;
-export type ComponentFactory<Props extends object> = (props: Readonly<Props>, owner: OwnerScope) => ViewNode;
+/** ZaakiyJS component ownership, lifecycle and typed provider runtime. */
+export type {
+  ReadonlySignal, WritableSignal, ComputedSignal, EffectHandle, EffectOptions
+} from "@zaakiyjs/signals";
+export const foundationStatus = { package: "@zaakiyjs/core", implemented: true } as const;
+export {
+  createOwner, runWithOwner, getOwner, onCleanup, onMount, mountOwner,
+  activateOwner, deactivateOwner, suspendOwner, disposeOwner, transferOwner,
+  ownDisposable, initializeOwnedComponent
+} from "./owner.js";
+export type { OwnerScope, OwnerState, Cleanup } from "./owner.js";
+export {
+  createContext, provide, useContext, requireContext, MissingProviderError
+} from "./context.js";
+export type { ContextToken } from "./context.js";
+export { executeComponent } from "./component.js";
+export type { Component, ComponentFactory, ViewNode } from "./component.js";
