@@ -93,6 +93,30 @@ function allText(node: FakeNode): string {
 }
 
 describe("TSX-to-DOM compiler safe vertical slice", () => {
+  it("does not capture user variables with generated local DOM or owner names", () => {
+    const source = 'function App(){const __z_owner="outer"; const __z_text_1="text";' +
+      'return <span>{__z_owner + __z_text_1}</span>;}';
+    const result = compile({ fileName, source });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(allText(execute(source, "App").root)).toBe("outertext");
+  });
+
+  it("avoids collisions between user identifiers and injected ESM helper imports", () => {
+    const source = 'function App(){const __zCreateText="own";return <span>{__zCreateText}</span>;}';
+    const result = compile({ fileName, source });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.js[0]?.code).toContain("createText as __zCreateText_");
+    expect(result.js[0]?.code).not.toMatch(/createText as __zCreateText[,}]/);
+  });
+
+  it("keeps user side-effect import order ahead of compiler runtime helpers", () => {
+    const source = 'import "./setup.js"; function App(){return <main>ready</main>;}';
+    const result = compile({ fileName, source });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    const code = result.js[0]?.code ?? "";
+    expect(code.indexOf('import "./setup.js"')).toBeLessThan(code.indexOf("@zaakiyjs/dom/compiler"));
+  });
+
   it("does not import DOM/core runtime helpers for a TSX module without any JSX", () => {
     const result = compile({ fileName, source: "export const answer: number = 42;" });
     expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
