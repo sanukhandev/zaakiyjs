@@ -67,3 +67,7 @@ pnpm ci
 The root CI Vitest suite and the package-local Vitest suite both run the actual Vite dev server and production build against `tests/fixtures/basic/`. While compiler/styles are types-only, successful TSX compilation and brand-only CSS tests are skipped and **real Vite refusal** tests verify the fail-closed boundary. The fixture suite also checks source-manifest stability across different checkout roots and custom CSS source-map filename generation. After the implementations land, run full Vite+DOM browser integration for: TSX, source maps, invalid JSX, utility CSS deduplication, brand overrides and invalidation, multi-module import graphs, HMR ownership disposal, AI/server dependency absence, and identical production hashes across pinned builds. **These acceptance gates are pending, not passed.**
 
 Release intent: independent minor bump via Changesets after the integration gate, not automatic publication.
+
+## Integrated CI gate
+
+After merging Signals, Core, DOM and Compiler, the Vite bridge requires the real `@zaakiyjs/compiler.compile`, `@zaakiyjs/styles.compileStyles` and static token extraction in required CI. The Vite integration suite no longer skips positive TSX/CSS cases when upstream modules are contract-only. Any missing upstream executable API is a build/test failure; no React JSX or Tailwind fallback is permitted.

@@ -197,7 +197,8 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
     })).rejects.toThrow("ZV2006");
   });
 
-  it.skipIf(!hasStyles())("generates CSS from brand and safelist without any TSX source", async () => {
+  it("generates CSS from brand and safelist without any TSX source", async () => {
+    expect(hasStyles()).toBe(true);
     const result = await build({
       configFile: false,
       root: brandOnlyRoot,
@@ -213,9 +214,9 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
     expect(String(css?.type === "asset" ? css.source : "")).toContain("bg-primary");
   });
 
-  it.skipIf(!hasCompiler() || !hasStyles())(
-    "compiles the real TSX fixture and CSS once compiler/styles implementations are integrated",
-    async () => {
+  it("compiles real TSX and generated CSS using merged compiler and styles", async () => {
+      expect(hasCompiler()).toBe(true);
+      expect(hasStyles()).toBe(true);
       const result = await build({
         configFile: false,
         root: fixtureRoot,
@@ -234,6 +235,5 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
       expect(String(css?.source)).toContain("flex");
       expect(manifest).toBeDefined();
       expect(js.every(chunk => !/@zaakiyjs\/(?:ai|proxy|compiler|styles|vite-plugin)/.test(chunk.type === "chunk" ? chunk.code : ""))).toBe(true);
-    }
-  );
+  });
 });
