@@ -303,7 +303,9 @@ export class Router {
   }
 
   private prepareView(next: RuntimeEntry[], common: number, from: URL, to: URL, signal: AbortSignal): () => void {
-    if (!this.host) return () => {};
+    // A hash-only navigation can reuse the entire page chain. There is no
+    // new child and therefore no reason to require a nested layout outlet.
+    if (common === next.length || !this.host) return () => {};
     const host = this.host;
     const doc = host.ownerDocument;
     const staging = doc.createDocumentFragment();
