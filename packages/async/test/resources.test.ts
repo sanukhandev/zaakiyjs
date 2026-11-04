@@ -151,8 +151,9 @@ describe("read resources", () => {
     const source = deferred<number>();
     const resource = createResource({ load: () => source.promise, timeoutMs: 30, owner: null });
     const operation = resource.refresh();
+    const rejected = expect(operation).rejects.toBeInstanceOf(TimeoutError);
     await vi.advanceTimersByTimeAsync(30);
-    await expect(operation).rejects.toBeInstanceOf(TimeoutError);
+    await rejected;
     source.resolve(90);
     await Promise.resolve();
     expect(resource.data.value).toBeUndefined();

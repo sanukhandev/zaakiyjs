@@ -190,8 +190,9 @@ describe("explicit async tasks", () => {
     vi.useFakeTimers();
     const task = createTask({ owner: null, timeoutMs: 100, execute: async () => new Promise<void>(() => {}) });
     const work = task.run(1);
+    const rejected = expect(work).rejects.toMatchObject({ code: "TIMEOUT", kind: "timeout" });
     await vi.advanceTimersByTimeAsync(100);
-    await expect(work).rejects.toMatchObject({ code: "TIMEOUT", kind: "timeout" });
+    await rejected;
     task.dispose();
     expect(vi.getTimerCount()).toBe(0);
   });

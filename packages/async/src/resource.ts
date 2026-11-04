@@ -84,6 +84,7 @@ export function createResource<TData, TKey = void>(options: ResourceOptions<TDat
   let generation = 0;
   let active: Cancellation | null = null;
   let tracker: EffectHandle | null = null;
+  let detachOwner = (): void => {};
   const equal = options.equalsKey ?? Object.is;
 
   const readKey = (): TKey | null | undefined => untrack(() => options.key?.());
@@ -200,6 +201,7 @@ export function createResource<TData, TKey = void>(options: ResourceOptions<TDat
   function dispose(): void {
     if (closed) return;
     closed = true;
+    detachOwner();
     generation++;
     active?.cancel("owner");
     active = null;
@@ -232,7 +234,7 @@ export function createResource<TData, TKey = void>(options: ResourceOptions<TDat
     invalidate, dispose
   };
   try {
-    attachOwner(owner, dispose);
+    detachOwner = attachOwner(owner, dispose);
     tracker = effect(() => {
       const key = options.key?.();
       const enabled = typeof options.enabled === "function" ? options.enabled() : options.enabled;

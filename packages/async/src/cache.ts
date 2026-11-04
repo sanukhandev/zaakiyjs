@@ -1,4 +1,5 @@
-import { getOwner, onCleanup, runWithOwner } from "@zaakiyjs/core";
+import { getOwner } from "@zaakiyjs/core";
+import { attachOwner } from "./ownership.js";
 import type { OwnerScope } from "@zaakiyjs/core";
 import { awaitAbortable } from "./abort.js";
 import { BusyError, CancellationError, ConfigurationError, DisposedError } from "./errors.js";
@@ -43,7 +44,8 @@ class ScopedCache implements ResourceCache {
     private readonly root: OwnerScope | null,
     private readonly scope: object | undefined,
     private readonly maxEntries: number,
-    private readonly cacheTimeMs: number
+    private readonly cacheTimeMs: number,
+    private readonly detachOwner: () => void
   ) {}
   get disposed(): boolean { return this.closed; }
   get size(): number { return this.values.size; }
@@ -133,6 +135,7 @@ class ScopedCache implements ResourceCache {
   dispose(): void {
     if (this.closed) return;
     this.closed = true;
+    this.detachOwner();
     for (const pending of this.running) {
       if (!pending.controller.signal.aborted) pending.controller.abort(new CancellationError("owner"));
     }
@@ -154,7 +157,8 @@ export function createResourceCache(options: CacheOptions = {}): ResourceCache {
   if (!Number.isFinite(cacheTimeMs) || cacheTimeMs < 0) {
     throw new ConfigurationError("cacheTimeMs must be finite and nonnegative");
   }
-  const cache = new ScopedCache(owner ? rootOf(owner) : null, options.scope, maxEntries, cacheTimeMs);
-  if (owner) runWithOwner(owner, () => onCleanup(() => cache.dispose()));
+  let release = (): void => {};
+  const cache = new ScopedCache(owner ? rootOf(owner) : null, options.scope, maxEntries, cacheTimeMs, () => release());
+  release = attachOwner(owner, () => cache.dispose());
   return cache;
 }

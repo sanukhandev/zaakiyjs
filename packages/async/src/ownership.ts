@@ -6,6 +6,9 @@ export function ownerFor(explicit: OwnerScope | null | undefined): OwnerScope | 
   if (owner?.disposed) throw new DisposedError();
   return owner;
 }
-export function attachOwner(owner: OwnerScope | null, dispose: () => void): void {
-  if (owner) runWithOwner(owner, () => onCleanup(dispose));
+/** Detachable cleanup slot; manual disposal no longer retains the handle in Core's cleanup stack. */
+export function attachOwner(owner: OwnerScope | null, dispose: () => void): () => void {
+  const slot: { dispose?: () => void } = { dispose };
+  if (owner) runWithOwner(owner, () => onCleanup(() => slot.dispose?.()));
+  return () => { slot.dispose = undefined; };
 }

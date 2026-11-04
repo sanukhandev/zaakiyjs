@@ -80,6 +80,7 @@ export function createTask<TInput, TResult>(options: TaskOptions<TInput, TResult
   const active = new Map<number, Cancellation>();
   const queue: Array<Queued<TInput, TResult>> = [];
   let closed = false;
+  let detachOwner = (): void => {};
   let sequence = 0;
   let newest = 0;
 
@@ -199,6 +200,7 @@ export function createTask<TInput, TResult>(options: TaskOptions<TInput, TResult
   function dispose(): void {
     if (closed) return;
     closed = true;
+    detachOwner();
     cancelAll("owner");
     // Do not publish state after disposal.
   }
@@ -224,6 +226,6 @@ export function createTask<TInput, TResult>(options: TaskOptions<TInput, TResult
     },
     dispose
   };
-  attachOwner(owner, dispose);
+  detachOwner = attachOwner(owner, dispose);
   return task;
 }
