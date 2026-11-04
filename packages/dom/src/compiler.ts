@@ -40,8 +40,11 @@ function assertWritableName(name: string): void {
 
 function assertSafeUrl(value: unknown, name: string, base: string): void {
   const input = String(value);
-  if (/[\u0000-\u001f\u007f]/.test(input)) {
-    throw new TypeError("Control characters in URL binding: " + name);
+  for (const char of input) {
+    const code = char.charCodeAt(0);
+    if (code <= 31 || code === 127) {
+      throw new TypeError("Control characters in URL binding: " + name);
+    }
   }
   const trimmed = input.trim();
   if (!trimmed) return;
