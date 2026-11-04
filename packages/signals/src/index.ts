@@ -22,6 +22,7 @@ type Source = SignalNode<unknown> | ComputedNode<unknown>;
 interface TrackingFrame {
   readonly observer: Observer;
   readonly seen: Set<Source>;
+  readonly computedValues: Map<ComputedNode<unknown>, unknown>;
 }
 
 let activeFrame: TrackingFrame | null = null;
@@ -38,7 +39,7 @@ let flushSequence = 0;
 function reportUnobservedError(error: unknown): void { throw error; }
 
 function enqueue(effectNode: EffectNode): void {
-  if (effectNode.disposed) return;
+  if (effectNode.disposed || (flushing && effectNode.blockedFlushId === flushSequence)) return;
   (effectNode.phase === "render" ? renderQueue : userQueue).add(effectNode);
   if (batchDepth === 0 && !flushing) requestFlush();
 }
@@ -58,6 +59,7 @@ function drain(): void {
   const errors: unknown[] = [];
   const flushId = ++flushSequence;
   let executions = 0;
+  let hardLimitExceeded = false;
   try {
     while (renderQueue.size || userQueue.size) {
       const queue = renderQueue.size ? renderQueue : userQueue;
@@ -67,22 +69,25 @@ function drain(): void {
       if (next.disposed) continue;
       if (++executions > MAX_EXECUTIONS_PER_FLUSH) {
         errors.push(new Error("ZaakiyJS reactive cycle: exceeded " + MAX_EXECUTIONS_PER_FLUSH + " effect executions in one flush"));
+        hardLimitExceeded = true;
         break;
       }
       if (next.lastFlushId === flushId) {
         if (++next.runsThisFlush > MAX_RUNS_PER_EFFECT_PER_FLUSH) {
           errors.push(new Error("ZaakiyJS reactive cycle: effect ran over " + MAX_RUNS_PER_EFFECT_PER_FLUSH + " times in one flush"));
-          break;
+          next.blockedFlushId = flushId;
+          continue;
         }
       } else {
         next.lastFlushId = flushId;
         next.runsThisFlush = 1;
       }
+      if (!next.shouldExecute()) continue;
       try { next.execute(); }
       catch (error) { errors.push(error); }
     }
   } finally {
-    if (errors.length && (renderQueue.size || userQueue.size)) {
+    if (hardLimitExceeded) {
       renderQueue.clear();
       userQueue.clear();
     }
@@ -108,8 +113,9 @@ function observe(source: Source): void {
 function runTracked<T>(observer: Observer, evaluate: () => T): T {
   const before = observer.dependencies;
   const seen = new Set<Source>();
+  const computedValues = new Map<ComputedNode<unknown>, unknown>();
   const previous = activeFrame;
-  activeFrame = { observer, seen };
+  activeFrame = { observer, seen, computedValues };
   let succeeded = false;
   try {
     const result = evaluate();
@@ -125,6 +131,7 @@ function runTracked<T>(observer: Observer, evaluate: () => T): T {
     } else if (succeeded) {
       for (const source of before) if (!seen.has(source)) source.removeObserver(observer);
       observer.dependencies = seen;
+      if (observer instanceof EffectNode) observer.rememberComputedValues(computedValues);
       if (observer instanceof ComputedNode) {
         observer.revisions = new Map([...seen].map((source) => [source, source.revision()]));
       }
@@ -171,7 +178,10 @@ class ComputedNode<T> implements ComputedSignal<T> {
   get value(): T {
     if (this.computing) throw new Error("ZaakiyJS circular computed dependency");
     observe(this as ComputedNode<unknown>);
-    return this.read();
+    const value = this.read();
+    const frame = activeFrame;
+    if (frame?.observer instanceof EffectNode) frame.computedValues.set(this as ComputedNode<unknown>, value);
+    return value;
   }
   peek(): T { return this.read(); }
   private read(): T {
@@ -237,6 +247,8 @@ class EffectNode implements EffectHandle {
   disposed = false;
   lastFlushId = 0;
   runsThisFlush = 0;
+  blockedFlushId = 0;
+  private successfulReadValues: Map<ComputedNode<unknown>, unknown> | null = null;
   private running = false;
   private cleanup: (() => void) | undefined;
   readonly phase: EffectPhase;
@@ -244,22 +256,38 @@ class EffectNode implements EffectHandle {
     this.phase = phase;
   }
   invalidate(): void { enqueue(this); }
+  rememberComputedValues(reads: Map<ComputedNode<unknown>, unknown>): void {
+    this.successfulReadValues = reads;
+  }
+  /** Skip effects whose complete dependency set consists of unchanged computed values. */
+  shouldExecute(): boolean {
+    const previous = this.successfulReadValues;
+    if (previous === null || previous.size === 0 || this.dependencies.size === 0) return true;
+    for (const source of this.dependencies) {
+      // Direct signal reads retain their ordinary invalidation semantics.
+      if (!(source instanceof ComputedNode) || !previous.has(source)) return true;
+      try { if (!Object.is(source.peek(), previous.get(source))) return true; }
+      catch { return true; } // Let execute/onError report computed failures.
+    }
+    return false;
+  }
   execute(): void {
     if (this.disposed) return;
     if (this.running) throw new Error("ZaakiyJS effect cannot execute recursively");
     this.running = true;
+    this.successfulReadValues = null;
     const oldCleanup = this.cleanup;
     this.cleanup = undefined;
     try {
-      oldCleanup?.();
+      if (oldCleanup) untrack(oldCleanup);
       if (this.disposed) return; // Cleanup can dispose its effect before the next body.
       const result = runTracked(this, this.run);
       if (typeof result === "function") {
-        if (this.disposed) result(); // Run a cleanup returned after self-disposal.
+        if (this.disposed) untrack(result); // Run a cleanup returned after self-disposal.
         else this.cleanup = result;
       }
     } catch (error) {
-      if (this.onError) this.onError(error);
+      if (this.onError) untrack(() => this.onError!(error));
       else throw error;
     } finally { this.running = false; }
   }
@@ -270,9 +298,10 @@ class EffectNode implements EffectHandle {
     userQueue.delete(this);
     for (const source of this.dependencies) source.removeObserver(this);
     this.dependencies.clear();
+    this.successfulReadValues = null;
     const cleanup = this.cleanup;
     this.cleanup = undefined;
-    cleanup?.();
+    if (cleanup) untrack(cleanup);
   }
 }
 
