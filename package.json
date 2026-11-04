@@ -4,17 +4,21 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.20.0",
-  "description": "ZaakiyJS monorepo bootstrap and quality gates (framework not implemented)",
+  "description": "ZaakiyJS M0 contracts-only workspace (framework behavior not implemented)",
   "scripts": {
-    "lint": "node scripts/ci/verify-workspaces.mjs && eslint . && pnpm -r --if-present run lint",
-    "typecheck": "tsc --noEmit --project tsconfig.json && pnpm -r --if-present run typecheck",
-    "build": "tsc --project tsconfig.build.json && pnpm -r --if-present run build",
-    "ci": "pnpm lint && pnpm typecheck && pnpm build"
+    "lint": "node scripts/ci/verify-workspaces.mjs && eslint . && turbo run lint",
+    "typecheck": "pnpm build && tsc --noEmit --project tsconfig.json && turbo run typecheck",
+    "build": "tsc --project tsconfig.build.json && turbo run build",
+    "test": "pnpm build && vitest run",
+    "ci": "pnpm lint && pnpm typecheck && pnpm test"
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",
     "eslint": "9.39.1",
     "typescript-eslint": "8.46.0",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "turbo": "2.5.8",
+    "vitest": "3.2.4",
+    "vite": "6.3.5"
   }
 }
