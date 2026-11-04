@@ -209,6 +209,118 @@ describe("compiler-lowered native DOM runtime", () => {
     expect(closed).toHaveBeenCalledWith("b");
   });
 
+
+  it("waits for connected DOM before running conditional child mount hooks", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const seen: boolean[] = [];
+    const app = mount((owner) => {
+      const section = document.createElement("section");
+      const region = createRegion(section);
+      bindConditionalRegion(owner, region, () => true, () => {
+        const button = document.createElement("button");
+        onMount(() => seen.push(button.isConnected));
+        return button;
+      });
+      expect(seen).toEqual([]);
+      return section;
+    }, host);
+    expect(seen).toEqual([true]);
+    app.dispose();
+  });
+
+  it("does not subscribe a conditional to signals read during child setup", () => {
+    const parent = document.createElement("div");
+    const owner = createOwner();
+    const region = createRegion(parent);
+    const active = signal(true);
+    const detail = signal("one");
+    const predicates = vi.fn(() => active.value);
+    bindConditionalRegion(owner, region, predicates, () => {
+      const label = document.createElement("span");
+      label.textContent = detail.value;
+      return label;
+    });
+    expect(predicates).toHaveBeenCalledTimes(1);
+    detail.value = "two";
+    flushSync();
+    expect(predicates).toHaveBeenCalledTimes(1);
+    expect(parent.querySelector("span")?.textContent).toBe("one");
+    disposeOwner(owner);
+  });
+
+  it("does not track reactive reads from keyed item-level updates", () => {
+    const parent = document.createElement("div");
+    const owner = createOwner();
+    const region = createRegion(parent);
+    const entries = signal([{ id: "a", name: "A" }]);
+    const incidental = signal(1);
+    const readList = vi.fn(() => entries.value);
+    bindKeyedRegion(owner, region, readList, (item) => item.id, (item) => {
+      const label = document.createElement("span");
+      label.textContent = item.name;
+      return { node: label, update(next: { id: string; name: string }) {
+        label.textContent = next.name + incidental.value;
+      }};
+    });
+    expect(readList).toHaveBeenCalledTimes(1);
+    entries.value = [{ id: "a", name: "B" }];
+    flushSync();
+    expect(readList).toHaveBeenCalledTimes(2);
+    incidental.value = 2;
+    flushSync();
+    expect(readList).toHaveBeenCalledTimes(2);
+    disposeOwner(owner);
+  });
+
+  it("rolls back newly added keyed owners without removing old nodes on factory failure", () => {
+    const owner = createOwner();
+    const parent = document.createElement("div");
+    const region = createRegion(parent);
+    const entries = signal(["a"]);
+    const disposed = vi.fn();
+    bindKeyedRegion(owner, region, () => entries.value, (item) => item, (item) => {
+      if (item === "c") throw new Error("factory failed");
+      onCleanup(() => disposed(item));
+      const node = document.createElement("span");
+      node.dataset.id = item;
+      return { node };
+    });
+    const old = parent.querySelector("[data-id=a]");
+    entries.value = ["a", "b", "c"];
+    expect(() => flushSync()).toThrow("factory failed");
+    expect(parent.querySelector("[data-id=a]")).toBe(old);
+    expect(parent.querySelector("[data-id=b]")).toBeNull();
+    expect(disposed).toHaveBeenCalledWith("b");
+    expect(disposed).not.toHaveBeenCalledWith("a");
+    disposeOwner(owner);
+    expect(disposed).toHaveBeenCalledWith("a");
+  });
+
+  it("rejects duplicate roots before mutating DOM and disposes the failed owner", () => {
+    const host = document.createElement("div");
+    const node = document.createElement("p");
+    expect(() => mount(() => [node, node], host)).toThrow(/distinct native DOM nodes/);
+    expect(host.childNodes).toHaveLength(0);
+  });
+
+  it("rejects unsafe URL protocols including protocol-obfuscated controls", () => {
+    const link = document.createElement("a");
+    for (const unsafe of [
+      "javascript:alert(1)", "data:text/html,alert(1)",
+      "vbscript:msgbox(1)", "java\u0009script:alert(1)",
+      "  javascript:alert(1)"
+    ]) {
+      expect(() => setAttribute(link, "href", unsafe)).toThrow();
+    }
+    expect(() => setAttribute(link, "ping", "https://tracker.invalid/")).toThrow();
+    const frame = document.createElement("iframe");
+    expect(() => setProperty(frame, "srcdoc", "<script>1</script>")).toThrow();
+    expect(() => setAttribute(frame, "src", "mailto:evil@example.com")).toThrow();
+    setAttribute(link, "href", "https://example.com/allowed");
+    expect(link.getAttribute("href")).toBe("https://example.com/allowed");
+  });
+
   it("keeps one listener during handler changes and removes it on disposal", () => {
     const owner = createOwner();
     const button = document.createElement("button");
