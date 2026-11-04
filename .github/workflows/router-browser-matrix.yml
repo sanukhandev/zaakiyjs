@@ -74,12 +74,12 @@ jobs:
       - name: Execute native-browser Router navigation, ownership and security acceptance
         shell: bash
         run: |
-          pnpm --dir apps/router-app exec vite preview --host 127.0.0.1 --port 4190 --strictPort > /tmp/zaakiy-router-preview.log 2>&1 &
+          pnpm --dir apps/router-app exec vite preview --host 127.0.0.1 --port 4188 --strictPort > /tmp/zaakiy-router-preview.log 2>&1 &
           server_pid=$!
           trap 'kill "$server_pid" 2>/dev/null || true' EXIT
           ready=0
           for i in {1..60}; do
-            if curl --fail --silent http://127.0.0.1:4190/app/ > /dev/null; then
+            if curl --fail --silent http://127.0.0.1:4188/app/ > /dev/null; then
               ready=1
               break
             fi
@@ -89,7 +89,7 @@ jobs:
             cat /tmp/zaakiy-router-preview.log
             exit 1
           fi
-          python3 packages/router/test/browser/acceptance.py --base-url http://127.0.0.1:4190
+          python3 packages/router/test/browser/acceptance.py --base-url http://127.0.0.1:4188
       - name: Verify browser output contains no framework or AI runtime dependency
         shell: bash
         run: |
