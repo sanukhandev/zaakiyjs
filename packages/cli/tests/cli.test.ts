@@ -102,8 +102,11 @@ describe("generators", () => {
     const view = files.find(file => file.path.includes("/view/"))?.content ?? "";
     expect(model).not.toMatch(/View|@zaakiyjs|services/);
     expect(vm).toContain("ProductsRepository");
+    expect(vm).toContain('@zaakiyjs/signals');
+    expect(vm).not.toContain('from "@zaakiyjs/core"');
     expect(vm).not.toContain("/services/");
     expect(view).toContain("ProductsViewModel");
+    expect(generatorPlan("viewmodel","Cart")[0]?.content).toContain('@zaakiyjs/signals');
   });
   it("handles component generation, conflicts, overrides, and idempotent dry-run", async () => {
     const root = await temp();

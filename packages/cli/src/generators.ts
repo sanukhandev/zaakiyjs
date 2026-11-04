@@ -74,7 +74,7 @@ export function generatorPlan(type: string, name: string, architecture?: string,
       ].join("\n"))];
     case "viewmodel":
       return [file(at("create" + entity + "ViewModel.ts"), [
-        "import {signal} from \"@zaakiyjs/core\";",
+        "import {signal} from \"@zaakiyjs/signals\";",
         "export function create" + entity + "ViewModel() {",
         "  const value = signal(\"\");",
         "  return {value, setValue(next: string) {value.value = next;}};",
@@ -120,7 +120,7 @@ export function generatorPlan(type: string, name: string, architecture?: string,
           ""
         ].join("\n")),
         file(base + "/viewmodel/create" + entity + "ViewModel.ts", [
-          "import {signal} from \"@zaakiyjs/core\";",
+          "import {signal} from \"@zaakiyjs/signals\";",
           "import type {" + item + ", " + repository + "} from \"../model/" + n.kebab + "\";",
           "export function create" + entity + "ViewModel(repository: " + repository + ") {",
           "  const items = signal<readonly " + item + "[]>([]);",
