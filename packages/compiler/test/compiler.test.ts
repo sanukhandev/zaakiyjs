@@ -250,19 +250,41 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
     expect(result.diagnostics.some(d => d.code === "ZC2301")).toBe(true);
   });
 
-  it("recognizes keyed maps in v1 IR and fails closed until the keyed-loop ABI is frozen", () => {
+  it("compiles keyed maps using stable owner-scoped item signals", () => {
     const source = [
-      "const items = [{ id: 1 }];",
-      "function App() { return <main>{items.map(item => <span key={item.id}>{item.id}</span>)}</main>; }"
+      "const items = [{ id: 1, label: 'first' }];",
+      "function App() { return <main>{items.map(item => <span key={item.id}>{item.label}</span>)}</main>; }"
     ].join("\n");
     const parsed = parseToIR({ fileName, source });
     const root = parsed.document.nodes[0];
     expect(root?.kind).toBe("StaticElement");
     if (root?.kind !== "StaticElement") return;
-    expect(root.children.some(node => node.kind === "KeyedLoop")).toBe(true);
+    const loop = root.children.find(node => node.kind === "KeyedLoop");
+    expect(loop?.kind).toBe("KeyedLoop");
+    if (loop?.kind === "KeyedLoop") {
+      expect(loop.itemParameter).toBe("item");
+      expect(loop.collection.source).toBe("items");
+    }
     const result = compile({ fileName, source });
-    expect(result.js).toHaveLength(0);
-    expect(result.diagnostics.some(d => d.code === "ZC2202")).toBe(true);
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.js).toHaveLength(1);
+    const js = result.js[0]?.code ?? "";
+    expect(js).toContain("bindKeyedRegion as");
+    expect(js).toContain('from "@zaakiyjs/signals"');
+    expect(js).toContain(".value.label");
+    expect(js).toContain("update:");
+    expect(js).not.toContain('key=",');
+  });
+
+  it("rejects unsupported map item shapes and preserves explicit diagnostics", () => {
+    const missingKey = compile({ fileName, source:
+      "const items = [{ id: 1 }]; function App(){ return <main>{items.map(item => <span>{item.id}</span>)}</main>; }" });
+    expect(missingKey.js).toEqual([]);
+    expect(missingKey.diagnostics.some(d => d.code === "ZC2103")).toBe(true);
+    const destructured = compile({ fileName, source:
+      "const items = [{ id: 1 }]; function App(){ return <main>{items.map(({ id }) => <span key={id}>{id}</span>)}</main>; }" });
+    expect(destructured.js).toEqual([]);
+    expect(destructured.diagnostics.some(d => d.code === "ZC2103")).toBe(true);
   });
 
   it("evaluates untracked impure calls at component initialization, not in a binding", () => {
