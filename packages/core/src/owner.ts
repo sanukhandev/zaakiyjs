@@ -56,6 +56,7 @@ class Scope implements OwnerScope {
 
   mount(): void {
     this.ensureAlive();
+    if (this.state === "active") return; // A parent may mount a child already mounted by DOM.
     if (this.state !== "created" && this.state !== "initialized") {
       throw new Error("Owner can only mount once");
     }
