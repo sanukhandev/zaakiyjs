@@ -1,4 +1,4 @@
-import { signal } from "@zaakiyjs/core";
+import { signal } from "@zaakiyjs/signals";
 import { mount } from "@zaakiyjs/dom";
 
 const clicks = signal(0);
