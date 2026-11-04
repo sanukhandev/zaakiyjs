@@ -4,7 +4,7 @@ export interface ParsedArgs {
   options: Record<string, string | boolean>;
 }
 const valueFlags = new Set(["project", "template", "architecture", "path", "package-manager", "cwd"]);
-const booleanFlags = new Set(["dry-run", "force", "skip-install", "json", "help", "version"]);
+const booleanFlags = new Set(["dry-run", "force", "skip-install", "workspace", "json", "help", "version"]);
 export class CliError extends Error {
   constructor(public readonly code: string, message: string, public readonly exitCode = 1) {
     super(message);

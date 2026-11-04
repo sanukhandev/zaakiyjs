@@ -1,14 +1,12 @@
 {
   "name": "@zaakiyjs/cli",
   "version": "0.0.0",
-  "description": "ZaakiyJS cli — M0 type contracts only; not implemented",
+  "description": "First-party ZaakiyJS application scaffolding, generators and toolchain commands",
   "type": "module",
   "sideEffects": false,
-  "files": [
-    "dist",
-    "README.md",
-    "CHANGELOG.md"
-  ],
+  "engines": {"node": ">=20.19.0"},
+  "bin": {"zaakiy": "./dist/bin.js"},
+  "files": ["dist", "templates", "README.md", "CHANGELOG.md"],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -18,15 +16,21 @@
   "types": "./dist/index.d.ts",
   "main": "./dist/index.js",
   "scripts": {
-    "lint": "eslint src test",
+    "lint": "eslint src tests test",
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "build": "tsc --project tsconfig.build.json",
-    "test": "vitest run test"
+    "test": "vitest run tests test",
+    "pack:check": "npm pack --dry-run --json"
   },
-  "publishConfig": {
-    "access": "public"
-  },
+  "publishConfig": {"access": "public"},
   "dependencies": {
+    "@zaakiyjs/core": "workspace:^",
+    "@zaakiyjs/dom": "workspace:^",
+    "@zaakiyjs/signals": "workspace:^",
+    "@zaakiyjs/styles": "workspace:^",
     "@zaakiyjs/vite-plugin": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.30"
   }
 }
