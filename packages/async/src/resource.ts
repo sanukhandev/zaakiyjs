@@ -109,7 +109,7 @@ export function createResource<TData, TKey = void>(options: ResourceOptions<TDat
     pending.value = false;
     refreshing.value = false;
   }
-  function launch(force: boolean): Promise<TData> {
+  function startLoad(force: boolean): Promise<TData> {
     if (closed || owner?.disposed) return Promise.reject(new DisposedError());
     const key = readKey();
     if (!usable(key)) return Promise.reject(new ConfigurationError("Resource is disabled or has no key"));
@@ -197,6 +197,20 @@ export function createResource<TData, TKey = void>(options: ResourceOptions<TDat
         refreshing.value = false;
       }
     });
+  }
+  /** Always reject a native Promise for synchronous key/cache failures. */
+  function launch(force: boolean): Promise<TData> {
+    try {
+      return startLoad(force);
+    } catch (cause) {
+      const failure = classifyFailure(cause, "RESOURCE_FAILED");
+      if (!closed && !owner?.disposed) {
+        cancelActive("superseded");
+        error.value = failure;
+        status.value = "error";
+      }
+      return Promise.reject(failure);
+    }
   }
   function dispose(kind: "manual" | "owner" = "manual"): void {
     if (closed) return;
