@@ -3,7 +3,7 @@
 1. **Effect first-run timing and exceptions:** synchronous initial invocation vs deferred queue, nested flushSync policy, how errors are reported/aggregated, and exact cycle threshold.
 2. **Component/TSX lowering:** handling of children/JSX spread, expression side effects, refs and typed DOM/SVG event tables; whether to support classic JSX fallback. M0 only provides typecheck-only `jsx: preserve`.
 3. **Owner scopes:** implicit current-owner propagation at async boundaries is forbidden without explicit adapter semantics. Decide absent-provider errors vs `undefined`, provider update policy and keep-alive transitions.
-4. **DOM ABI keyed lists:** typed `<For>` and `<Show>` signatures, range markers, duplicate key diagnostics, key equality and hydration hooks are not frozen.
+4. **DOM ABI keyed lists: PARTIALLY RESOLVED by ADR 0004.** Range markers, primitive duplicate-key rejection, same-key item update and child teardown are frozen; typed `<For>`/`<Show>` source syntax, SSR/hydration and full generated-code conformance remain outstanding.
 5. **IR v1 serialized schema:** decide canonical JSON schema, version migration and optimizer node-ID mapping; ensure future SSR/compat metadata does not expose TS parser objects.
 6. **Brand CSS:** utility grammar, scoped brand resolution, atomic hash/cascade determinism, responsive/hover/focus variant precedence and dynamic class safelist rules.
 7. **Vite:** SSR/externalization rules, HMR versioning, cross-platform source maps and atomic asset emission.

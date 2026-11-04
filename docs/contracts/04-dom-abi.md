@@ -20,3 +20,7 @@ listen(owner: OwnerScope, node: EventTarget, name: string, fn: EventListener, op
 **Keyed lists:** key extraction must be deterministic and stable across moves; reuse existing nodes/owners for equal keys, move DOM ranges without reinitializing children, dispose removed keyed owners and preserve focused node identity. Duplicate keys must produce an actionable error or warning policy, not silent identity corruption. A keyed-loop ABI function is **not frozen yet**; agents must agree on range markers/key policies before adding it.
 
 No compiler tool/AST/Vite import is allowed in browser runtime code. ABI evolution requires an explicit version change, generated-code compatibility test and migration note.
+
+## ADR 0004 extension: conditional and keyed regions
+
+The exported browser runtime subpath `@zaakiyjs/dom/compiler` now additionally defines `createRegion`, `bindConditionalRegion` (optional false branch) and `bindKeyedRegion`, together with `DomRegion` and `KeyedView`. See [ADR 0004](../adr/0004-dom-region-abi.md) for signatures, identity, duplicate-key, owner teardown, mount timing, and same-key updates. Exposing an ABI does not prove all TSX authoring forms are compiled; unsupported source must fail closed until verified.
