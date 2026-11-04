@@ -34,6 +34,7 @@ export const FEATURE_REGISTRY: readonly FeatureDefinition[] = Object.freeze([
   add("js.optional-chaining", "syntax", ["80", "80", "74", "13.1"], tsES2019, "TS AST questionDotToken", "MDN JavaScript optional chaining"),
   add("js.nullish-coalescing", "syntax", ["80", "80", "72", "13.1"], tsES2019, "TS AST ?? token", "MDN JavaScript nullish coalescing"),
   add("js.logical-assignment", "syntax", ["85", "85", "79", "14"], tsES2019, "TS AST ??=, ||= and &&=", "MDN logical assignment operators"),
+  add("js.dynamic-code", "builtin", [null, null, null, null], unsupported, "eval() or new Function()", "Unapproved dynamic code execution forbidden by ZaakiyJS security contract"),
   add("module.dynamic-import", "module", ["63", "79", "67", "11.1"], unsupported, "TS AST import() call", "MDN dynamic import; bundler output may vary"),
   add("web.abort-controller", "web-api", ["66", "79", "57", "12.1"], unsupported, "Identifier/new AbortController; native required", "MDN AbortController; Safari 11.1 partial fetch cancellation excluded"),
   add("web.abort-signal-any", "web-api", ["116", "116", "124", "17.4"], abortAny, "AbortSignal.any property access", "MDN AbortSignal.any browser support"),
