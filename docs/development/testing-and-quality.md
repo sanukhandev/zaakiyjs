@@ -38,3 +38,7 @@ Untrusted PR code must not get npm publishing credentials. Require least-privile
 ## Architecture and diagnostics
 
 Planned `zaakiy lint --architecture solid-mvvm` validates layering, forbidden imports, circular dependencies, server-only code in browser, and obviously unowned resources. Static analysis cannot prove absence of all leaks; verify runtime ownership and disposal separately.
+
+## Implemented M1 browser acceptance
+
+The [M1 browser matrix](../../tests/browser/README.md) tests a real production Vite build of a CLI-generated app. Its GitHub Actions gate (`.github/workflows/m1-browser-matrix.yml`) runs eight non-skipped tests on each of Chromium, Firefox and WebKit, using pinned Playwright Python 1.64.1 and matching browser executables. It checks keyboard behavior, conditional owner disposal, keyed list identity/mutations, focus/selection during moves, insertion and removal, unsafe text rendering, duplicate-key atomicity, and repeated teardown. The initial PR run passed **24/24** browser cases. Browser coverage for additional declared versions, mobile engines, heap profiles, full WCAG audits and SSR/hydration remains a **distinct** release gate, not proven by this fixture.
