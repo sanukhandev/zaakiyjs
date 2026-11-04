@@ -45,7 +45,7 @@ export const FEATURE_REGISTRY: readonly FeatureDefinition[] = Object.freeze([
   add("web.structured-clone", "builtin", ["98", "98", "94", "15.4"], unsupported, "global structuredClone()", "MDN structuredClone"),
   add("css.selector-has", "css", ["105", "105", "121", "15.4"], unsupported, "Styles semantic CSS feature evidence", "MDN :has() selector"),
   add("css.container-query", "css", ["105", "105", "110", "16"], unsupported, "Styles semantic CSS feature evidence", "MDN CSS size container queries"),
-  add("css.nesting", "css", ["112", "112", "117", "17.2"], unsupported, "Styles semantic CSS feature evidence", "MDN CSS nesting"),
+  add("css.nesting", "css", ["120", "120", "117", "17.2"], unsupported, "Styles semantic CSS feature evidence", "MDN CSS nesting"),
   add("css.color-mix", "css", ["111", "111", "113", "16.2"], unsupported, "Styles semantic CSS feature evidence", "MDN color-mix()")
 ].sort((a, b) => a.id.localeCompare(b.id)));
 
