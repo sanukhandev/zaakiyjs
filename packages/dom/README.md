@@ -56,3 +56,9 @@ Production bundle size and memory-leak benchmarks require dedicated reproducible
 ### TypeScript source compatibility
 
 `pnpm --filter @zaakiyjs/dom typecheck` additionally runs `tsconfig.type-tests.json`, verifying that `mount(() => <App />, container)` is accepted at the **source type** level while the compiler replaces JSX with native DOM before execution. No runtime JSX interpreter is provided.
+
+## Compiler-generated regions (ABI v1)
+
+The public browser subpath `@zaakiyjs/dom/compiler` now exports `createRegion`, `bindConditionalRegion`, and `bindKeyedRegion` alongside the primitive binding operations. The conditional helper supports an optional alternate branch factory; each active branch receives a scoped child owner and deterministic cleanup. The keyed helper preserves stable node/focus identity and rejects duplicate primitive keys before DOM mutation. Replacing an item with the same key requires an explicit `KeyedView.update(next)` callback so stale content cannot be silently retained.
+
+See [ADR 0004](../../docs/adr/0004-dom-region-abi.md) for the frozen protocol and its restrictions. Compiler support for every TSX syntax form is a **separate acceptance gate**; the public ABI alone does not establish complete `<Show>`/`<For>` compilation or SSR/hydration.
