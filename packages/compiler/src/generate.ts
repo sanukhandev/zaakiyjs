@@ -89,18 +89,12 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
         node.children.forEach(child => visit(child, insideKeyed));
         break;
       case "ConditionalBlock":
-        if (node.whenTrue.length > 1 || node.whenFalse.length > 1) {
-          error("ZC2201", "Conditional branches must return at most one DOM root in ABI v1.", node.span);
-        }
         node.whenTrue.forEach(child => visit(child, insideKeyed));
         node.whenFalse.forEach(child => visit(child, insideKeyed));
         break;
       case "KeyedLoop":
-        if (!node.itemParameter || node.body.length !== 1 || node.body[0]?.kind !== "StaticElement") {
-          error("ZC2202", "Keyed list v1 requires one named map item and exactly one native element root.", node.span);
-        }
-        if (insideKeyed) {
-          error("ZC2202", "Nested keyed lists require an explicit supported owner/item contract; wrap and split the list into a separate component.", node.span);
+        if (!node.itemParameter || !node.body.length) {
+          error("ZC2202", "Keyed list requires a named item and a nonempty JSX template.", node.span);
         }
         node.body.forEach(child => visit(child, true));
         break;
@@ -153,7 +147,7 @@ class Builder {
 
   constructor(private readonly abi: AbiAliases, reserved: ReadonlySet<string>,
               private readonly rootSpan: SourceSpan, injectedOwner?: string,
-              private readonly itemContext?: ItemContext) {
+              private readonly itemContexts: readonly ItemContext[] = []) {
     this.names = new Set(reserved);
     this.owner = injectedOwner ?? this.variable("owner");
   }
@@ -173,9 +167,17 @@ class Builder {
   private resolveExpression(source: string, reactive: boolean): {
     readonly source: string; readonly reactive: boolean
   } {
-    if (!this.itemContext) return { source, reactive };
-    const mapped = rewriteKeyedItemRead(source, this.itemContext.parameter, this.itemContext.cell);
-    return { source: mapped.source, reactive: reactive || mapped.readsItem };
+    let output = source;
+    let tracked = reactive;
+    // Inner item parameters shadow outer ones. Rewrite inner-first so each
+    // lexical binding resolves to its own stable owner-scoped signal cell.
+    for (let i = this.itemContexts.length - 1; i >= 0; i--) {
+      const context = this.itemContexts[i]!;
+      const mapped = rewriteKeyedItemRead(output, context.parameter, context.cell);
+      output = mapped.source;
+      tracked = tracked || mapped.readsItem;
+    }
+    return { source: output, reactive: tracked };
   }
 
   private attribute(el: string, node: PropertyBinding): void {
@@ -199,11 +201,21 @@ class Builder {
     }
   }
 
-  /** Produce an owner-scoped branch factory without leaking its statement spans
-   * into the outer JSX IIFE's statement/source-map alignment. */
+  // Native DocumentFragment is consumed exactly once by the existing DOM
+  // region ABI, which owns the stable start/end anchors and per-branch owners.
+  private fragment(nodes: readonly IRNode[]): string {
+    const fragment = this.variable("fragment");
+    this.push("const " + fragment + " = document.createDocumentFragment();");
+    for (const node of nodes) this.child(node, fragment);
+    return fragment;
+  }
+
+  /** Produce an owner-scoped multi-root branch factory. */
   private branch(nodes: readonly IRNode[], childOwner: string): string {
-    const scoped = new Builder(this.abi, this.names, this.rootSpan, childOwner, this.itemContext);
-    const root = nodes[0] ? scoped.child(nodes[0]) : undefined;
+    const scoped = new Builder(this.abi, this.names, this.rootSpan, childOwner, this.itemContexts);
+    const root = nodes.length === 1 && nodes[0]
+      ? scoped.child(nodes[0])
+      : scoped.fragment(nodes);
     return "{\n" + scoped.lines.join("\n") + "\nreturn " +
       (root ?? (this.abi.createText + '("")')) + ";\n}";
   }
@@ -284,21 +296,24 @@ class Builder {
         return undefined;
       }
       case "KeyedLoop": {
-        if (!parent || !node.itemParameter || node.body.length !== 1 || !node.body[0]) {
+        if (!parent || !node.itemParameter || !node.body.length) {
           throw new Error("ZC2202: invalid keyed list host or item template");
         }
-        if (this.itemContext) throw new Error("ZC2202: nested keyed loops require an explicit owner/item contract");
         const region = this.variable("keyed_region");
         const childOwner = this.variable("item_owner");
         const itemCell = this.variable("item_cell");
         const nextItem = this.variable("next_item");
-        const scoped = new Builder(this.abi, this.names, this.rootSpan, childOwner, {
-          parameter: node.itemParameter, cell: itemCell
-        });
-        const root = scoped.child(node.body[0]);
-        if (!root) throw new Error("ZC2202: keyed item must generate one native DOM root");
-        const read = "() => (" + node.collection.source + ")";
-        const key = "(" + node.itemParameter + ") => (" + node.key.source + ")";
+        const scoped = new Builder(this.abi, this.names, this.rootSpan, childOwner, [
+          ...this.itemContexts, { parameter: node.itemParameter, cell: itemCell }
+        ]);
+        const root = node.body.length === 1 && node.body[0]
+          ? scoped.child(node.body[0])
+          : scoped.fragment(node.body);
+        if (!root) throw new Error("ZC2202: keyed item requires DOM nodes or a JSX fragment");
+        const readSource = this.resolveExpression(node.collection.source, node.collection.reactive);
+        const keySource = this.resolveExpression(node.key.source, node.key.reactive);
+        const read = "() => (" + readSource.source + ")";
+        const key = "(" + node.itemParameter + ") => (" + keySource.source + ")";
         const factory = "(" + node.itemParameter + ", " + childOwner + ") => {\n" +
           "const " + itemCell + " = " + this.abi.signal + "(" + node.itemParameter + ");\n" +
           scoped.lines.join("\n") + "\nreturn { node: " + root + ", update: (" +
