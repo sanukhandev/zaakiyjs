@@ -40,8 +40,11 @@ function ownEffect(owner: OwnerScope, run: () => void, dispose: () => void): Bin
       dispose(): void {
         if (closed) return;
         closed = true;
-        active.dispose();
-        dispose();
+        try {
+          active.dispose();
+        } finally {
+          dispose();
+        }
       }
     };
     onCleanup(() => handle.dispose());
@@ -60,7 +63,12 @@ export function bindConditionalRegion(
     if (current) {
       const outgoing = current;
       current = null;
-      disposeOwner(outgoing);
+      try {
+        disposeOwner(outgoing);
+      } finally {
+        removeBetween(region.start, region.end);
+      }
+      return;
     }
     removeBetween(region.start, region.end);
   };
@@ -107,13 +115,16 @@ interface RecordEntry<Key, Item> {
 }
 
 function removeEntry<Key, Item>(entry: RecordEntry<Key, Item>): void {
-  disposeOwner(entry.owner);
-  let cursor: Node | null = entry.start;
-  while (cursor) {
-    const next: Node | null = cursor.nextSibling;
-    cursor.parentNode?.removeChild(cursor);
-    if (cursor === entry.end) break;
-    cursor = next;
+  try {
+    disposeOwner(entry.owner);
+  } finally {
+    let cursor: Node | null = entry.start;
+    while (cursor) {
+      const next: Node | null = cursor.nextSibling;
+      cursor.parentNode?.removeChild(cursor);
+      if (cursor === entry.end) break;
+      cursor = next;
+    }
   }
 }
 
@@ -187,8 +198,17 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
 ): BindingHandle {
   let records = new Map<Key, RecordEntry<Key, Item>>();
   const clear = (): void => {
-    for (const record of records.values()) removeEntry(record);
+    const errors: unknown[] = [];
+    for (const record of records.values()) {
+      try {
+        removeEntry(record);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
     records.clear();
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) throw new AggregateError(errors, "Keyed region teardown failed");
   };
   return ownEffect(owner, () => {
     const items = read();

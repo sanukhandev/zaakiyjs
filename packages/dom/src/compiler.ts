@@ -89,6 +89,10 @@ export function setProperty(target: Element, name: string, value: unknown): void
   if (UNSAFE_PROPERTIES.has(name.toLowerCase()) || name.toLowerCase() === "srcset") {
     throw new TypeError("Unsafe or unsupported DOM property: " + name);
   }
+  if (value == null && URL_NAMES.has(name.toLowerCase())) {
+    if (target.hasAttribute(name)) target.removeAttribute(name);
+    return;
+  }
   validateValue(target, name, value);
   // The equality guard preserves native focus, text selection and input state.
   const record = target as unknown as Record<string, unknown>;
@@ -246,8 +250,11 @@ export function listenStable(
   }
   return {
     dispose(): void {
-      binding.dispose();
-      listener.dispose();
+      try {
+        binding.dispose();
+      } finally {
+        listener.dispose();
+      }
     }
   };
 }
