@@ -53,11 +53,29 @@ function purityOf(node: ts.Expression): Purity {
 }
 
 function containsReactiveRead(node: ts.Node, names: ReadonlySet<string>): boolean {
-  // Closures are values at setup, not reactive reads; their bodies run only on invocation.
+  // A function literal is not executed merely by constructing an event handler.
   if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return false;
-  if (ts.isPropertyAccessExpression(node) && node.name.text === "value" &&
-      ts.isIdentifier(node.expression) && names.has(node.expression.text)) return true;
+  // An immediately invoked closure may read signals and must not become a static snapshot.
+  if (ts.isCallExpression(node)) {
+    const callee = ts.isParenthesizedExpression(node.expression)
+      ? node.expression.expression : node.expression;
+    if ((ts.isArrowFunction(callee) || ts.isFunctionExpression(callee)) &&
+        ts.forEachChild(callee, child => containsReactiveRead(child, names) || undefined)) {
+      return true;
+    }
+  }
+  // Signal references can be aliases, imported bindings or props.state.value.
+  // Conservatively track any .value read; the runtime effect records actual
+  // signal subscriptions dynamically, so ordinary object properties remain safe.
+  if (ts.isPropertyAccessExpression(node) && node.name.text === "value") return true;
+  if (ts.isElementAccessExpression(node) && node.argumentExpression &&
+      ts.isStringLiteral(node.argumentExpression) && node.argumentExpression.text === "value") return true;
   return ts.forEachChild(node, child => containsReactiveRead(child, names) || undefined) ?? false;
+}
+
+function containsJsx(node: ts.Node): boolean {
+  if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node)) return true;
+  return ts.forEachChild(node, child => containsJsx(child) || undefined) ?? false;
 }
 
 function containsCall(node: ts.Node): boolean {
@@ -114,6 +132,9 @@ export function analyze(request: CompileRequest): Analysis {
       value = { source: JSON.stringify(node.initializer.text),
         span: spanOf(source, node.initializer), purity: "pure", reactive: false };
     } else if (ts.isJsxExpression(node.initializer) && node.initializer.expression) {
+      if (containsJsx(node.initializer.expression)) {
+        report("ZC2108", "JSX nested inside attribute expressions requires an explicit supported lowering.", node);
+      }
       value = expression(node.initializer.expression);
     } else {
       report("ZC1004", "JSX attribute value cannot be lowered safely.", node);
@@ -193,6 +214,9 @@ export function analyze(request: CompileRequest): Analysis {
             collection: expression(node.expression.expression), key, body: itemNode ? [element(itemNode, namespace)] : []
           });
           continue;
+        }
+        if (containsJsx(node)) {
+          report("ZC2108", "JSX nested in an unsupported child expression cannot be emitted safely.", node);
         }
         const span = spanOf(source, child);
         const value = expression(node);
