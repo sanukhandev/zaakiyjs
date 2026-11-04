@@ -490,6 +490,103 @@ describe("signals", () => {
     const inbound = shared as unknown as { readonly observers: ReadonlySet<unknown> };
     expect(inbound.observers.size).toBe(0);
   });
+  it("does not track cleanup signals through a surrounding effect", () => {
+    const irrelevant = signal(0);
+    const disposeChild = signal(false);
+    const child = effect(() => () => { void irrelevant.value; });
+    let parentRuns = 0;
+    const parent = effect(() => {
+      parentRuns++;
+      if (disposeChild.value) child.dispose();
+    });
+    disposeChild.value = true;
+    flushSync();
+    expect(parentRuns).toBe(2);
+    irrelevant.value++;
+    flushSync();
+    expect(parentRuns).toBe(2);
+    parent.dispose();
+  });
+  it("does not track nested error handlers through a parent effect", () => {
+    const irrelevant = signal(0);
+    let parentRuns = 0;
+    const parent = effect(() => {
+      parentRuns++;
+      effect(() => { throw new Error("expected"); }, {
+        onError: () => { void irrelevant.value; }
+      }).dispose();
+    });
+    irrelevant.value++;
+    flushSync();
+    expect(parentRuns).toBe(1);
+    parent.dispose();
+  });
+  it("drains independent user-phase effects after a render cycle fails", () => {
+    const cyclicSource = signal(0);
+    const otherSource = signal(0);
+    const seen: number[] = [];
+    const cyclic = effect(() => {
+      const value = cyclicSource.value;
+      if (value > 0) cyclicSource.value = value + 1;
+    }, { phase: "render" });
+    const independent = effect(() => { seen.push(otherSource.value); });
+    batch(() => {
+      cyclicSource.value = 1;
+      otherSource.value = 1;
+    });
+    expect(() => flushSync()).toThrow(/reactive cycle/);
+    expect(seen).toEqual([0, 1]);
+    cyclic.dispose();
+    otherSource.value = 2;
+    flushSync();
+    expect(seen).toEqual([0, 1, 2]);
+    independent.dispose();
+  });
+  it("does not rerun consumers when a computed result is unchanged", () => {
+    const input = signal(0);
+    const parity = computed(() => input.value % 2);
+    const seen: number[] = [];
+    const stop = effect(() => { seen.push(parity.value); });
+    for (let i = 1; i <= 20; i++) {
+      input.value = i * 2;
+      flushSync();
+    }
+    expect(seen).toEqual([0]);
+    input.value = 21;
+    flushSync();
+    expect(seen).toEqual([0, 1]);
+    stop.dispose();
+  });
+  it("skips unchanged nested computed values but keeps changed updates", () => {
+    const value = signal(0);
+    const intermediate = computed(() => Math.floor(value.value / 10));
+    const nested = computed(() => intermediate.value + 1);
+    const seen: number[] = [];
+    const stop = effect(() => { seen.push(nested.value); });
+    value.value = 1;
+    flushSync();
+    value.value = 9;
+    flushSync();
+    expect(seen).toEqual([1]);
+    value.value = 10;
+    flushSync();
+    expect(seen).toEqual([1, 2]);
+    stop.dispose();
+  });
+  it("does not suppress direct signal subscriptions alongside derived values", () => {
+    const direct = signal(0);
+    const source = signal(0);
+    const stable = computed(() => source.value >= 0);
+    const events: string[] = [];
+    const stop = effect(() => { events.push(direct.value + ":" + stable.value); });
+    source.value = 1;
+    flushSync();
+    expect(events).toEqual(["0:true", "0:true"]);
+    direct.value++;
+    flushSync();
+    expect(events.at(-1)).toBe("1:true");
+    stop.dispose();
+  });
   it("randomized graph agrees with a simple pure reference model", () => {
     let seed = 0x12345678;
     const next = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0);
