@@ -616,6 +616,28 @@ describe("typed Show/For compiler intrinsics", () => {
     expect(result.diagnostics.some(d => d.code === "ZC2405")).toBe(true);
   });
 
+
+  it("diagnoses root-level and nested control-flow ABI constraints", () => {
+    const root = compile({fileName, source: [
+      'import {Show} from "@zaakiyjs/core";',
+      'function App(){return <Show when={true}><p>bare root</p></Show>;}'
+    ].join("\n")});
+    expect(root.js).toEqual([]);
+    expect(root.diagnostics.some(d => d.code === "ZC2201")).toBe(true);
+
+    const nested = compile({fileName, source: [
+      'import {For} from "@zaakiyjs/core";',
+      'const rows = [{id: 1}];',
+      'function App(){return <ul><For each={rows} by={row => row.id}>',
+      '{row => <li><For each={rows} by={child => child.id}>',
+      '{child => <span>{child.id}</span>}</For></li>}',
+      '</For></ul>;}'
+    ].join("\n")});
+    expect(nested.js).toEqual([]);
+    expect(nested.diagnostics.some(d => d.code === "ZC2202")).toBe(true);
+    expect(nested.diagnostics.some(d => d.code === "ZC9001")).toBe(false);
+  });
+
   it("keeps generated assets deterministic and rejects invalid key types", () => {
     const source = [
       prelude,
