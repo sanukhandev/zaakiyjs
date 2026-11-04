@@ -123,6 +123,35 @@ export function analyze(request: CompileRequest): Analysis {
     }
   }
 
+  // Shadowed names cannot be lowered as compiler intrinsics. This also
+  // prevents a nested render callback or local variable from accidentally
+  // capturing a core import with the same spelling.
+  const namesBinding = (binding: ts.BindingName, name: string): boolean => {
+    if (ts.isIdentifier(binding)) return binding.text === name;
+    return binding.elements.some(part => ts.isBindingElement(part) &&
+      namesBinding(part.name, name));
+  };
+  const isShadowed = (node: ts.Node, name: string): boolean => {
+    let ancestor: ts.Node | undefined = node.parent;
+    while (ancestor && ancestor !== source) {
+      if (ts.isFunctionLike(ancestor) && ancestor.parameters.some(parameter =>
+        namesBinding(parameter.name, name))) return true;
+      if (ts.isCatchClause(ancestor) && ancestor.variableDeclaration &&
+          namesBinding(ancestor.variableDeclaration.name, name)) return true;
+      if (ts.isBlock(ancestor)) {
+        for (const statement of ancestor.statements) {
+          if (ts.isVariableStatement(statement) &&
+              statement.declarationList.declarations.some(declaration =>
+                namesBinding(declaration.name, name))) return true;
+          if ((ts.isFunctionDeclaration(statement) || ts.isClassDeclaration(statement)) &&
+              statement.name?.text === name) return true;
+        }
+      }
+      ancestor = ancestor.parent;
+    }
+    return false;
+  };
+
   const expression = (node: ts.Expression): IRExpression => ({
     source: node.getText(source),
     span: spanOf(source, node),
@@ -259,7 +288,7 @@ export function analyze(request: CompileRequest): Analysis {
     const span = spanOf(source, node);
 
     const intrinsic = intrinsics.get(tag);
-    if (intrinsic) {
+    if (intrinsic && !isShadowed(opening, tag)) {
       const attrs = opening.attributes.properties;
       const expected = intrinsic === "Show" ? ["when", "fallback"] : ["each", "by"];
       const names = new Set<string>();
@@ -343,8 +372,9 @@ export function analyze(request: CompileRequest): Analysis {
       if (children.length !== 1 || !itemParameter || !root || root.kind !== "StaticElement") {
         report("ZC2404", "For requires one child render callback (item => <nativeElement />).", node);
       }
-      if (by && (containsJsx(by) || ts.isSpreadElement(by))) {
-        report("ZC2405", "For key selector must be a typed function without JSX.", by);
+      if (by && (!ts.isArrowFunction(unwrapped(by)) && !ts.isIdentifier(unwrapped(by)) ||
+          containsJsx(by))) {
+        report("ZC2405", "For by requires an inline arrow function or stable named function reference; arbitrary calls/accessors are not safe key selectors.", by);
       }
       // Evaluate the supplied key selector with the bound item. Names in the
       // selector callback do not need to match the render callback parameter.
