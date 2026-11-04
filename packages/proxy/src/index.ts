@@ -101,6 +101,15 @@ export function createProxyRouter(config: ProxyConfig): ProxyRouter {
       };
       try {
         const method = assertMethod(request.method);
+        // Body-bearing GET/HEAD requests are disallowed rather than silently
+        // dropping unconsumed bytes at the HTTP adapter boundary.
+        if (method === "GET" || method === "HEAD") {
+          const length = request.headers["content-length"];
+          if (request.body || request.headers["transfer-encoding"] !== undefined ||
+              (length !== undefined && length !== "0")) {
+            return finish(safeResponse(400, "BODY_NOT_ALLOWED"), "validation");
+          }
+        }
         const url = incomingURL(request.url);
         const path = url.pathname;
         const matches = routes.filter(item => item.regex.test(path));
