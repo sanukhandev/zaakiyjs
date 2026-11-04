@@ -206,6 +206,19 @@ export function createStoreContext<T>(description?: string): ContextToken<T> {
   return createContext<T>(description);
 }
 export function provideStore<T>(owner: OwnerScope, token: ContextToken<T>, value: T): void {
+  // A provider cannot make an owned store outlive its owner, or cross SSR roots.
+  // Port-based test doubles without an OwnerScope remain valid.
+  if (value !== null && typeof value === "object") {
+    const descriptor = Object.getOwnPropertyDescriptor(value, "owner");
+    if (descriptor && "value" in descriptor && descriptor.value !== undefined) {
+      const storeOwner = descriptor.value as OwnerScope;
+      let cursor: OwnerScope | null = owner;
+      while (cursor && cursor !== storeOwner) cursor = cursor.parent;
+      if (!cursor || storeOwner.disposed) {
+        throw new Error("Store provider cannot outlive or cross its store owner");
+      }
+    }
+  }
   provide(owner, token, value);
 }
 export function useStore<T>(owner: OwnerScope, token: ContextToken<T>): T | undefined {
@@ -225,6 +238,9 @@ export function getOrCreateRootStore<T extends { readonly owner: OwnerScope }>(
   const existing = useContext(root, token);
   if (existing !== undefined) {
     if (existing.owner !== root) throw new Error("Root store provider has the wrong owner");
+    if ("disposed" in existing && existing.disposed === true) {
+      throw new Error("Root store was already disposed");
+    }
     return existing;
   }
   const store = runWithOwner(root, () => create(root));
