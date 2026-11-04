@@ -3,7 +3,7 @@ import {mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile} from "node:fs/pr
 import {tmpdir} from "node:os";
 import {join, dirname} from "node:path";
 import {fileURLToPath} from "node:url";
-import {execFileSync} from "node:child_process";
+import {execFileSync, spawnSync} from "node:child_process";
 import {runCli, runProjectScript} from "../src/index";
 import {CliError, parseArgs} from "../src/args";
 import {generatorPlan, generateFiles} from "../src/generators";
@@ -49,11 +49,14 @@ describe("CLI commands", () => {
     }
     expect(validateProjectName("my-app")).toBe("my-app");
   });
-  it("does not silently generate against M0 stubs", async () => {
+  it("does not silently scaffold a standalone app before framework publication", async () => {
     const root = await temp();
-    const c = capture(root);
-    expect(await runCli(["start", "--project", "my-app", "--template", "minimal"], c.io)).toBe(1);
-    expect(c.output().stderr).toMatch(/FOUNDATION_NOT_READY|UNPUBLISHED_FRAMEWORK/);
+    const cliRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+    const execution = spawnSync(process.execPath,
+      [join(cliRoot, "dist", "bin.js"), "start", "--project", "my-app", "--template", "minimal"],
+      {cwd: root, encoding: "utf8"});
+    expect(execution.status).toBe(1);
+    expect(execution.stderr).toMatch(/UNPUBLISHED_FRAMEWORK|MISSING_FRAMEWORK_DEPENDENCY/);
     await expect(stat(join(root, "my-app"))).rejects.toThrow();
   });
   it("refuses workspace output outside the declared pnpm workspace globs", async () => {
@@ -116,7 +119,7 @@ describe("generators", () => {
     expect(model).not.toMatch(/View|@zaakiyjs|services/);
     expect(vm).toContain("ProductsRepository");
     expect(vm).toContain('@zaakiyjs/signals');
-    expect(vm).not.toContain('from "@zaakiyjs/core"');
+    expect(vm).toContain('import {onCleanup} from "@zaakiyjs/core"');
     expect(vm).not.toContain("/services/");
     expect(vm).toContain("AbortController");
     expect(vm).toContain("onCleanup");
