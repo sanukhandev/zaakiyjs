@@ -266,7 +266,7 @@ class Builder {
         name = this.variable("component");
         const props = node.props.map(prop => {
           const mapped = this.resolveExpression(prop.expression.source, prop.expression.reactive);
-          if (this.itemContext && mapped.reactive) {
+          if (this.itemContexts.length && mapped.reactive) {
             throw new Error("ZC2206: keyed component props require a stable signal-aware prop contract");
           }
           return jsLiteral(prop.name) + ": (" + mapped.source + ")";
