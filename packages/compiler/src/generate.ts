@@ -83,23 +83,26 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
   const error = (code: string, message: string, span: SourceSpan): void => {
     errors.push({ code, severity: "error", message, span });
   };
-  const visit = (node: IRNode): void => {
+  const visit = (node: IRNode, insideKeyed = false): void => {
     switch (node.kind) {
       case "StaticElement":
-        node.children.forEach(visit);
+        node.children.forEach(child => visit(child, insideKeyed));
         break;
       case "ConditionalBlock":
         if (node.whenTrue.length > 1 || node.whenFalse.length > 1) {
           error("ZC2201", "Conditional branches must return at most one DOM root in ABI v1.", node.span);
         }
-        node.whenTrue.forEach(visit);
-        node.whenFalse.forEach(visit);
+        node.whenTrue.forEach(child => visit(child, insideKeyed));
+        node.whenFalse.forEach(child => visit(child, insideKeyed));
         break;
       case "KeyedLoop":
         if (!node.itemParameter || node.body.length !== 1 || node.body[0]?.kind !== "StaticElement") {
           error("ZC2202", "Keyed list v1 requires one named map item and exactly one native element root.", node.span);
         }
-        node.body.forEach(visit);
+        if (insideKeyed) {
+          error("ZC2202", "Nested keyed lists require an explicit supported owner/item contract; wrap and split the list into a separate component.", node.span);
+        }
+        node.body.forEach(child => visit(child, true));
         break;
       case "PropertyBinding":
         if (node.expression.reactive && node.target !== "property") {
@@ -128,7 +131,14 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
         break;
     }
   };
-  document.nodes.forEach(visit);
+  for (const node of document.nodes) {
+    if (node.kind === "ConditionalBlock" || node.kind === "KeyedLoop") {
+      error(node.kind === "ConditionalBlock" ? "ZC2201" : "ZC2202",
+        "Dynamic control flow requires a native host parent element in the current DOM ABI.",
+        node.span);
+    }
+    visit(node);
+  }
   return errors;
 }
 
