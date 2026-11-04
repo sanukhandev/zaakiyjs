@@ -40,6 +40,16 @@ function styleFingerprint(value: StyleConfig, targets: readonly string[]): strin
   return JSON.stringify({ value, targets });
 }
 
+/** Stable, dependency-free FNV-1a hash for Vite module transform fingerprints. */
+function stableHash(source: string): string {
+  let hash = 0x811c9dc5;
+  for (let offset = 0; offset < source.length; offset++) {
+    hash ^= source.charCodeAt(offset);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
 function sortedTokens(modules: ReadonlyMap<string, CompiledModule>): ExtractedStyleToken[] {
   const known = new Map<string, ExtractedStyleToken>();
   for (const [file, compiled] of [...modules.entries()].sort(([a], [b]) => a.localeCompare(b))) {
@@ -121,7 +131,8 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       for (const dependency of mod.importedModules) {
         const id = dependency.file ? simpleFile(dependency.file) : dependency.id;
         if (id && !visited.has(dependency.url)) {
-          stamp.push(id + ":" + (revisions.get(id) ?? 0));
+          const content = dependency.transformResult?.code ?? dependency.ssrTransformResult?.code ?? "";
+          stamp.push(id + ":" + (revisions.get(id) ?? 0) + ":" + stableHash(content));
           walk(dependency);
         }
       }
@@ -153,7 +164,9 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
   }
 
   async function collectCss(minify: boolean): Promise<void> {
-    if (!modules.size) {
+    const hasStyleInputs = modules.size > 0 || Object.keys(brand.brand).length > 0 ||
+      Boolean(brand.mode || brand.safelist?.length);
+    if (!hasStyleInputs) {
       css = "";
       compiledCssMap = undefined;
       lastStyleKey = "";
@@ -234,9 +247,11 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       return null;
     },
 
-    load(id) {
+    async load(id) {
       if (id === INTERNAL_CSS_ID) {
-        // Production CSS is emitted after all component transforms have completed.
+        // The development virtual module compiles current utilities and config.
+        // Production CSS is emitted after all component transforms complete.
+        if (!buildMode) await collectCss(false);
         return buildMode ? "" : css;
       }
       return null;
@@ -386,7 +401,11 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
               }
             }
             assertBrowserOutput(entry.code, entry.fileName);
-            return { fileName: entry.fileName, kind: "js" };
+            return {
+              fileName: entry.fileName,
+              kind: "js",
+              ...(entry.facadeModuleId ? { sourceFile: simpleFile(entry.facadeModuleId) } : {})
+            };
           }
           if (entry.fileName.endsWith(".css")) return { fileName: entry.fileName, kind: "css" };
           if (entry.fileName.endsWith(".map")) return { fileName: entry.fileName, kind: "map" };

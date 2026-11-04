@@ -8,6 +8,7 @@ const fixtureRoot = fileURLToPath(new URL("./fixtures/basic/", import.meta.url))
 const brandRoot = fileURLToPath(new URL("./fixtures/bad-brand/", import.meta.url));
 const plainRoot = fileURLToPath(new URL("./fixtures/plain/", import.meta.url));
 const forbiddenRoot = fileURLToPath(new URL("./fixtures/forbidden/", import.meta.url));
+const brandOnlyRoot = fileURLToPath(new URL("./fixtures/brand-only/", import.meta.url));
 let server: ViteDevServer | undefined;
 
 afterEach(async () => {
@@ -139,6 +140,22 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
       logLevel: "silent",
       server: { middlewareMode: true, hmr: false }
     })).rejects.toThrow("ZV2006");
+  });
+
+  it.skipIf(!hasStyles())("generates CSS from brand and safelist without any TSX source", async () => {
+    const result = await build({
+      configFile: false,
+      root: brandOnlyRoot,
+      plugins: [zaakiyPlugin({ configFile: "zaakiy.config.ts" })],
+      logLevel: "silent",
+      build: { write: false, emptyOutDir: false }
+    });
+    const output = Array.isArray(result) ? result[0] : result;
+    const css = (output as RollupOutput).output.find(
+      item => item.type === "asset" && item.fileName === "assets/zaakiy-styles.css"
+    );
+    expect(css?.type).toBe("asset");
+    expect(String(css?.type === "asset" ? css.source : "")).toContain("bg-primary");
   });
 
   it.skipIf(!hasCompiler() || !hasStyles())(

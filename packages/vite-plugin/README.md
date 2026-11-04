@@ -22,7 +22,7 @@ export default defineConfig({
 });
 ```
 
-A static TSX component imports `virtual:zaakiy-styles.css` automatically from the generated JS. In development the virtual module serves the current aggregate stylesheet. In HTML production builds a deterministic `assets/zaakiy-styles.css` is emitted, linked into HTML, and enumerated in `zaakiy-assets.json` (schema version 1). Non-HTML/library consumers must add the emitted CSS file to their distribution manually.
+A static TSX component imports `virtual:zaakiy-styles.css` automatically from the generated JS. In development the virtual module serves the current aggregate stylesheet. In HTML production builds a deterministic `assets/zaakiy-styles.css` is emitted, linked into HTML, and enumerated in `zaakiy-assets.json` (schema version 1). Non-HTML/library consumers must add the emitted CSS file to their distribution manually. A configured brand or safelist can generate CSS even when no TSX files are transformed, once the styles engine is available.
 
 For this M0-based draft, the executable factory is exposed via the package `./plugin` subpath. The M0 root export surface stays unchanged to preserve existing cross-package contracts. Root-level re-export requires a coordinated M1 contract/test update.
 
@@ -49,7 +49,7 @@ No alternative implementation is substituted when a dependency is absent or repo
 
 ## Caching, errors, HMR, security
 
-Vite handles graph and chunk building. This plugin caches transformed files by exact source content, configuration, browser targets and Vite graph revision signature; importing-module edits and brand updates invalidate relevant caches. It deliberately uses a **full document reload** for TSX/import-graph/brand edits because no component-instance-compatible hot-update/owner-disposal protocol has been frozen. It does not claim state-preserving HMR.
+Vite handles graph and chunk building. This plugin caches transformed files by exact source content, configuration, browser targets, Vite dependency revision and transformed dependency-content hash; importing-module edits and brand updates invalidate relevant caches. It deliberately uses a **full document reload** for TSX/import-graph/brand edits because no component-instance-compatible hot-update/owner-disposal protocol has been frozen. It does not claim state-preserving HMR.
 
 Compiler errors are fatal with original file/line/column; warnings are emitted to Vite. Invalid style metadata, stylesheet diagnostics, malformed source maps, and missing implementations are errors. Output is inspected for `@zaakiyjs/{ai,proxy,compiler,styles,vite-plugin}` imports, including bundle module identities. This is a defense-in-depth check, not a general data-flow or secret scanner. Never import secret-bearing config into browser application code.
 
@@ -63,6 +63,6 @@ pnpm --filter @zaakiyjs/vite-plugin build
 pnpm --filter @zaakiyjs/vite-plugin test
 ```
 
-The root CI Vitest suite and the package-local Vitest suite both run the actual Vite dev server and production build against `tests/fixtures/basic/`. While compiler/styles are types-only, successful compilation tests are skipped and **real Vite refusal** tests verify the fail-closed boundary. After the implementations land, run full Vite+DOM browser integration for: TSX, source maps, invalid JSX, utility CSS deduplication, brand overrides and invalidation, multi-module import graphs, HMR ownership disposal, AI/server dependency absence, and identical production hashes across pinned builds. **These acceptance gates are pending, not passed.**
+The root CI Vitest suite and the package-local Vitest suite both run the actual Vite dev server and production build against `tests/fixtures/basic/`. While compiler/styles are types-only, successful TSX compilation and brand-only CSS tests are skipped and **real Vite refusal** tests verify the fail-closed boundary. After the implementations land, run full Vite+DOM browser integration for: TSX, source maps, invalid JSX, utility CSS deduplication, brand overrides and invalidation, multi-module import graphs, HMR ownership disposal, AI/server dependency absence, and identical production hashes across pinned builds. **These acceptance gates are pending, not passed.**
 
 Release intent: independent minor bump via Changesets after the integration gate, not automatic publication.
