@@ -67,7 +67,7 @@ const adapter: PageAdapter<{ id: string }> = {
 router.attachOutlet(document.getElementById("page")!);
 ```
 
-The identifiers `productRepositoryToken`, `createProductViewModel`, and `renderCompiledProductView` in this conceptual example are **application-defined**, not Router exports. Rendering adapters must return one native root node; `DocumentFragment` and automatic multi-root route mounting are not yet supported. When a page has a rendered nested child, it must return an `outlet`.
+For stronger Model and loader-data typing, use the public `definePageAdapter<Params, Model, Data>(...)` factory at the application boundary. The identifiers `productRepositoryToken`, `createProductViewModel`, and `renderCompiledProductView` in this conceptual example are **application-defined**, not Router exports. Rendering adapters must return one native root node; `DocumentFragment` and automatic multi-root route mounting are not yet supported. When a page has a rendered nested child, it must return an `outlet`.
 
 ## Behavior contract
 
@@ -77,6 +77,7 @@ The identifiers `productRepositoryToken`, `createProductViewModel`, and `renderC
 - Every navigation has a native AbortController; newer navigation aborts the prior transaction. Guard/loader context signals combine transaction and route-owner cancellation. Async work must respect `signal`; any settled result is discarded if superseded, even if the underlying request ignored cancellation. Cancellation does not roll back completed server actions.
 - Guards run in parent-to-child order and return allow/deny/redirect. Redirects are resolved before history or UI commit and have a bounded loop policy. Denied transitions do not commit, and a failed popstate traversal replaces the URL with the last committed URL. This is a conservative fallback, not a native history-index rollback.
 - Async loaders and lazy imports run before page setup. Lazy imports are deduplicated by route identity; failures release the cache for later retry. Module imports cannot be aborted once initiated, but cancelled navigations never execute their page setup or publish their results.
+- An unmatched path without a catch-all route raises `RouteNotFoundError`; lazy-import and loader failures surface `RouteModuleLoadError` and `RouteLoaderError` with the route ID and original cause.
 - The route-state signals are `router.signals.{url,matches,params,search,hash,status,pending,error}`. `matches` exposes scoped owners and loaded data. UI subscriptions are granular; application providers are preserved.
 - `attachOutlet(host)` is browser-specific; the matcher, route definitions, memory history, and `createRouter` itself access no `window`/`document` globals during module import. Route owners unmount child-first and resource cleanup runs before native DOM node removal.
 - `createBrowserRestoration(window, { scroll, focus, announce })` runs after successful commits: auto top for forward navigation, native preserve on history traversal, decoded hash anchors, and optional caller-provided focus/accessible announcement hooks. No forced focus changes. It does not enable smooth scrolling, respecting reduced-motion preferences.
@@ -97,6 +98,6 @@ pnpm --filter @zaakiyjs/router test
 pnpm --filter @zaakiyjs/router pack:check
 ```
 
-**PR integration follow-up:** registering a new workspace package requires a coordinated regeneration of the root `pnpm-lock.yaml` for frozen installations. This branch intentionally does not edit root workspace files. CI installation may fail until the lockfile is updated by the integration owner.
+**PR integration follow-up:** registering a new workspace package requires coordinated regeneration of the root `pnpm-lock.yaml` for frozen installations. Additionally, `scripts/ci/verify-workspaces.mjs` hardcodes the original seven packages and currently rejects Router as an unexpected package. Both updates must be performed by the integration owner; this isolated package branch intentionally does not edit root workspace files. The existing CI fails before it can run lint, typecheck, build or tests.
 
 The package has no compiler, network client, AI, or framework-renderer dependencies. Browser History integration, cancellation, scope disposal, source-level TSX typing, and end-to-end compiled route mounting remain explicit acceptance gates rather than unverified claims.
