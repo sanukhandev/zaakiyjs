@@ -11,6 +11,27 @@ importers:
       '@eslint/js':
         specifier: 9.39.1
         version: 9.39.1
+      '@zaakiyjs/cli':
+        specifier: workspace:^
+        version: link:packages/cli
+      '@zaakiyjs/compiler':
+        specifier: workspace:^
+        version: link:packages/compiler
+      '@zaakiyjs/core':
+        specifier: workspace:^
+        version: link:packages/core
+      '@zaakiyjs/dom':
+        specifier: workspace:^
+        version: link:packages/dom
+      '@zaakiyjs/signals':
+        specifier: workspace:^
+        version: link:packages/signals
+      '@zaakiyjs/styles':
+        specifier: workspace:^
+        version: link:packages/styles
+      '@zaakiyjs/vite-plugin':
+        specifier: workspace:^
+        version: link:packages/vite-plugin
       eslint:
         specifier: 9.39.1
         version: 9.39.1
