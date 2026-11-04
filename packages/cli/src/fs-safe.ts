@@ -1,5 +1,5 @@
 import {randomUUID} from "node:crypto";
-import {lstat, mkdir, mkdtemp, rename, rm, writeFile} from "node:fs/promises";
+import {lstat, mkdir, mkdtemp, readFile, rename, rm, rmdir, writeFile} from "node:fs/promises";
 import {dirname, isAbsolute, join, relative, resolve, sep} from "node:path";
 import {CliError} from "./args.js";
 
@@ -99,33 +99,53 @@ export async function writeProject(parent: string, name: string, files: readonly
     if (!committed) await rm(stage, {recursive: true, force: true});
   }
 }
+/** Transactional generator: identical files are no-ops; divergent files require --force. */
 export async function writeGenerated(rootPath: string, files: readonly PlannedWrite[], options: {dryRun: boolean; force: boolean}): Promise<string[]> {
   const root = resolve(rootPath);
   const plan = validatePlan(root, files);
+  const pending: PlannedWrite[] = [];
+  // Preflight ALL files before creating any output.
   for (const file of plan) {
-    const path = safeDestination(root, file.path);
-    await ensureNoSymlinkAncestors(root, path);
-    if (await exists(path) && !options.dryRun) {
-      const info = await lstat(path);
-      if (!info.isFile()) throw new CliError("DIRECTORY_COLLISION", "Refusing to overwrite non-file path " + path);
-      if (!options.force) throw new CliError("FILE_EXISTS", "File already exists: " + path + " (use --force to replace explicitly)");
+    const destination = safeDestination(root, file.path);
+    await ensureNoSymlinkAncestors(root, destination);
+    if (await exists(destination)) {
+      const info = await lstat(destination);
+      if (!info.isFile()) throw new CliError("DIRECTORY_COLLISION", "Refusing to overwrite non-file path " + destination);
+      if (await readFile(destination, "utf8") === file.content) continue;
+      if (!options.force && !options.dryRun) {
+        throw new CliError("FILE_EXISTS", "File already exists with different content: " + destination + " (use --force to replace explicitly)");
+      }
     }
+    pending.push(file);
   }
-  if (options.dryRun) return plan.map(file => file.path);
+  if (options.dryRun) return pending.map(file => file.path);
+  if (pending.length === 0) return [];
   const stage = await mkdtemp(join(root, ".zaakiy-stage-"));
   const touched: string[] = [];
+  const createdDirectories = new Set<string>();
   const backups = new Map<string, string>();
+  let safeToCleanStage = true;
   try {
-    for (const file of plan) {
+    for (const file of pending) {
       const source = safeDestination(stage, file.path);
       await mkdir(dirname(source), {recursive: true});
       await writeFile(source, file.content, {encoding: "utf8", flag: "wx"});
     }
-    for (const file of plan) {
+    for (const file of pending) {
       const destination = safeDestination(root, file.path);
-      await mkdir(dirname(destination), {recursive: true});
+      const directory = dirname(destination);
+      let candidate = directory;
+      while (candidate !== root && !(await exists(candidate))) {
+        createdDirectories.add(candidate);
+        candidate = dirname(candidate);
+      }
+      await mkdir(directory, {recursive: true});
       await ensureNoSymlinkAncestors(root, destination);
+      // A concurrent writer must not silently defeat the preflight.
       if (await exists(destination)) {
+        if (!options.force) throw new CliError("FILE_EXISTS", "Target was created while generating: " + destination);
+        const entry = await lstat(destination);
+        if (!entry.isFile()) throw new CliError("DIRECTORY_COLLISION", "Target changed to non-file: " + destination);
         const backup = join(stage, "backup-" + randomUUID());
         await rename(destination, backup);
         backups.set(destination, backup);
@@ -134,15 +154,32 @@ export async function writeGenerated(rootPath: string, files: readonly PlannedWr
       await rename(safeDestination(stage, file.path), destination);
       if (!backups.has(destination)) touched.push(destination);
     }
-    return plan.map(file => file.path);
+    return pending.map(file => file.path);
   } catch (error) {
+    const rollbackErrors: unknown[] = [];
     for (const destination of touched.reverse()) {
-      const backup = backups.get(destination);
-      if (backup) {await rm(destination, {force: true}); await rename(backup, destination);}
-      else await rm(destination, {force: true});
+      try {
+        const backup = backups.get(destination);
+        if (backup) {
+          await rm(destination, {force: true});
+          await rename(backup, destination);
+        } else await rm(destination, {force: true});
+      } catch (rollbackError) {rollbackErrors.push(rollbackError);}
+    }
+    for (const directory of [...createdDirectories].sort((a, b) => b.length - a.length)) {
+      try {await rmdir(directory);}
+      catch (cleanupError) {
+        if ((cleanupError as NodeJS.ErrnoException).code !== "ENOTEMPTY" &&
+            (cleanupError as NodeJS.ErrnoException).code !== "ENOENT") rollbackErrors.push(cleanupError);
+      }
+    }
+    if (rollbackErrors.length) {
+      safeToCleanStage = false;
+      throw new AggregateError([error, ...rollbackErrors],
+        "Generator rollback failed; recovery backups are preserved at " + stage);
     }
     throw error;
   } finally {
-    await rm(stage, {recursive: true, force: true});
+    if (safeToCleanStage) await rm(stage, {recursive: true, force: true});
   }
 }

@@ -132,7 +132,7 @@ export async function runCli(argv: readonly string[], io?: Partial<CliIO>): Prom
         architecture: valueOption(args.options, "architecture"),
         dryRun: flagOption(args.options, "dry-run"), force: flagOption(args.options, "force")
       });
-      out((flagOption(args.options, "dry-run") ? "Would generate" : "Generated") + ":\n" + created.map(path => "  " + path).join("\n") + "\n");
+      out(created.length === 0 ? "No changes: generated files are already up to date.\n" : (flagOption(args.options, "dry-run") ? "Would generate" : "Generated") + ":\n" + created.map(path => "  " + path).join("\n") + "\n");
       return 0;
     }
     if (args.command === "dev" || args.command === "build" || args.command === "test") {

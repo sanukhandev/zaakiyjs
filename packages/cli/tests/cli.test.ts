@@ -114,7 +114,10 @@ describe("generators", () => {
     const options = {type: "component", name: "MyButton", cwd: root, dryRun: false, force: false};
     const files = await generateFiles(options);
     expect(files).toContain("src/components/MyButton.tsx");
-    await expect(generateFiles(options)).rejects.toThrow("already exists");
+    expect(await generateFiles(options)).toEqual([]); // identical repeat is idempotent
+    expect(await generateFiles({...options, dryRun: true})).toEqual([]);
+    await writeFile(join(root, files[0] ?? ""), "// user changes");
+    await expect(generateFiles(options)).rejects.toThrow("different content");
     expect(await generateFiles({...options, dryRun: true})).toEqual(files);
     await generateFiles({...options, force: true});
     expect(await readFile(join(root, files[0] ?? ""), "utf8")).toContain("MyButtonProps");
