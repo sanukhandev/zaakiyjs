@@ -25,6 +25,44 @@ The product goal is not to copy existing framework APIs. It is to deliver an int
 | Optional AI | Gemini proposes changes; local validation, tests, benchmarks and developer review authorize them |
 | Independent npm releases | One monorepo, package-specific SemVer, changesets and publish gates |
 
+
+## Architecture at a glance
+
+GitHub renders the Mermaid source below directly in this README. This is the **planned architecture**, not an implemented build pipeline.
+
+```mermaid
+flowchart TB
+    Source["TypeScript / TSX + zaakiy.config.ts"]
+
+    subgraph Build["Build time - Node.js / CI"]
+        Parse["AST + type analysis"]
+        IR["Versioned compiler IR"]
+        Optimize["Deterministic optimizations"]
+        Emit["Optimized JS / CSS / source maps"]
+        Parse --> IR --> Optimize --> Emit
+    end
+
+    subgraph Advisor["Optional AI - no build dependency"]
+        Gemini["Gemini suggestions"]
+        Verify["Schema validation + tests + benchmarks"]
+        Approve["Developer approval"]
+        Gemini --> Verify --> Approve
+    end
+
+    subgraph Runtime["Deployment targets"]
+        Browser["Browser: signals + scopes + native DOM"]
+        Server["Optional server / edge: SSR + SEO + proxy"]
+    end
+
+    Source --> Parse
+    IR -. "consented, redacted report" .-> Gemini
+    Approve -. "reviewed candidate" .-> Optimize
+    Emit --> Browser
+    Emit --> Server
+```
+
+The standard build path is deterministic and works **with AI disabled**. Server-side rendering, dynamic SEO and proxy services are optional; browser runtime code must not import the compiler, AI or server-only modules. For package boundaries and independent npm releases, see the [monorepo guide](docs/development/monorepo-packages.md) and [release runbook](docs/releasing/independent-npm.md).
+
 ## Feature specifications
 
 ### 1. Compiler and rendering
