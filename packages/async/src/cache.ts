@@ -144,12 +144,14 @@ class ScopedCache implements ResourceCache {
       if (this.shared.get(pending.key) === pending) this.shared.delete(pending.key);
     }
   }
-  dispose(): void {
+  dispose(): void { this.close("manual"); }
+  disposeForOwner(): void { this.close("owner"); }
+  private close(kind: "manual" | "owner"): void {
     if (this.closed) return;
     this.closed = true;
     this.detachOwner();
     for (const pending of this.running) {
-      if (!pending.controller.signal.aborted) pending.controller.abort(new CancellationError("owner"));
+      if (!pending.controller.signal.aborted) pending.controller.abort(new CancellationError(kind));
     }
     this.running.clear();
     this.shared.clear();
@@ -173,6 +175,6 @@ export function createResourceCache(options: CacheOptions = {}): ResourceCache {
   const cache = new ScopedCache(owner ? rootOf(owner) : null, options.scope, maxEntries, cacheTimeMs, () => release());
   // The cache is root-scoped, even when its factory is called by a child owner.
   // Sibling resources must not lose their cache when the creator unmounts.
-  release = attachOwner(owner ? rootOf(owner) : null, () => cache.dispose());
+  release = attachOwner(owner ? rootOf(owner) : null, () => cache.disposeForOwner());
   return cache;
 }

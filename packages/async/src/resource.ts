@@ -198,13 +198,13 @@ export function createResource<TData, TKey = void>(options: ResourceOptions<TDat
       }
     });
   }
-  function dispose(): void {
+  function dispose(kind: "manual" | "owner" = "manual"): void {
     if (closed) return;
     const wasPending = pending.peek();
     closed = true;
     detachOwner();
     generation++;
-    active?.cancel("owner");
+    active?.cancel(kind);
     active = null;
     tracker?.dispose();
     tracker = null;
@@ -239,10 +239,10 @@ export function createResource<TData, TKey = void>(options: ResourceOptions<TDat
       error.value = null;
       status.value = "cancelled";
     },
-    invalidate, dispose
+    invalidate, dispose: () => dispose("manual")
   };
   try {
-    detachOwner = attachOwner(owner, dispose);
+    detachOwner = attachOwner(owner, () => dispose("owner"));
     tracker = effect(() => {
       const key = options.key?.();
       const enabled = typeof options.enabled === "function" ? options.enabled() : options.enabled;
