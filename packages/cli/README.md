@@ -25,11 +25,11 @@ The executable is named **zaakiy**. Project creation uses **start --project**, n
 - **Standard:** Minimal plus organized shared/feature directories; no unimplemented runtime imports.
 - **Enterprise:** Standard plus application provider/branding and MVVM documentation structure; no router, forms, async resources or proxy APIs.
 
-Project creation never installs dependencies or runs template scripts. Run your package manager's install command explicitly before dev/build/typecheck. Supported tools: Node 20.19+, npm 10+, pnpm 10+, Yarn 4+. Use --workspace in an existing pnpm workspace to emit workspace protocol versions.
+Project creation never installs dependencies or runs template scripts. Run your package manager's install command explicitly before dev/build/typecheck. Supported tools: Node 20.19+, npm 10+, pnpm 10+, Yarn 4+. Use --workspace only with --package-manager pnpm and an included target path (for example, --path packages in a workspace whose pnpm-workspace.yaml includes packages/*).
 
-generate/g supports component, view, viewmodel, model, feature, service, provider, context. Feature generation uses model repository interfaces, signal-based ViewModel, typed TSX View, service gateway and composition adapter. Stateless components do not need ViewModels.
+generate/g supports component, view, viewmodel, model, feature, service, provider, context. Feature generation uses Model repository interfaces, an owner-scoped signal-based ViewModel with native AbortController cancellation and stale-result protection, a typed TSX View, a service gateway and an owner adapter. The context and provider generators use the real @zaakiyjs/core scoped context API. Stateless components do not need ViewModels.
 
---dry-run shows the file plan, --force explicitly enables replacement, and --path selects a project-relative output directory. Path traversal, symlinks and Windows device names are rejected. Files are staged before creation; failures trigger rollback.
+--dry-run shows the file plan, --force explicitly enables replacement, and --path selects a project-relative output directory. Path traversal, symlinks and Windows device names are rejected. Repeating a generator with unchanged content is a no-op; divergent files require --force. Files are staged before creation, failures trigger rollback, and unrecoverable backup restoration preserves recovery artifacts.
 
 dev/build/test delegate to real project scripts, forward subprocess exit codes and handle termination signals. doctor inspects required files, strict TSX configuration, framework package declarations/exports and the Vite plugin configuration. It does not substitute for a production build.
 
@@ -37,4 +37,4 @@ page, layout, store, resource, task, interceptor, proxy, analyze, migrate, seo a
 
 ## Release gates
 
-Before marking the PR ready, install packed packages in a clean fixture; verify generated typecheck, Vite production build, native DOM interaction, security tests, CLI executable, npm pack and provenance. The M0-only baseline cannot satisfy these gates. Regenerate the workspace lockfile during integration for the CLI Node typings.
+Before marking the PR ready, install packed packages in a clean fixture; verify generated typecheck, Vite production build, native DOM interaction, security tests, CLI executable, npm pack and provenance. The M0-only baseline cannot satisfy these gates. The branch includes a scoped pnpm lockfile update for CLI Node typings. Current CI passes lint/typecheck/build/test and validates pnpm-packed CLI invocation, but a clean compiled Counter production build remains blocked on the other foundation packages.
