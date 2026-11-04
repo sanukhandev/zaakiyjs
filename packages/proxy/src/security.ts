@@ -67,7 +67,7 @@ export function validateBasePath(path: string): void {
 export function incomingURL(value: string): URL {
   if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\") || value.includes("#") || [...value].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) throw new ProxyPolicyError("Invalid request URL");
   const path = value.split("?", 1)[0] ?? "";
-  if (path.includes("//") || /%(?:(?:2e|2f|5c|00|25(?:2e|2f|5c)))/i.test(path)) throw new ProxyPolicyError("Ambiguous path encoding");
+  if (path.includes("//") || /%(?:2e|2f|5c|00|25)/i.test(path)) throw new ProxyPolicyError("Ambiguous path encoding");
   try { decodeURIComponent(path); decodeURIComponent(value.slice(path.length)); } catch { throw new ProxyPolicyError("Malformed URL encoding"); }
   if (path.split("/").includes("..") || path.split("/").includes(".")) throw new ProxyPolicyError("Traversal is not allowed");
   let url: URL;
@@ -113,11 +113,28 @@ export function compileRoutes(routes: readonly ProxyRoute[], upstreams: Readonly
     const regex = new RegExp(prefix ? "^" + (exact === "/" ? "" : exact) + "(?:/.*)?$" : "^" + exact + "$");
     compiled.push({ route, regex, params, score: prefix ? 0 : params.length ? 1 : 2 });
   }
+  // Exact language intersection for the supported grammar; example-path sampling
+  // misses overlaps such as /team/:id/settings vs /team/admin/:name.
+  const parse = (path: string): { segments: string[]; prefix: boolean } => {
+    const segments = path === "/" ? [] : path.split("/").slice(1);
+    const prefix = segments.at(-1) === "*";
+    if (prefix) segments.pop();
+    return { segments, prefix };
+  };
+  const overlaps = (left: string, right: string): boolean => {
+    const a = parse(left); const b = parse(right);
+    if (!a.prefix && a.segments.length < b.segments.length) return false;
+    if (!b.prefix && b.segments.length < a.segments.length) return false;
+    for (let i = 0; i < Math.min(a.segments.length, b.segments.length); i++) {
+      const x = a.segments[i]!; const y = b.segments[i]!;
+      if (!x.startsWith(":") && !y.startsWith(":") && x !== y) return false;
+    }
+    return true;
+  };
   for (let i = 0; i < compiled.length; i++) for (let j = i + 1; j < compiled.length; j++) {
     const a = compiled[i]!; const b = compiled[j]!;
     if (!a.route.methods.some(m => b.route.methods.includes(m))) continue;
-    const sample = (path: string): string => path.replace(/\*/g, "child").replace(/:[a-zA-Z][a-zA-Z0-9_]*/g, "value");
-    if (a.regex.test(sample(b.route.path)) || b.regex.test(sample(a.route.path))) throw new ProxyConfigurationError("Ambiguous route overlap");
+    if (overlaps(a.route.path, b.route.path)) throw new ProxyConfigurationError("Ambiguous route overlap");
   }
   return compiled.sort((a, b) => b.score - a.score || b.route.path.length - a.route.path.length);
 }
