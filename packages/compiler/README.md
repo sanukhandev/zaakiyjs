@@ -49,6 +49,7 @@ Generated output imports helpers from @zaakiyjs/dom/compiler and owners from @za
 - No eval, new Function, innerHTML, or model-generated source execution in emitted production output.
 - Stable IDs are based on original TSX spans. Version 1 is explicit; breaking IR changes require coordination.
 - Local compilation is deterministic for pinned source, TypeScript version and options.
+- URL-valued dynamic attributes, unsafe URI schemes and lowercase inline `on*` event strings are rejected until a reviewed URL/security policy is available.
 
 Run from the repository root (after installing workspace dependencies):
 
@@ -56,6 +57,20 @@ Run from the repository root (after installing workspace dependencies):
     pnpm --filter @zaakiyjs/compiler lint
     pnpm --filter @zaakiyjs/compiler test
     pnpm --filter @zaakiyjs/compiler build
+
+## Measured CI baseline
+
+The Counter fixture compiled on the GitHub Actions Node 22 runner with TypeScript 5.9.3, using a single cold-ish invocation inside the fixture test:
+
+| Measure | Observed |
+| --- | ---: |
+| Generated JavaScript | 1,288 bytes (unminified) |
+| Generated JavaScript gzip | 506 bytes |
+| Counter compile wall time | 197.62 ms (single run; not a benchmark percentile) |
+| Compiler tests | 13/13 passed |
+| Full workspace test baseline before final security changes | 28/28 passed |
+
+These figures are **fixture output**, not framework runtime bundle size. No claim of meeting the 12 KiB runtime target is made. Generated maps require further exact-location and browser integration checks.
 
 **Integration blocker:** The compiler's newly declared TypeScript runtime dependency requires coordinated regeneration of pnpm-lock.yaml. The parallel package branches must not rewrite the shared lockfile independently. Until the integration owner resolves that dependency and the runtime packages implement their declared v1 helpers, leave the pull request in draft.
 
