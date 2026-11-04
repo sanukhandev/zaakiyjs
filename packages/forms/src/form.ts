@@ -576,7 +576,6 @@ export function createForm<T extends object, TResult = void>(options: FormOption
       if (!setBaseline && formTriggers.has('change')) void validateFormOnly().catch(() => undefined);
     });
   }
-  let form: FormController<T, TResult>;
   function abortSubmission(): void {
     submissionGeneration++;
     submissionController?.abort(); submissionController = null;
@@ -643,28 +642,28 @@ export function createForm<T extends object, TResult = void>(options: FormOption
     revision.value++; registryRevision.value++;
     formIssues.value = [];
   }
-  form = {
+  const form: FormController<T, TResult> = {
     // An uncached signal facade prevents form snapshots being retained by a
     // computed's memoized value after owner disposal.
     values: {
-      get value() { revision.value; return snapshot() as Readonly<T>; },
-      peek() { revision.peek(); return snapshot() as Readonly<T>; }
+      get value() { void revision.value; return snapshot() as Readonly<T>; },
+      peek() { void revision.peek(); return snapshot() as Readonly<T>; }
     },
-    dirty: computed(() => { revision.value; return !sameValue(valuesNow(), initial); }),
+    dirty: computed(() => { void revision.value; return !sameValue(valuesNow(), initial); }),
     valid: computed(() => {
-      registryRevision.value;
+      void registryRevision.value;
       return !formPending.value && formStatus.value !== 'error' && formStatus.value !== 'invalid' && formIssues.value.length === 0 &&
         [...records].every(rec => rec.disabled.value || (!rec.pending.value && rec.status.value !== 'invalid' && rec.status.value !== 'error' &&
           rec.fieldIssues.value.length + rec.crossIssues.value.length + rec.serverIssues.value.length === 0));
     }),
-    pendingValidation: computed(() => { registryRevision.value; return formPending.value || [...records].some(rec => rec.pending.value); }),
+    pendingValidation: computed(() => { void registryRevision.value; return formPending.value || [...records].some(rec => rec.pending.value); }),
     submitting: computed(() => submitting.value),
     submitted: computed(() => submitted.value),
     submitSucceeded: computed(() => submitSucceeded.value),
     submitFailure: computed(() => submitFailure.value),
     submitCount: computed(() => submitCount.value),
     errors: computed(() => {
-      registryRevision.value;
+      void registryRevision.value;
       return [...formIssues.value, ...[...records].flatMap(rec =>
         [...rec.fieldIssues.value, ...rec.crossIssues.value, ...rec.serverIssues.value])];
     }),
@@ -674,8 +673,8 @@ export function createForm<T extends object, TResult = void>(options: FormOption
       return {
         path,
         value: {
-          get value() { revision.value; return copyValue(readPath(valuesNow(), path)) as PathValue<T, P>; },
-          peek() { revision.peek(); return copyValue(readPath(valuesNow(), path)) as PathValue<T, P>; }
+          get value() { void revision.value; return copyValue(readPath(valuesNow(), path)) as PathValue<T, P>; },
+          peek() { void revision.peek(); return copyValue(readPath(valuesNow(), path)) as PathValue<T, P>; }
         },
         field<C extends FieldPath<PathValue<T, P>>>(child: C, configuration?: FieldOptions<T, PathValue<PathValue<T, P>, C>>) {
           const combined = `${path}.${child}` as Extract<`${P}.${C}`, FieldPath<T>>;
