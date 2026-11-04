@@ -167,6 +167,7 @@ export interface RouterOptions {
   readonly onNavigate?: (context: { readonly url: string; readonly matches: readonly ActiveRoute[]; readonly isPop: boolean }) => void;
 }
 export class RouteConfigurationError extends Error { override name = "RouteConfigurationError"; }
+export class RouteNotFoundError extends Error { override name = "RouteNotFoundError"; }
 export class NavigationDeniedError extends Error { override name = "NavigationDeniedError"; }
 export class NavigationCancelledError extends Error {
   override name = "NavigationCancelledError";
