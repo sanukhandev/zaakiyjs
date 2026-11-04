@@ -1,5 +1,5 @@
 import type {
-  CompilerDiagnostic, IRDocument, IRNode, DynamicText, StaticElement, IRExpression
+  CompilerDiagnostic, IRDocument, IRNode, StaticElement, IRExpression
 } from "./index.js";
 import { IR_SCHEMA_VERSION } from "./index.js";
 
