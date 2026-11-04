@@ -80,6 +80,21 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
     }, { timeout: 3000, interval: 50 });
   });
 
+  it("invalidates the brand configuration through Vite's real file watcher", async () => {
+    server = await createServer({
+      configFile: false,
+      root: brandOnlyRoot,
+      plugins: [zaakiyPlugin({ configFile: "zaakiy.config.ts" })],
+      server: { middlewareMode: true }
+    });
+    const socketSpy = vi.spyOn(server.ws, "send");
+    const config = fileURLToPath(new URL("./fixtures/brand-only/zaakiy.config.ts", import.meta.url));
+    server.watcher.emit("change", config);
+    await vi.waitFor(() => {
+      expect(socketSpy).toHaveBeenCalledWith({ type: "full-reload", path: "*" });
+    }, { timeout: 3000, interval: 50 });
+  });
+
   it("rejects a forbidden build-time import from a plain JavaScript browser entry", async () => {
     await expect(build({
       configFile: false,
