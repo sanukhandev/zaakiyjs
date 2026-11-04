@@ -33,7 +33,12 @@ export async function runWithRetry<T>(
     if (signal.aborted) throw abortedReason(signal);
     try {
       // Invocation happens in a microtask so synchronous throws are observed and classified.
-      return await awaitAbortable(Promise.resolve().then(() => execute(attempt)), signal);
+      // Cancellation can occur between scheduling and running this microtask.
+      // Never begin a mutation/loader after its signal has been aborted.
+      return await awaitAbortable(Promise.resolve().then(() => {
+        if (signal.aborted) throw abortedReason(signal);
+        return execute(attempt);
+      }), signal);
     } catch (error) {
       if (signal.aborted) throw abortedReason(signal);
       if (isCancellation(error)) throw error;

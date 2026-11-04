@@ -118,7 +118,7 @@ describe("review regression: scope, cancellation and disposal races", () => {
       owner: null, execute: () => pending.promise
     });
     const operation = task.run(1);
-    const cancelled = expect(operation).rejects.toMatchObject({ kind: "owner" });
+    const cancelled = expect(operation).rejects.toMatchObject({ kind: "manual" });
     expect(task.pending.value).toBe(true);
     task.dispose();
     expect(task.pending.value).toBe(false);
@@ -139,7 +139,7 @@ describe("review regression: scope, cancellation and disposal races", () => {
     });
     await expect(resource.refresh()).resolves.toBe(1);
     const work = resource.refresh();
-    const cancelled = expect(work).rejects.toMatchObject({ kind: "owner" });
+    const cancelled = expect(work).rejects.toMatchObject({ kind: "manual" });
     expect(resource.refreshing.value).toBe(true);
     resource.dispose();
     expect(resource.pending.value).toBe(false);
@@ -171,6 +171,22 @@ describe("review regression: scope, cancellation and disposal races", () => {
     });
     await expect(second.refresh()).resolves.toBe(42);
     disposeOwner(root);
+  });
+
+  it("distinguishes owner disposal from explicit manual handle disposal", async () => {
+    const owner = createOwner();
+    const resource = createResource({
+      owner, load: async () => new Promise<number>(() => {})
+    });
+    const task = createTask({
+      owner, execute: async () => new Promise<number>(() => {})
+    });
+    const loading = resource.refresh();
+    const executing = task.run(1);
+    const resourceRejection = expect(loading).rejects.toMatchObject({ kind: "owner" });
+    const taskRejection = expect(executing).rejects.toMatchObject({ kind: "owner" });
+    disposeOwner(owner);
+    await Promise.all([resourceRejection, taskRejection]);
   });
 
   it("does not turn ordinary task failures into cancellation", async () => {

@@ -3,6 +3,7 @@ import { attachOwner } from "./ownership.js";
 import type { OwnerScope } from "@zaakiyjs/core";
 import { awaitAbortable } from "./abort.js";
 import { BusyError, CancellationError, ConfigurationError, DisposedError } from "./errors.js";
+import type { CancellationKind } from "./errors.js";
 
 export interface CacheOptions {
   /** Captured synchronously from Core when omitted; explicit owner works outside runWithOwner. */
@@ -13,7 +14,7 @@ export interface CacheOptions {
   readonly cacheTimeMs?: number;
 }
 export interface CacheHit<T> { readonly value: T; readonly stale: boolean }
-export interface CacheLease<T> { readonly promise: Promise<T>; release(): void }
+export interface CacheLease<T> { readonly promise: Promise<T>; release(reason?: CancellationKind): void }
 export interface ResourceCache {
   readonly size: number;
   readonly disposed: boolean;
@@ -117,14 +118,14 @@ class ScopedCache implements ResourceCache {
     let released = false;
     return {
       promise: current.promise as Promise<T>,
-      release: () => {
+      release: (reason: CancellationKind = "manual") => {
         if (released) return;
         released = true;
         current.consumers--;
         if (current.consumers === 0) {
           // Do not abort a producer whose result has already been published.
           if (this.running.has(current) && !current.controller.signal.aborted) {
-            current.controller.abort(new CancellationError("manual"));
+            current.controller.abort(new CancellationError(reason));
           }
           this.running.delete(current);
           if (this.shared.get(key) === current) this.shared.delete(key);
