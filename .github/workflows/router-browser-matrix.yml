@@ -1,0 +1,109 @@
+name: Router Browser Acceptance
+
+on:
+  pull_request:
+    paths:
+      - "packages/router/**"
+      - "packages/core/**"
+      - "packages/signals/**"
+      - "packages/dom/**"
+      - "packages/compiler/**"
+      - "packages/vite-plugin/**"
+      - "packages/cli/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/router-browser-matrix.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/router/**"
+      - ".github/workflows/router-browser-matrix.yml"
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: router-browser-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    name: router / chromium-firefox-webkit
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Frozen workspace installation
+        run: pnpm install --frozen-lockfile
+      - name: Build actual compiler, DOM, router and CLI packages
+        run: pnpm build
+      - name: Scaffold real TypeScript/Vite consumer
+        run: node packages/cli/dist/bin.js start --project router-app --template minimal --workspace --path apps --package-manager pnpm
+      - name: Register Router in generated application
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from "node:fs";
+          const path = "apps/router-app/package.json";
+          const pkg = JSON.parse(readFileSync(path, "utf8"));
+          pkg.dependencies = { ...pkg.dependencies, "@zaakiyjs/router": "workspace:^" };
+          writeFileSync(path, JSON.stringify(pkg, null, 2) + "\n");
+          NODE
+          pnpm install --no-frozen-lockfile
+      - name: Load compiled-TSX Router fixture
+        run: |
+          cp packages/router/test/browser/App.tsx apps/router-app/src/App.tsx
+          cp packages/router/test/browser/LazyPage.tsx apps/router-app/src/LazyPage.tsx
+          cp packages/router/test/browser/main.tsx apps/router-app/src/main.tsx
+      - name: Typecheck and build production Vite Router application
+        run: pnpm --dir apps/router-app typecheck && pnpm --dir apps/router-app build
+      - name: Install pinned Playwright with Chromium, Firefox and WebKit
+        run: |
+          python3 -m pip install 'playwright==1.64.1'
+          python3 -m playwright install --with-deps chromium firefox webkit
+      - name: Execute native-browser Router navigation, ownership and security acceptance
+        shell: bash
+        run: |
+          pnpm --dir apps/router-app exec vite preview --host 127.0.0.1 --port 4188 --strictPort > /tmp/zaakiy-router-preview.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:4188/app/ > /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/zaakiy-router-preview.log
+            exit 1
+          fi
+          python3 packages/router/test/browser/acceptance.py --base-url http://127.0.0.1:4188
+      - name: Verify browser output contains no framework or AI runtime dependency
+        shell: bash
+        run: |
+          test -f apps/router-app/dist/index.html
+          if grep -R -E '(@zaakiyjs/(ai|compiler|vite-plugin)|react-dom|vue-router|zone\.js)' apps/router-app/dist/assets --include='*.js'; then
+            echo 'Build-time or external-framework code leaked into Router browser bundle'
+            exit 1
+          fi
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: router-browser-diagnostics
+          path: |
+            /tmp/zaakiy-router-*.png
+            /tmp/zaakiy-router-preview.log
+          if-no-files-found: ignore
