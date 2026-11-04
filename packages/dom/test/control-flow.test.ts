@@ -52,6 +52,7 @@ async function appFixture(): Promise<FixtureModule> {
   expect(js).toContain("bindKeyedRegion");
   const generated = join(folder, "app.mjs");
   writeFileSync(generated, js!);
+  if (result.js[0]?.map) writeFileSync(join(folder, "app.js.map"), result.js[0].map);
   return await import(pathToFileURL(generated).href) as FixtureModule;
 }
 

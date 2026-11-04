@@ -1,7 +1,7 @@
 /** Compile-only TSX fixture. Must pass with strict TypeScript and no React types. */
 import type { Component, ContextToken, OwnerScope } from "@zaakiyjs/core";
 import type { JSX } from "@zaakiyjs/core/jsx-runtime";
-import { createContext, Show, For } from "../src/index.js";
+import { createContext, Show, For } from "@zaakiyjs/core";
 
 interface Repository { get(id: string): Promise<string> }
 const repo: ContextToken<Repository> = createContext<Repository>("Repo");
