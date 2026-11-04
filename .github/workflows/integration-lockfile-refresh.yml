@@ -1,0 +1,32 @@
+name: Temporary integration lockfile refresh
+on:
+  push:
+    branches:
+      - chore/core-signals-dom-verification
+    paths:
+      - .github/workflows/integration-lockfile-refresh.yml
+permissions:
+  contents: write
+jobs:
+  regenerate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate lockfile and remove this temporary workflow
+        run: |
+          pnpm install --lockfile-only --no-frozen-lockfile --ignore-scripts
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm -f .github/workflows/integration-lockfile-refresh.yml
+          git add pnpm-lock.yaml
+          git commit -m "test(integration): generate frozen lockfile and remove bootstrap action"
+          git push origin HEAD:chore/core-signals-dom-verification
