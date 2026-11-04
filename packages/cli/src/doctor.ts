@@ -1,7 +1,7 @@
 import {createRequire} from "node:module";
 import {readFile, stat} from "node:fs/promises";
 import {join} from "node:path";
-import {CliDiagnostic} from "./types.js";
+import type {CliDiagnostic} from "./types.js";
 
 const packages = ["core", "dom", "signals", "styles", "vite-plugin"] as const;
 async function textFile(path: string): Promise<string | undefined> {

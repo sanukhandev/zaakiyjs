@@ -42,6 +42,8 @@ async function ensureNoSymlinkAncestors(root: string, path: string): Promise<voi
   const base = resolve(root);
   const rel = relative(base, path);
   if (rel === ".." || rel.startsWith(".." + sep) || isAbsolute(rel)) throw new CliError("UNSAFE_PATH", "Output escapes project directory.");
+  const baseInfo = await lstat(base);
+  if (baseInfo.isSymbolicLink()) throw new CliError("SYMLINK_PATH", "Refusing symlink root: " + base);
   let current = base;
   for (const segment of rel.split(sep)) {
     current = join(current, segment);

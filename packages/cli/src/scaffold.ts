@@ -8,7 +8,7 @@ import {safeRelativePath, validateProjectName, writeProject, type PlannedWrite} 
 export type Preset = "minimal" | "standard" | "enterprise";
 export type Versions = Readonly<Record<"core" | "dom" | "signals" | "styles" | "vite-plugin", string>>;
 const requiredFiles = ["package.json.tmpl", "tsconfig.json", "vite.config.ts", "zaakiy.config.ts",
-  "index.html", "src/App.tsx", "src/main.tsx", "src/base.css", ".gitignore", "README.md.tmpl"] as const;
+  "index.html", "src/App.tsx", "src/main.tsx", "src/base.css", "tests/scaffold.test.mjs", ".gitignore", "README.md.tmpl"] as const;
 const packageNames = ["core", "dom", "signals", "styles", "vite-plugin"] as const;
 const packageRoot = fileURLToPath(new URL("../templates/minimal/", import.meta.url));
 const requireModule = createRequire(import.meta.url);

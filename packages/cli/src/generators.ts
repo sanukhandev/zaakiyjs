@@ -60,7 +60,7 @@ export function generatorPlan(type: string, name: string, architecture?: string,
       return [file(at(entity + "View.tsx"), [
         "export interface " + entity + "ViewProps {readonly title: string}",
         "export function " + entity + "View({title}: " + entity + "ViewProps) {",
-        "  return <section><h2>{title}</h2></section>;",
+        "  return <main><h1>{title}</h1></main>;",
         "}",
         ""
       ].join("\n"))];
@@ -141,11 +141,11 @@ export function generatorPlan(type: string, name: string, architecture?: string,
         file(base + "/view/" + entity + "View.tsx", [
           "import type {" + vm + "} from \"../viewmodel/create" + entity + "ViewModel\";",
           "export function " + entity + "View({vm}: {readonly vm: " + vm + "}) {",
-          "  return <section>",
-          "    <h2>" + entity + "</h2>",
+          "  return <main>",
+          "    <h1>" + entity + "</h2>",
           "    <p>Items: {vm.items.value.length}</p>",
           "    <button type=\"button\" onClick={() => {void vm.load();}}>Refresh</button>",
-          "  </section>;",
+          "  </main>;",
           "}",
           ""
         ].join("\n")),
