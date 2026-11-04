@@ -23,23 +23,29 @@ type FakeElement = {
 };
 type FakeNode = FakeText | FakeElement;
 
-function execute(source: string, entry: string, globals: Record<string, unknown> = {}): { root: FakeNode; elements: FakeElement[] } {
+function execute(source: string, entry: string, globals: Record<string, unknown> = {}): { root: FakeNode; elements: FakeElement[]; writes: { text: number; evaluations: number } } {
   const compiled = compile({ fileName, source });
   expect(compiled.diagnostics.filter(d => d.severity === "error")).toEqual([]);
   const asset = compiled.js[0];
   expect(asset).toBeDefined();
   if (!asset) throw new Error("Compilation did not emit JS");
   const elements: FakeElement[] = [];
-  let active: (() => void) | null = null;
+  const writes = { text: 0, evaluations: 0 };
+  type TrackedRun = (() => void) & { readonly dependencies: Set<Set<TrackedRun>> };
+  let active: TrackedRun | null = null;
   const signal = <T,>(initial: T) => {
     let value = initial;
-    const observers = new Set<() => void>();
+    const observers = new Set<TrackedRun>();
     return Object.defineProperty({}, "value", {
       get() {
-        if (active) observers.add(active);
+        if (active) {
+          observers.add(active);
+          active.dependencies.add(observers);
+        }
         return value;
       },
       set(next: T) {
+        if (Object.is(value, next)) return;
         value = next;
         for (const run of [...observers]) run();
       },
@@ -47,10 +53,14 @@ function execute(source: string, entry: string, globals: Record<string, unknown>
     });
   };
   const bind = (apply: () => void) => {
-    const run = () => {
+    const run = Object.assign(() => {
+      for (const observers of run.dependencies) observers.delete(run);
+      run.dependencies.clear();
+      const previous = active;
       active = run;
-      try { apply(); } finally { active = null; }
-    };
+      try { apply(); }
+      finally { active = previous; }
+    }, { dependencies: new Set<Set<TrackedRun>>() });
     run();
   };
   const env = {
@@ -67,7 +77,12 @@ function execute(source: string, entry: string, globals: Record<string, unknown>
     __zSetProperty(el: FakeElement, name: string, value: unknown) { el.properties[name] = value; },
     __zSetAttribute(el: FakeElement, name: string, value: string | null) { el.attributes[name] = value; },
     __zBindText(_owner: unknown, node: FakeText, read: () => unknown) {
-      bind(() => { node.data = String(read() ?? ""); });
+      bind(() => {
+        writes.evaluations++;
+        const value = read();
+        const next = value == null || typeof value === "boolean" ? "" : String(value);
+        if (node.data !== next) { node.data = next; writes.text++; }
+      });
     },
     __zBindProperty(_owner: unknown, node: FakeElement, name: string, read: () => unknown) {
       bind(() => { node.properties[name] = read(); });
@@ -85,7 +100,7 @@ function execute(source: string, entry: string, globals: Record<string, unknown>
   const context = { ...env, ...globals, __fixture: undefined as (() => FakeNode) | undefined };
   runInNewContext(noImports + "\n__fixture = " + entry + ";", context, { timeout: 1000 });
   if (!context.__fixture) throw new Error("Missing fixture export: " + entry);
-  return { root: context.__fixture(), elements };
+  return { root: context.__fixture(), elements, writes };
 }
 
 function allText(node: FakeNode): string {
@@ -240,16 +255,34 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
     expect(result.js[0]?.code.match(/read\(\)/g)?.length).toBe(1);
   });
 
-  it("preserves conditional dependencies inside the tracked read callback", () => {
+  it("switches dynamic signal dependencies without rerunning for the inactive branch", () => {
     const source = [
       signalDecl,
-      "function App() { const useA = signal(true); const a = signal(\"A\"); const b = signal(\"B\");",
-      "return <span>{useA.value ? a.value : b.value}</span>; }"
+      'function App() { const useA = signal(true); const a = signal("A"); const b = signal("B");',
+      'return <main><span>{useA.value ? a.value : b.value}</span>',
+      '<button onClick={() => useA.value = !useA.value}>toggle</button>',
+      '<button onClick={() => a.value += "x"}>a</button>',
+      '<button onClick={() => b.value += "y"}>b</button></main>; }'
     ].join("\n");
     const result = compile({ fileName, source });
     expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
     expect(result.js[0]?.code).toContain("__zBindText");
-    expect(allText(execute(source, "App").root)).toBe("A");
+    const { elements, writes } = execute(source, "App");
+    const label = elements.find(e => e.tag === "span");
+    const buttons = elements.filter(e => e.tag === "button");
+    expect(label && allText(label)).toBe("A");
+    const originalNode = label?.children[0];
+    buttons[0]?.listeners.click?.({});
+    expect(label && allText(label)).toBe("B");
+    expect(label?.children[0]).toBe(originalNode);
+    const evaluations = writes.evaluations;
+    const mutations = writes.text;
+    buttons[1]?.listeners.click?.({});
+    expect(writes.evaluations).toBe(evaluations);
+    expect(writes.text).toBe(mutations);
+    buttons[2]?.listeners.click?.({});
+    expect(label && allText(label)).toBe("By");
+    expect(writes.text).toBe(mutations + 1);
   });
 
   it("preserves svg namespaces and stable class style tokens", () => {
