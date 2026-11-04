@@ -17,7 +17,7 @@ const s: string = store.state.item.value.id;
 // @ts-expect-error Consumer field signals are readonly.
 store.state.count.value = 3;
 // @ts-expect-error Field collection is readonly.
-store.state.item = store.state.item;
+store.state.item = { value: store.state.item.value, peek: () => store.state.item.peek() };
 // @ts-expect-error Nested state is deeply readonly.
 store.state.item.value.id = "c";
 // @ts-expect-error Nested arrays are readonly.
@@ -25,7 +25,7 @@ store.state.item.value.labels.push("y");
 // @ts-expect-error Typed actions reject incorrect argument types.
 store.actions.increment("wrong");
 // @ts-expect-error Unknown store fields are rejected.
-store.state.missing;
+void store.state.missing;
 // @ts-expect-error Unknown action is rejected.
 store.actions.missing();
 createStore({
