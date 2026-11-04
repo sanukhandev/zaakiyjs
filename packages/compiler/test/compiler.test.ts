@@ -293,6 +293,44 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
     expect(result.manifest?.styleTokens).toEqual(["p-2", "text-sm"]);
   });
 
+/** Decode only the original-line field needed to assert binding source provenance. */
+function originalLineAt(map: { mappings: string }, generatedLine: number, generatedColumn: number): number | undefined {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  let previousSource = 0;
+  let previousLine = 0;
+  let previousColumn = 0;
+  const rows = map.mappings.split(";");
+  for (let row = 0; row < rows.length; row++) {
+    let column = 0;
+    let match: number | undefined;
+    for (const segment of (rows[row] ?? "").split(",").filter(Boolean)) {
+      const values: number[] = [];
+      let acc = 0;
+      let shift = 0;
+      for (const char of segment) {
+        const digit = alphabet.indexOf(char);
+        if (digit < 0) throw new Error("Invalid base64-VLQ mapping");
+        acc += (digit & 31) * (2 ** shift);
+        if (digit & 32) { shift += 5; continue; }
+        values.push(acc & 1 ? -(acc >> 1) : (acc >> 1));
+        acc = 0;
+        shift = 0;
+      }
+      column += values[0] ?? 0;
+      if (values.length >= 4) {
+        previousSource += values[1] ?? 0;
+        previousLine += values[2] ?? 0;
+        previousColumn += values[3] ?? 0;
+        if (row === generatedLine && column <= generatedColumn && previousSource === 0) {
+          match = previousLine + 1;
+        }
+      }
+    }
+    if (row === generatedLine) return match;
+  }
+  return undefined;
+}
+
   it("emits valid original-source source maps with line mappings", () => {
     const result = compile({ fileName, source: counterSource });
     const map = JSON.parse(result.js[0]?.map ?? "{}") as {
@@ -302,6 +340,11 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
     expect(map.sources.some(s => s.endsWith("fixture.tsx"))).toBe(true);
     expect(map.mappings.length).toBeGreaterThan(0);
     expect(map.sourcesContent?.some(s => s.includes("function Counter"))).toBe(true);
+    const emitted = result.js[0]?.code ?? "";
+    const generatedRows = emitted.split("\n");
+    const bindRow = generatedRows.findIndex(line => line.includes("__zBindText("));
+    expect(bindRow).toBeGreaterThan(0);
+    expect(originalLineAt(map, bindRow, generatedRows[bindRow]?.indexOf("__zBindText(") ?? 0)).toBe(4);
   });
 
   it("issues source-positioned diagnostics for unsupported JSX and dangerous sinks", () => {
