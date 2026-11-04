@@ -339,7 +339,7 @@ export function analyze(request: CompileRequest): Analysis {
       const itemParameter = callback?.parameters.length === 1 &&
         ts.isIdentifier(callback.parameters[0]!.name)
         ? callback.parameters[0]!.name.text : undefined;
-      const root = callback ? asDom(callback.body) : undefined;
+      const root = callback && ts.isExpression(callback.body) ? asDom(callback.body) : undefined;
       if (children.length !== 1 || !itemParameter || !root || root.kind !== "StaticElement") {
         report("ZC2404", "For requires one child render callback (item => <nativeElement />).", node);
       }
