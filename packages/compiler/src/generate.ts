@@ -175,7 +175,8 @@ class Builder {
   }
 }
 
-function toExpression(code: string, original: ts.Node, source: ts.SourceFile): ts.Expression {
+function toExpression(code: string, original: ts.Node, source: ts.SourceFile,
+                      context: ts.TransformationContext): ts.Expression {
   const holder = ts.createSourceFile("__zaakiy_emit.ts", "const __zaakiy_result = " + code + ";",
     ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
   const statement = holder.statements[0];
@@ -188,7 +189,12 @@ function toExpression(code: string, original: ts.Node, source: ts.SourceFile): t
   }
   // Deep-clone as synthetic nodes: parsed nodes carry offsets into a different file.
   // Reusing those positions makes TS's printer splice incorrect original TSX text.
-  const output = ts.getSynthesizedDeepClone(declaration.initializer) as ts.Expression;
+  const clone = (node: ts.Node): ts.Node => {
+    const copy = ts.factory.cloneNode(node);
+    ts.setTextRange(copy, { pos: -1, end: -1 });
+    return ts.visitEachChild(copy, clone, context);
+  };
+  const output = ts.visitNode(declaration.initializer, clone) as ts.Expression;
   ts.setSourceMapRange(output, { pos: original.getStart(source), end: original.getEnd() });
   return output;
 }
@@ -206,7 +212,7 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
     const visit = (node: ts.Node): ts.Node => {
       if (isJsx(node)) {
         const ir = roots.get(node.getStart(analysis.sourceFile));
-        if (ir) return toExpression(new Builder().build(ir), node, analysis.sourceFile);
+        if (ir) return toExpression(new Builder().build(ir), node, analysis.sourceFile, context);
       }
       return ts.visitEachChild(node, visit, context);
     };
