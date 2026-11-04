@@ -218,6 +218,22 @@ describe("signals", () => {
     source.value = 4;
     expect(derived.value).toBe(5);
   });
+  it("runs queued effects automatically in a microtask", async () => {
+    const input = signal(0);
+    const seen: number[] = [];
+    const stop = effect(() => { seen.push(input.value); });
+    input.value = 1;
+    expect(seen).toEqual([0]);
+    await Promise.resolve();
+    expect(seen).toEqual([0, 1]);
+    stop.dispose();
+  });
+  it("rejects writes from computed even inside untrack", () => {
+    const input = signal(0);
+    const forbidden = computed(() => { untrack(() => { input.value++; }); return input.value; });
+    expect(() => forbidden.value).toThrow(/must not write signals/);
+    expect(input.value).toBe(0);
+  });
   it("randomized graph agrees with a simple pure reference model", () => {
     let seed = 0x12345678;
     const next = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0);

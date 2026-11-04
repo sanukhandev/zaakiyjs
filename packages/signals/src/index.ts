@@ -25,6 +25,7 @@ interface TrackingFrame {
 }
 
 let activeFrame: TrackingFrame | null = null;
+let computedDepth = 0;
 let batchDepth = 0;
 let microtaskQueued = false;
 let flushing = false;
@@ -123,7 +124,7 @@ class SignalNode<T> implements WritableSignal<T> {
   constructor(initial: T, private readonly equals: Equality<T>) { this.current = initial; }
   get value(): T { observe(this as SignalNode<unknown>); return this.current; }
   set value(next: T) {
-    if (activeFrame?.observer instanceof ComputedNode) {
+    if (computedDepth > 0) {
       throw new Error("ZaakiyJS computed calculators must not write signals");
     }
     if (this.equals(this.current, next)) return;
@@ -159,12 +160,13 @@ class ComputedNode<T> implements ComputedSignal<T> {
     if (this.dirty) {
       if (this.computing) throw new Error("ZaakiyJS circular computed dependency");
       this.computing = true;
+      computedDepth++;
       try {
         const result = runTracked(this as ComputedNode<unknown>, this.calculator);
         this.cached = result;
         this.hasValue = true;
         this.dirty = false;
-      } finally { this.computing = false; }
+      } finally { computedDepth--; this.computing = false; }
     }
     return this.cached;
   }
