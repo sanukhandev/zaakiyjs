@@ -43,9 +43,43 @@ export function writePath<T>(root: T, path: string, next: unknown): T {
   };
   return write(root, 0) as T;
 }
-/** Preserves Date, File and Blob via native clone where available; no JSON serialization. */
+/**
+ * Clone editable containers while retaining immutable Blob/File objects by identity.
+ * Native structuredClone duplicates Blob/File objects, which makes a pristine form
+ * incorrectly dirty when comparing separately cloned initial and current values.
+ * Other supported built-ins use native cloning or explicit value-preserving copies.
+ */
 export function copyValue<T>(value: T): T {
-  return structuredClone(value);
+  const seen = new WeakMap<object, object>();
+  const clone = (input: unknown): unknown => {
+    if (input === null || typeof input !== 'object') return input;
+    // Blob bytes are immutable. Preserve identity for Blob and its File subclass
+    // so equality cannot incorrectly treat different same-size payloads as equal.
+    if (typeof Blob !== 'undefined' && input instanceof Blob) return input;
+    const cached = seen.get(input);
+    if (cached !== undefined) return cached;
+    if (input instanceof Date) return new Date(input.getTime());
+    if (input instanceof RegExp) {
+      const result = new RegExp(input.source, input.flags);
+      result.lastIndex = input.lastIndex;
+      return result;
+    }
+    const prototype: unknown = Object.getPrototypeOf(input);
+    if (Array.isArray(input) || prototype === Object.prototype || prototype === null) {
+      const result: Record<string, unknown> | unknown[] =
+        Array.isArray(input) ? new Array<unknown>(input.length) : Object.create(prototype) as Record<string, unknown>;
+      seen.set(input, result);
+      for (const key of Object.keys(input)) {
+        // defineProperty handles own __proto__ keys without changing the prototype.
+        Object.defineProperty(result, key, {
+          value: clone(Reflect.get(input, key)), enumerable: true, writable: true, configurable: true
+        });
+      }
+      return result;
+    }
+    return structuredClone(input);
+  };
+  return clone(value) as T;
 }
 export function overlaps(a: string, b: string): boolean {
   return a === b || a.startsWith(b + '.') || b.startsWith(a + '.');
@@ -61,6 +95,9 @@ export function sameValue(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) return true;
   if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
   if (a instanceof Date && b instanceof Date) return a.getTime() === b.getTime();
+  if (a instanceof RegExp || b instanceof RegExp) {
+    return a instanceof RegExp && b instanceof RegExp && a.source === b.source && a.flags === b.flags && a.lastIndex === b.lastIndex;
+  }
   if (Array.isArray(a) || Array.isArray(b)) {
     return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((x: unknown, i: number) => sameValue(x, b[i]));
   }
