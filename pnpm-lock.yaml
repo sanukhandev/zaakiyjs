@@ -51,6 +51,15 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(jsdom@26.1.0)
 
+  packages/async:
+    dependencies:
+      '@zaakiyjs/core':
+        specifier: workspace:^
+        version: link:../core
+      '@zaakiyjs/signals':
+        specifier: workspace:^
+        version: link:../signals
+
   packages/cli:
     dependencies:
       '@zaakiyjs/core':
