@@ -2,6 +2,8 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const expected = new Set(["signals", "core", "dom", "compiler", "styles", "vite-plugin", "cli"]);
+// Optional independent packages do not change the M0 foundation release gate.
+const additional = new Set(["router"]);
 const scriptNames = ["lint", "typecheck", "build", "test"];
 const manifestByName = new Map();
 let errors = 0;
@@ -20,7 +22,7 @@ for (const group of ["packages", "apps", "examples"]) {
       if (!pkg.scripts?.[script]?.trim()) fail(`Missing operational ${script} script: ${manifestPath}`);
     }
     if (group !== "packages") continue;
-    if (!expected.has(entry)) fail(`Unexpected M0 source package: ${dir}`);
+    if (!expected.has(entry) && !additional.has(entry)) fail(`Unexpected workspace source package: ${dir}`);
     if (pkg.name !== `@zaakiyjs/${entry}`) fail(`Name/path mismatch: ${manifestPath}`);
     if (pkg.type !== "module" || !pkg.types || !pkg.exports?.["."]?.types || !pkg.exports?.["."]?.import) fail(`Missing ESM exports/types: ${manifestPath}`);
     if (!pkg.version || !pkg.publishConfig || pkg.publishConfig.access !== "public") fail(`Missing independent version or publication metadata: ${manifestPath}`);
@@ -28,7 +30,7 @@ for (const group of ["packages", "apps", "examples"]) {
   }
 }
 for (const name of expected) if (!manifestByName.has(`@zaakiyjs/${name}`)) fail(`Missing required M0 package: ${name}`);
-const browserPackages = new Set(["@zaakiyjs/signals", "@zaakiyjs/core", "@zaakiyjs/dom"]);
+const browserPackages = new Set(["@zaakiyjs/signals", "@zaakiyjs/core", "@zaakiyjs/dom", "@zaakiyjs/router"]);
 const buildOnly = new Set(["@zaakiyjs/compiler", "@zaakiyjs/styles", "@zaakiyjs/vite-plugin", "@zaakiyjs/cli"]);
 const depsOf = (name) => Object.keys(manifestByName.get(name)?.dependencies ?? {}).filter((dep) => dep.startsWith("@zaakiyjs/"));
 for (const [name, pkg] of manifestByName) {
