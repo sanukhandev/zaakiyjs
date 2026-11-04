@@ -312,7 +312,7 @@ export function analyze(request: CompileRequest): Analysis {
         }
         const rendered = direct && isJsx(direct) ? element(direct, parentNamespace) : undefined;
         if (rendered && rendered.kind !== "StaticElement") {
-          report("ZC2403", "Show v1 requires one native element root; wrap nested control flow in an element.", direct);
+          report("ZC2403", "Show v1 requires one native element root; wrap nested control flow in an element.", direct ?? node);
         }
         const alternate = asDom(fallback);
         if (fallback && !alternate &&
