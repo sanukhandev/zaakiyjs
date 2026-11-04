@@ -1,5 +1,5 @@
 import { For, Show, onCleanup } from "@zaakiyjs/core";
-import { flushSync, signal } from "@zaakiyjs/signals";
+import { computed, flushSync, signal } from "@zaakiyjs/signals";
 
 type Row = { readonly id: string; readonly label: string };
 type Group = { readonly id: string; readonly name: string; readonly children: readonly Row[] };
@@ -20,6 +20,12 @@ export const fixture = {
   duplicateError: signal(""),
   lifecycle: { setups: 0, disposals: 0 }
 };
+
+/** A component root receives a stable getter, never a stale keyed-item snapshot. */
+function LiveGroup(props: { readonly live: () => Group }) {
+  const name = computed(() => props.live().name);
+  return <h3 class="live-group">{name.value}</h3>;
+}
 
 /** Compiled by the production Vite plugin, never rendered by a test-only JSX interpreter. */
 export function App() {
@@ -102,6 +108,11 @@ export function App() {
                 </li>}
               </For></ul>
             </>}
+          </For>
+        </div>
+        <div id="component-groups">
+          <For each={fixture.groups.value} by={group => group.id}>
+            {group => <LiveGroup live={() => group} />}
           </For>
         </div>
       </section>
