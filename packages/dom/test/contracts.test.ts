@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { foundationStatus } from "../src/index";
+import { foundationStatus } from "../src/index.js";
 
-describe("@zaakiyjs/dom M0 contract", () => {
-  it("clearly reports that framework behavior is unimplemented", () => {
-    expect(foundationStatus).toEqual({ package: "@zaakiyjs/dom", implemented: false });
+describe("@zaakiyjs/dom implementation marker", () => {
+  it("identifies the DOM package independently of compiler status", () => {
+    expect(foundationStatus).toEqual({ package: "@zaakiyjs/dom", implemented: true });
   });
 });
