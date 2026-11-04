@@ -1,6 +1,6 @@
 # ZaakiyJS Engineering Documentation
 
-> **Current state:** initial seven foundation implementation slices are merged and validated through workspace lint, strict typecheck, build, unit/integration fixtures and a generated Counter Chromium smoke. No packages have been published to npm; full browser, SEO/SSR, compatibility and release gates remain open. The M0 documents below preserve historical contract choices, not a claim that source packages remain type-only.
+> **Current state:** Seven foundation implementation slices are merged. Workspace lint, strict typecheck, build, 229 passing unit/integration tests and 24/24 Playwright Chromium/Firefox/WebKit acceptance cases verify the restricted M1 native-element control-flow path. This is **not** full-browser-target certification or independent npm release readiness: advanced TSX grammar, compatibility transforms, memory/benchmark evidence and release/SSR/SEO gates remain open. The historical M0 documents below do not describe today's implementation status.
 
 ## Start here
 

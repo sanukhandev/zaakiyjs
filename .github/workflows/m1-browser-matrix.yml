@@ -1,0 +1,87 @@
+name: M1 Browser Matrix
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m1-browser-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  playwright:
+    name: browser / chromium-firefox-webkit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Frozen workspace install
+        run: pnpm install --frozen-lockfile
+      - name: Build workspace packages
+        run: pnpm build
+      - name: Scaffold real TypeScript/Vite consumer
+        run: node packages/cli/dist/bin.js start --project browser-app --template minimal --workspace --path apps --package-manager pnpm
+      - name: Link generated app workspace dependencies
+        run: pnpm install --no-frozen-lockfile
+      - name: Load maintained M1 browser fixture
+        run: |
+          cp tests/browser/fixture/App.tsx apps/browser-app/src/App.tsx
+          cp tests/browser/fixture/main.tsx apps/browser-app/src/main.tsx
+      - name: Strict fixture typecheck and production Vite build
+        run: pnpm --dir apps/browser-app typecheck && pnpm --dir apps/browser-app build
+      - name: Install pinned Playwright and all three browser engines
+        run: |
+          python3 -m pip install 'playwright==1.64.1'
+          python3 -m playwright install --with-deps chromium firefox webkit
+      - name: Exercise M1 semantics, cleanup and security in all browser engines
+        shell: bash
+        run: |
+          pnpm --dir apps/browser-app exec vite preview --host 127.0.0.1 --port 4188 --strictPort > /tmp/zaakiy-m1-preview.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:4188/ > /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/zaakiy-m1-preview.log
+            exit 1
+          fi
+          python3 tests/browser/m1_acceptance.py --base-url http://127.0.0.1:4188
+      - name: Assert browser bundle excludes build-only packages
+        shell: bash
+        run: |
+          test -f apps/browser-app/dist/index.html
+          if grep -R -E '@zaakiyjs/(ai|proxy|compiler|vite-plugin)' apps/browser-app/dist/assets --include='*.js'; then
+            echo 'Build-time module reference leaked into the browser'
+            exit 1
+          fi
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m1-browser-diagnostics
+          path: |
+            /tmp/zaakiy-*.png
+            /tmp/zaakiy-m1-preview.log
+          if-no-files-found: ignore
