@@ -11,7 +11,7 @@ import {
   invokeStyles,
   styleTokensFromResult
 } from "../src/bridge.js";
-import { zaakiyPlugin } from "../src/index.js";
+import { zaakiyPlugin } from "../src/plugin.js";
 
 const emptyResult: CompileResult = {
   irVersion: 1,

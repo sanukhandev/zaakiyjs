@@ -9,7 +9,7 @@ Build-time Vite bridge for the ZaakiyJS native-DOM compiler and atomic-style eng
 ```ts
 // vite.config.ts — once compiler, styles and DOM implementations have landed
 import { defineConfig } from "vite";
-import { zaakiyPlugin } from "@zaakiyjs/vite-plugin";
+import { zaakiyPlugin } from "@zaakiyjs/vite-plugin/plugin";
 
 export default defineConfig({
   plugins: [
@@ -23,6 +23,8 @@ export default defineConfig({
 ```
 
 A static TSX component imports `virtual:zaakiy-styles.css` automatically from the generated JS. In development the virtual module serves the current aggregate stylesheet. In HTML production builds a deterministic `assets/zaakiy-styles.css` is emitted, linked into HTML, and enumerated in `zaakiy-assets.json` (schema version 1). Non-HTML/library consumers must add the emitted CSS file to their distribution manually.
+
+For this M0-based draft, the executable factory is exposed via the package `./plugin` subpath. The M0 root export surface stays unchanged to preserve existing cross-package contracts. Root-level re-export requires a coordinated M1 contract/test update.
 
 ## Public configuration
 

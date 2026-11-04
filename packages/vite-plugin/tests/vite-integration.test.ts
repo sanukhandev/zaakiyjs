@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { build, createServer, type ViteDevServer } from "vite";
 import { fileURLToPath } from "node:url";
-import { join } from "node:path";
 import { hasCompiler, hasStyles } from "../src/bridge.js";
-import { zaakiyPlugin } from "../src/index.js";
+import { zaakiyPlugin } from "../src/plugin.js";
 
 const fixtureRoot = fileURLToPath(new URL("./fixtures/basic/", import.meta.url));
 const brandRoot = fileURLToPath(new URL("./fixtures/bad-brand/", import.meta.url));

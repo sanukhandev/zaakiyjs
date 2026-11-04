@@ -23,4 +23,3 @@ export interface VirtualCssContract {
 }
 export type VitePluginFactory<Plugin> = (options?: ZaakiyViteOptions) => Plugin;
 
-export { zaakiyPlugin } from "./plugin.js";
