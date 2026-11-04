@@ -83,12 +83,14 @@ function drain(): void {
 
 function observe(source: Source): void {
   const frame = activeFrame;
-  if (frame === null) return;
+  if (frame === null || (frame.observer instanceof EffectNode && frame.observer.disposed)) return;
   const { observer, seen } = frame;
   if (source === observer) throw new Error("ZaakiyJS circular computed dependency");
   if (seen.has(source)) return;
   seen.add(source);
-  if (!observer.dependencies.has(source) && !(observer instanceof ComputedNode && observer.observers.size === 0)) {
+  // Cold computeds retain dependency identities without upstream subscriptions.
+  // Always reattach on tracked reads; source sets deduplicate observers.
+  if (!(observer instanceof ComputedNode && observer.observers.size === 0)) {
     source.addObserver(observer);
   }
 }
@@ -105,14 +107,20 @@ function runTracked<T>(observer: Observer, evaluate: () => T): T {
     return result;
   } finally {
     activeFrame = previous;
-    if (succeeded) {
+    if (observer instanceof EffectNode && observer.disposed) {
+      // An effect may dispose itself during execution. Never resurrect subscriptions.
+      for (const source of before) source.removeObserver(observer);
+      for (const source of seen) source.removeObserver(observer);
+      observer.dependencies = new Set();
+    } else if (succeeded) {
       for (const source of before) if (!seen.has(source)) source.removeObserver(observer);
       observer.dependencies = seen;
       if (observer instanceof ComputedNode) {
         observer.revisions = new Map([...seen].map((source) => [source, source.revision()]));
       }
     } else {
-      for (const source of seen) if (!before.has(source)) source.removeObserver(observer);
+      // On failure keep known and partial dependencies for possible recovery.
+      for (const source of seen) before.add(source);
     }
   }
 }
@@ -145,6 +153,7 @@ class ComputedNode<T> implements ComputedSignal<T> {
   private cached!: T;
   private hasValue = false;
   private dirty = true;
+  private errored = false;
   private computing = false;
   private version = 0;
   constructor(private readonly calculator: () => T) {}
@@ -166,6 +175,10 @@ class ComputedNode<T> implements ComputedSignal<T> {
         this.cached = result;
         this.hasValue = true;
         this.dirty = false;
+        this.errored = false;
+      } catch (error) {
+        this.errored = true;
+        throw error;
       } finally { computedDepth--; this.computing = false; }
     }
     return this.cached;
@@ -185,7 +198,8 @@ class ComputedNode<T> implements ComputedSignal<T> {
     return this.version;
   }
   invalidate(): void {
-    if (this.dirty) return;
+    // A failed calculator remains dirty; future source writes must still wake consumers.
+    if (this.dirty && !this.errored) return;
     this.dirty = true;
     this.version++;
     for (const observer of [...this.observers]) observer.invalidate();
@@ -224,8 +238,12 @@ class EffectNode implements EffectHandle {
     this.cleanup = undefined;
     try {
       oldCleanup?.();
+      if (this.disposed) return; // Cleanup can dispose its effect before the next body.
       const result = runTracked(this, this.run);
-      this.cleanup = typeof result === "function" ? result : undefined;
+      if (typeof result === "function") {
+        if (this.disposed) result(); // Run a cleanup returned after self-disposal.
+        else this.cleanup = result;
+      }
     } catch (error) {
       if (this.onError) this.onError(error);
       else throw error;
@@ -277,6 +295,7 @@ export function flushSync(): void;
 export function flushSync<T>(run: () => T): T;
 export function flushSync<T>(run?: () => T): T | void {
   if (activeFrame) throw new Error("ZaakiyJS flushSync cannot run inside a tracked computation");
+  if (flushing) throw new Error("ZaakiyJS flushSync cannot reenter an active scheduler flush");
   let value: T | undefined;
   let failed = false;
   let callbackError: unknown;
