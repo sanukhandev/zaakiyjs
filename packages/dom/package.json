@@ -23,7 +23,7 @@
   "main": "./dist/index.js",
   "scripts": {
     "lint": "eslint src test",
-    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "typecheck": "tsc --noEmit --project tsconfig.json && tsc --noEmit --project tsconfig.type-tests.json",
     "build": "tsc --project tsconfig.build.json",
     "test": "vitest run test"
   },

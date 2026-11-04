@@ -296,6 +296,19 @@ describe("compiler-lowered native DOM runtime", () => {
     disposeOwner(owner);
   });
 
+
+  it("rejects nonprimitive keyed identities before modifying child DOM", () => {
+    const owner = createOwner();
+    const host = document.createElement("div");
+    const region = createRegion(host);
+    const factory = vi.fn(() => ({ node: document.createElement("span") }));
+    expect(() => bindKeyedRegion(owner, region, () => [1],
+      () => ({ id: 1 }) as unknown as string, factory)).toThrow(/stable string/);
+    expect(factory).not.toHaveBeenCalled();
+    expect(host.querySelector("*")).toBeNull();
+    disposeOwner(owner);
+  });
+
   it("rolls back newly added keyed owners without removing old nodes on factory failure", () => {
     const owner = createOwner();
     const parent = document.createElement("div");

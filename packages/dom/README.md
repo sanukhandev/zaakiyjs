@@ -42,9 +42,9 @@ The example is generated-code style. M0's TSX is still typecheck-only. There is 
 
 ## Integration gate
 
-**Draft / blocked:** M0 core and signals on `main` expose only types. This package requires the agreed owner and signal callable APIs. The repository M0 export-surface contract test will require coordinated retirement. The frozen lockfile includes the jsdom test dependency. Native Chromium smoke and package artifact checks run when CI has a Chrome binary; a compiler-generated Counter fixture runs when `@zaakiyjs/compiler` is implemented; Firefox/WebKit Playwright coverage remains a separate integration gate.
+**Draft / blocked:** M0 core and signals on `main` expose only types. This package requires the agreed owner and signal callable APIs. The repository M0 export-surface contract test will require coordinated retirement. The frozen lockfile includes the jsdom test dependency. Artifact and npm-pack checks run in CI. Native Chromium smoke runs when a Chrome binary is present; the compiler-generated Counter fixture runs when `@zaakiyjs/compiler` is implemented. Firefox/WebKit Playwright coverage remains a separate integration gate.
 
-No measured bundle size, memory, or performance claims are made before a reproducible build and CI pass.
+Production bundle size and memory-leak benchmarks require dedicated reproducible profiling; the artifact and Chromium smoke tests report directly measured byte counts but must not be represented as a full production-bundle benchmark.
 
 ## Validation
 
@@ -52,3 +52,7 @@ No measured bundle size, memory, or performance claims are made before a reprodu
 - Package tests include `MutationObserver` assertions, ownership cleanup, keyed range identity, URL and style sink defenses, native Chromium smoke, and npm pack/declaration verification.
 - The Chromium smoke bundles a **test harness plus core/signals**; its logged gzip bytes are not the isolated DOM package size. Artifact tests also report raw and per-module gzip bytes for generated DOM JavaScript.
 - The real-browser smoke uses an installed Chromium binary; when none exists, Vitest explicitly marks it skipped. Full Chromium/Firefox/WebKit matrix remains an integration gate.
+
+### TypeScript source compatibility
+
+`pnpm --filter @zaakiyjs/dom typecheck` additionally runs `tsconfig.type-tests.json`, verifying that `mount(() => <App />, container)` is accepted at the **source type** level while the compiler replaces JSX with native DOM before execution. No runtime JSX interpreter is provided.

@@ -235,6 +235,9 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
     const next = new Map<Key, Item>();
     for (const item of items) {
       const key = untrack(() => keyOf(item));
+      if (typeof key !== "string" && typeof key !== "number" && typeof key !== "symbol") {
+        throw new TypeError("Keyed region requires a stable string, number or symbol key");
+      }
       if (next.has(key)) throw new Error("Duplicate key in ZaakiyJS keyed region: " + String(key));
       next.set(key, item);
     }

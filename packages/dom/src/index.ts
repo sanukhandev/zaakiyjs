@@ -1,5 +1,5 @@
 import { createOwner, disposeOwner, initializeOwnedComponent, mountOwner } from "@zaakiyjs/core";
-import type { OwnerScope } from "@zaakiyjs/core";
+import type { OwnerScope, ViewNode } from "@zaakiyjs/core";
 
 export const foundationStatus = { package: "@zaakiyjs/dom", implemented: true } as const;
 
@@ -18,7 +18,8 @@ export type DomTarget = Element | DocumentFragment;
 export type Namespace = "html" | "svg" | "mathml";
 export type MountResult = Node | DocumentFragment | readonly Node[];
 /** A compiler-lowered factory, not a JSX runtime or a component rerender function. */
-export type MountFactory = (owner: OwnerScope) => MountResult;
+/** TSX is typed as ViewNode pre-compilation; generated JS returns native nodes. */
+export type MountFactory = (owner: OwnerScope) => MountResult | ViewNode;
 
 /** Reserved M0 shapes; a public keyed-loop ABI awaits a coordinated ADR. */
 export interface KeyedEntry<Key, Item> {
