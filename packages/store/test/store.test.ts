@@ -301,6 +301,77 @@ describe("@zaakiyjs/store", () => {
     disposeOwner(b.request);
   });
 
+  it("keeps parent state and providers readable throughout descendant cleanup", () => {
+    const app = createOwner();
+    const route = createOwner(app);
+    const component = createOwner(route);
+    const { store } = setup(app);
+    const token = createStoreContext<typeof store>("SharedDuringCleanup");
+    provideStore(app, token, store);
+    store.actions.increment(4);
+    const selected = store.select(s => s.count.value * 2);
+    expect(selected.value).toBe(8);
+    const reads: string[] = [];
+    runWithOwner(component, () => onCleanup(() => {
+      expect(app.disposed).toBe(true);
+      expect(store.disposed).toBe(false);
+      expect(requireStore(component, token)).toBe(store);
+      expect(useStore(component, token)).toBe(store);
+      expect(store.state.count.value).toBe(4);
+      expect(store.state.count.peek()).toBe(4);
+      expect(selected.value).toBe(8);
+      expect(selected.peek()).toBe(8);
+      expect(() => store.actions.increment(1)).toThrow(/disposed/);
+      expect(() => store.reset()).toThrow(/disposed/);
+      reads.push("component");
+    }));
+    runWithOwner(route, () => onCleanup(() => {
+      expect(requireStore(route, token)).toBe(store);
+      expect(store.state.count.value).toBe(4);
+      reads.push("route");
+    }));
+    runWithOwner(app, () => onCleanup(() => {
+      // This runs before the store's own closure because of Core cleanup LIFO.
+      expect(store.state.count.value).toBe(4);
+      reads.push("app");
+    }));
+    expect(() => disposeOwner(app)).not.toThrow();
+    expect(reads).toEqual(["component", "route", "app"]);
+    expect(store.disposed).toBe(true);
+    expect(() => store.state.count.peek()).toThrow(/disposed/);
+    expect(() => selected.value).toThrow(/disposed/);
+    expect(() => requireStore(component, token)).toThrow(/disposed/);
+  });
+
+  it("preserves parent store reads during reentrant descendant-triggered disposal", () => {
+    const app = createOwner();
+    const child = createOwner(app);
+    const { store } = setup(app);
+    const token = createStoreContext<typeof store>("ReentrantCleanup");
+    provideStore(app, token, store);
+    const reads: string[] = [];
+    runWithOwner(child, () => {
+      onCleanup(() => {
+        expect(requireStore(child, token)).toBe(store);
+        expect(store.state.profile.value.name).toBe("A");
+        reads.push("last");
+      });
+      onCleanup(() => {
+        disposeOwner(app);
+        expect(app.disposed).toBe(true);
+        expect(requireStore(child, token)).toBe(store);
+        expect(store.state.count.peek()).toBe(0);
+        expect(() => store.actions.increment(1)).toThrow(/disposed/);
+        reads.push("first");
+      });
+    });
+    expect(() => disposeOwner(child)).not.toThrow();
+    expect(reads).toEqual(["first", "last"]);
+    expect(app.disposed).toBe(true);
+    expect(store.disposed).toBe(true);
+    expect(() => store.state.count.value).toThrow(/disposed/);
+  });
+
   it("refuses cross-request and longer-lived providers of owned stores", () => {
     const appA = createOwner();
     const appB = createOwner();
