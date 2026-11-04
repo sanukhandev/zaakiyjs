@@ -139,7 +139,7 @@ export function analyzeCompatibility(request: CompatAnalysisRequest): Compatibil
     "Compatibility mode is off: no compatibility guarantee, transforms or shims."));
   if (targets.some(target => target.browser === "edge") &&
       (request.cssFeatures?.length ?? 0) > 0) {
-    diagnostics.push(diagnostic("ZK2501", "warning",
+    diagnostics.push(diagnostic("ZK2501", mode === "strict" ? "error" : "warning",
       "Styles' current BrowserTargets contract has no Edge field; coordinate a CSS target adapter."));
   }
 
