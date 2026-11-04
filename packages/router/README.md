@@ -1,6 +1,6 @@
 # @zaakiyjs/router
 
-Client-side routing on ZaakiyJS Core owners and Signals. Independent of React, Vue, Angular, Zone.js, and a virtual DOM. **Prerelease: this package has not passed cross-package/browser acceptance.**
+Client-side routing on ZaakiyJS Core owners and Signals. Independent of React, Vue, Angular, Zone.js, and a virtual DOM. **Prerelease (not yet published): merge eligibility is determined by the CI checks on the PR's latest head, including dedicated real-browser Router acceptance.**
 
 ## Core API
 
@@ -84,7 +84,7 @@ For stronger Model and loader-data typing, use the public `definePageAdapter<Par
 
 ## Integration constraints and release gates
 
-The current DOM package's `mount(factory, container)` always creates a new application owner; it cannot mount directly into a preexisting route owner. Router therefore uses the *actual* Core owner/mount lifecycle and native DOM insertion through an explicit page adapter, without inventing a compiler or DOM helper. End-to-end compiled TSX route factories, multi-root pages, nested route transitions under the compiler, and Firefox/WebKit behavior require a coordinated DOM/compiler integration design and browser tests before stable release.
+The public DOM package's `mount(factory, container)` creates a separate application owner. Router instead uses the **public Core owner lifecycle and public DOM/compiler ABI** through an explicit route page adapter; it does not invent a separate TSX renderer or attach a second app owner. The maintained `test/browser/App.tsx` and dynamically imported `test/browser/LazyPage.tsx` are compiled through the real CLI/Vite pipeline, mounted in nested native DOM outlets, and exercised by `.github/workflows/router-browser-matrix.yml` in **Chromium, Firefox and WebKit**. This is a dedicated merge acceptance check, not a claim that Router is published or SSR-ready. A page adapter currently returns one native root node; direct multi-root route pages and general-purpose SSR/hydration are outside this initial release.
 
 The host server/CDN must serve the application's entry document for deep links and browser refreshes (SPA fallback), while preserving real asset files and HTTP status/SEO routes. Router alone cannot provide server-side 404 or SSR/SEO metadata responses.
 
@@ -98,6 +98,6 @@ pnpm --filter @zaakiyjs/router test
 pnpm --filter @zaakiyjs/router pack:check
 ```
 
-**PR integration follow-up:** registering a new workspace package requires coordinated regeneration of the root `pnpm-lock.yaml` for frozen installations. Additionally, `scripts/ci/verify-workspaces.mjs` hardcodes the original seven packages and currently rejects Router as an unexpected package. Both updates must be performed by the integration owner; this isolated package branch intentionally does not edit root workspace files. The existing CI fails before it can run lint, typecheck, build or tests.
+The Router PR includes a reconciled frozen workspace lockfile and a narrow `scripts/ci/verify-workspaces.mjs` Router registration; existing foundation and other independent package checks remain mandatory. The package has **no compiler, network-client, AI, or external framework runtime dependency**. The compiler only runs at application build time. In addition to the package's Vitest unit/integration tests and ESM/npm-pack checks, the dedicated Router browser workflow verifies typed navigation, real TSX lowering, nested layout reuse, browser history, guards, redirects, lazy modules, abort races, injection resistance, and owner/listener cleanup. Always consult the latest workflow result before marking the PR ready.
 
-The package has no compiler, network client, AI, or framework-renderer dependencies. Browser History integration, cancellation, scope disposal, source-level TSX typing, and end-to-end compiled route mounting remain explicit acceptance gates rather than unverified claims.
+The host server/CDN must implement SPA deep-link fallback for deployed apps. Actual HTTP 404/500 semantics, SSR/hydration, custom page transitions, and externally published npm installation are separate product/release work.
