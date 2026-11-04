@@ -1,0 +1,43 @@
+name: CLI Generated App Acceptance
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  generated-app:
+    name: cli / generated-app
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Frozen workspace install
+        run: pnpm install --frozen-lockfile
+      - name: Build merged framework and CLI
+        run: pnpm build
+      - name: Run complete CLI package tests
+        run: pnpm --filter @zaakiyjs/cli test
+      - name: Scaffold a genuine app in the pnpm workspace
+        run: node packages/cli/dist/bin.js start --project smoke-app --template minimal --workspace --path apps --package-manager pnpm
+      - name: Resolve test app workspace dependency graph
+        run: pnpm install --no-frozen-lockfile
+      - name: Strict generated TypeScript check
+        run: pnpm --dir apps/smoke-app typecheck
+      - name: Compile real TSX and generated CSS through Vite
+        run: pnpm --dir apps/smoke-app build
+      - name: Assert generated artifacts and no build tool imports in browser code
+        shell: bash
+        run: |
+          test -f apps/smoke-app/dist/index.html
+          find apps/smoke-app/dist -type f
+          if grep -R -E '@zaakiyjs/(ai|proxy|compiler|vite-plugin)' apps/smoke-app/dist/assets --include='*.js'; then
+            echo 'Unexpected build-time package reference in browser assets'
+            exit 1
+          fi
