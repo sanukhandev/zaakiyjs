@@ -69,11 +69,12 @@ The Counter fixture compiled on the GitHub Actions Node 22 runner with TypeScrip
 | --- | ---: |
 | Generated JavaScript | 1,296 bytes (unminified) |
 | Generated JavaScript gzip | 509 bytes |
-| Counter compile wall time | 189.08 ms (single run; not a benchmark percentile) |
+| Counter compile wall time | 201.30 ms (single CI run; not a benchmark percentile) |
 | Compiler behavior tests | 25/25 passed |
-| Full workspace tests | 40/40 passed |
+| Compiler package/ESM artifact tests | 2/2 passed |
+| Full workspace tests | 42/42 passed |
 
-These figures are **fixture output**, not framework runtime bundle size. No claim of meeting the 12 KiB runtime target is made. Generated maps have line-level binding validation; browser/devtools source-map validation remains open.
+This baseline is from [CI run 41793641788](https://github.com/sanukhandev/zaakiyjs/actions/runs/41793641788). The independent npm pack dry run passed. These figures are **fixture output**, not framework runtime bundle size. No claim of meeting the 12 KiB runtime target is made. Generated maps have line-level binding validation; browser/devtools source-map validation remains open.
 
 **Integration status:** The compiler TypeScript 5.9.3 dependency is declared and the compiler-only `pnpm-lock.yaml` importer is synchronized. The current compiler branch passes frozen pnpm installation. The independent core/signals/DOM feature branches are still awaiting coordinated integration, and DOM region/loop ABI v1 is not frozen. Do not merge or publish until the real runtime, browser, focus, ownership cleanup and keyed-list suites pass.
 
