@@ -138,10 +138,10 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
       signalDecl,
       'function App(){const __zCreateText = "shadow"; const count = signal(1);',
       'return <span>{count.value}</span>;}'
-    ].join("\\n");
+    ].join("\n");
     const result = compile({ fileName, source });
     expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
-    expect(result.js[0]?.code).toMatch(/createText as __zCreateText_\\d+/);
+    expect(result.js[0]?.code).toMatch(/createText as __zCreateText_\d+/);
     expect(allText(execute(source, "App").root)).toBe("1");
   });
 
