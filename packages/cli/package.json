@@ -4,9 +4,18 @@
   "description": "First-party ZaakiyJS application scaffolding, generators and toolchain commands",
   "type": "module",
   "sideEffects": false,
-  "engines": {"node": ">=20.19.0"},
-  "bin": {"zaakiy": "./dist/bin.js"},
-  "files": ["dist", "templates", "README.md", "CHANGELOG.md"],
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "bin": {
+    "zaakiy": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "templates",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -19,10 +28,12 @@
     "lint": "eslint src tests test",
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "build": "tsc --project tsconfig.build.json",
-    "test": "vitest run tests test",
+    "test": "vitest run --root ../.. packages/cli/test packages/cli/tests",
     "pack:check": "npm pack --dry-run --json"
   },
-  "publishConfig": {"access": "public"},
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@zaakiyjs/core": "workspace:^",
     "@zaakiyjs/dom": "workspace:^",
