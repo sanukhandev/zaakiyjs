@@ -119,9 +119,14 @@ export function analyze(request: CompileRequest): Analysis {
       report("ZC1004", "JSX attribute value cannot be lowered safely.", node);
       return null;
     }
-    if ((name === "href" || name === "src" || name === "xlink:href") &&
-        /^["']\s*(javascript|data):/i.test(value.source)) {
-      report("ZC1005", "Disallowed untrusted URL scheme in JSX attribute.", node);
+    if (["href", "src", "xlink:href", "formAction"].includes(name)) {
+      // The M0 DOM ABI lacks a vetted URL-policy helper. Only inspectable literals
+      // can be accepted, and executable/opaque URL schemes must never be emitted.
+      const staticString = value.source.startsWith('"') && value.source.endsWith('"');
+      const literal = staticString ? String(JSON.parse(value.source)) : null;
+      if (literal === null || /^[\s\u0000-\u001f]*(?:javascript|data|vbscript):/i.test(literal)) {
+        report("ZC1005", "Unsafe or unverified JSX URL. Only inspectable safe string literals are supported.", node);
+      }
     }
     const target: PropertyBinding["target"] = component || ["value", "checked", "disabled", "selected"].includes(name)
       ? "property" : name === "class" ? "class" : name === "style" ? "style" : "attribute";
@@ -214,6 +219,10 @@ export function analyze(request: CompileRequest): Analysis {
         continue;
       }
       const name = attr.name.getText(source);
+      if (!isComponent && /^on/i.test(name) && !/^on[A-Z]/.test(name)) {
+        report("ZC1006", "Inline event attributes must use typed onEvent handlers, not HTML on* strings.", attr);
+        continue;
+      }
       if (!isComponent && /^on[A-Z]/.test(name)) {
         const b = binding(attr, false);
         if (b) attributes.push({
