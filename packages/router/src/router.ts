@@ -6,9 +6,9 @@ import type { ContextToken, OwnerScope } from "@zaakiyjs/core";
 import { batch, signal } from "@zaakiyjs/signals";
 import { compileRoutes, matchRoutes, buildRoutePath } from "./match.js";
 import type {
-  ActiveRoute, CancellationReason, CompiledRoute, GuardDecision, HistoryAdapter,
+  ActiveRoute, CancellationReason, CompiledRoute, GuardDecision,
   NavigationOptions, NavigationResult, PageAdapterContext, PageView,
-  RouteContext, RouteDefinition, RouteMatch, RouteModule, RouteTarget, RouterOptions,
+  RouteContext, RouteMatch, RouteModule, RouteTarget, RouterOptions,
   RouterSignals
 } from "./types.js";
 import {
