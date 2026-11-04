@@ -9,7 +9,7 @@ Build-time Vite bridge for the ZaakiyJS native-DOM compiler and atomic-style eng
 ```ts
 // vite.config.ts — once compiler, styles and DOM implementations have landed
 import { defineConfig } from "vite";
-import { zaakiyPlugin } from "@zaakiyjs/vite-plugin/plugin";
+import { zaakiyPlugin } from "@zaakiyjs/vite-plugin";
 
 export default defineConfig({
   plugins: [
@@ -24,7 +24,7 @@ export default defineConfig({
 
 A static TSX component imports `virtual:zaakiy-styles.css` automatically from the generated JS. In development the virtual module serves the current aggregate stylesheet. In HTML production builds a deterministic `assets/zaakiy-styles.css` is emitted, linked into HTML, and enumerated in `zaakiy-assets.json` (schema version 1). Non-HTML/library consumers must add the emitted CSS file to their distribution manually. A configured brand or safelist can generate CSS even when no TSX files are transformed, once the styles engine is available.
 
-For this M0-based draft, the executable factory is exposed via the package `./plugin` subpath. The M0 root export surface stays unchanged to preserve existing cross-package contracts. Root-level re-export requires a coordinated M1 contract/test update.
+The public `zaakiyPlugin()` factory is exported from the package root. A compatibility `./plugin` subpath remains available. `foundationStatus.implemented` refers to this executable Vite adapter, **not** proof that upstream compiler, styles and DOM integration is complete.
 
 ## Public configuration
 
@@ -57,10 +57,11 @@ Compiler errors are fatal with original file/line/column; warnings are emitted t
 
 ```sh
 pnpm install --frozen-lockfile
+pnpm build  # ensures compiler/styles workspace exports exist before plugin tests
 pnpm --filter @zaakiyjs/vite-plugin lint
 pnpm --filter @zaakiyjs/vite-plugin typecheck
-pnpm --filter @zaakiyjs/vite-plugin build
 pnpm --filter @zaakiyjs/vite-plugin test
+pnpm ci
 ```
 
 The root CI Vitest suite and the package-local Vitest suite both run the actual Vite dev server and production build against `tests/fixtures/basic/`. While compiler/styles are types-only, successful TSX compilation and brand-only CSS tests are skipped and **real Vite refusal** tests verify the fail-closed boundary. After the implementations land, run full Vite+DOM browser integration for: TSX, source maps, invalid JSX, utility CSS deduplication, brand overrides and invalidation, multi-module import graphs, HMR ownership disposal, AI/server dependency absence, and identical production hashes across pinned builds. **These acceptance gates are pending, not passed.**

@@ -1,5 +1,5 @@
 /** Build-time Vite integration. The executable compiler/style engines are separate packages. */
-export const foundationStatus = { package: "@zaakiyjs/vite-plugin", implemented: false } as const;
+export const foundationStatus = { package: "@zaakiyjs/vite-plugin", implemented: true } as const;
 
 export interface ZaakiyViteOptions {
   readonly configFile?: string;
@@ -25,3 +25,4 @@ export interface VirtualCssContract {
 }
 export type VitePluginFactory<Plugin> = (options?: ZaakiyViteOptions) => Plugin;
 
+export { zaakiyPlugin } from "./plugin.js";
