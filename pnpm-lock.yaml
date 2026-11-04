@@ -76,7 +76,11 @@ importers:
 
   packages/signals: {}
 
-  packages/styles: {}
+  packages/styles:
+    dependencies:
+      postcss:
+        specifier: 8.5.32
+        version: 8.5.32
 
   packages/vite-plugin:
     dependencies:

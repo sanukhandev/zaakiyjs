@@ -1,13 +1,8 @@
-/** M0 TYPE CONTRACT ONLY. Utility parsing/CSS extraction are not implemented. */
-export const foundationStatus = { package: "@zaakiyjs/styles", implemented: false } as const;
-export interface BrandTokens {
-  readonly colors?: Readonly<Record<string, string>>;
-  readonly spacing?: Readonly<Record<string, string>>;
-  readonly fonts?: Readonly<Record<string, string>>;
-  readonly radii?: Readonly<Record<string, string>>;
-  readonly breakpoints?: Readonly<Record<string, string>>;
-}
-export interface StyleConfig { readonly brand: BrandTokens; readonly mode?: "light" | "dark" | "system"; readonly safelist?: readonly string[] }
-export interface ExtractedStyleToken { readonly token: string; readonly file: string; readonly offset: number }
-export interface StyleCompilerRequest { readonly tokens: readonly ExtractedStyleToken[]; readonly config: StyleConfig; readonly minify?: boolean }
-export interface StyleCompilerResult { readonly css: string; readonly sourceMap?: string; readonly diagnostics: readonly { readonly code: string; readonly message: string; readonly token?: string }[]; readonly tokenIds: Readonly<Record<string, string>> }
+export { compileStyles, parseUtilityToken, stableTokenId } from "./compiler.js";
+export { brandCss, cssVar, defineBrand, defineStyleConfig, renderBrandScope, resolveBrand, resolveBreakpoints, safeCssValue, validateBrand } from "./brand.js";
+export { defineRecipe, uniqueClasses } from "./recipes.js";
+export { extractStyleTokens } from "./extract.js";
+export type { ExtractionResult } from "./extract.js";
+export type { RecipeDefinition, RecipeSelection, RecipeVariants, CompoundVariant } from "./recipes.js";
+export type { BrandIdentity, BrandTypography, BrandMotion, BrandOverride, BrandTokens, BrowserTargets, StyleConfig, ExtractedStyleToken, StyleCompilerRequest, StyleCompilerResult, StyleDiagnostic, StyleMetrics } from "./types.js";
+export const foundationStatus = { package: "@zaakiyjs/styles", implemented: true } as const;
