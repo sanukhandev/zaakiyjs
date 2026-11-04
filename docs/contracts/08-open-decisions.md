@@ -1,6 +1,6 @@
 # M0 open decisions — requires ADR or coordinated contract revision
 
-1. **Effect first-run timing and exceptions:** synchronous initial invocation vs deferred queue, nested flushSync policy, how errors are reported/aggregated, and exact cycle threshold.
+1. **Signals scheduling: RESOLVED by ADR 0003.** Initial execution, phases, error policy, cycle thresholds, and `flushSync` restrictions are frozen for M1; integrated Core/DOM conformance still required.
 2. **Component/TSX lowering:** handling of children/JSX spread, expression side effects, refs and typed DOM/SVG event tables; whether to support classic JSX fallback. M0 only provides typecheck-only `jsx: preserve`.
 3. **Owner scopes:** implicit current-owner propagation at async boundaries is forbidden without explicit adapter semantics. Decide absent-provider errors vs `undefined`, provider update policy and keep-alive transitions.
 4. **DOM ABI keyed lists:** typed `<For>` and `<Show>` signatures, range markers, duplicate key diagnostics, key equality and hydration hooks are not frozen.

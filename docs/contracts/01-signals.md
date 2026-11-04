@@ -19,4 +19,4 @@ flushSync<T>(run?: () => T): T | void
 
 **Ownership integration:** standalone `signals.effect` returns an explicit disposable handle. `@zaakiyjs/core` connects effect cleanup to an active OwnerScope **without** making signals depend on core. On each rerun, execute previous effect cleanup before the new body; on final disposal, run it exactly once. Throwing effects cannot leave stale tracking state. Async effects are not awaited by the synchronous reactive engine.
 
-**To resolve before M1 release:** precise microtask vs synchronous first-effect invocation, error aggregation and `flushSync` reentrancy policy in [open decisions](08-open-decisions.md). These semantics are a design baseline, not passing tests.
+**M1 scheduling policy fixed by [ADR 0003](../adr/0003-signals-scheduler.md):** synchronous first effect, queued microtask invalidations, render-before-user phase order, untracked cleanup/error callbacks, bounded cycle quarantine, aggregate error reporting, and non-reentrant `flushSync`. Independent package tests and integrated Core/DOM behavior remain release gates.
