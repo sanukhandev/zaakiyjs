@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { build, createServer, type ViteDevServer, type RollupOutput } from "vite";
 import { fileURLToPath } from "node:url";
 import { hasCompiler, hasStyles } from "../src/bridge.js";
@@ -7,6 +7,7 @@ import { zaakiyPlugin } from "../src/plugin.js";
 const fixtureRoot = fileURLToPath(new URL("./fixtures/basic/", import.meta.url));
 const brandRoot = fileURLToPath(new URL("./fixtures/bad-brand/", import.meta.url));
 const plainRoot = fileURLToPath(new URL("./fixtures/plain/", import.meta.url));
+const forbiddenRoot = fileURLToPath(new URL("./fixtures/forbidden/", import.meta.url));
 let server: ViteDevServer | undefined;
 
 afterEach(async () => {
@@ -60,6 +61,52 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
     const parsed = JSON.parse(String(manifest?.source)) as { schemaVersion: number; assets: { fileName: string }[] };
     expect(parsed.schemaVersion).toBe(1);
     expect(parsed.assets.map(a => a.fileName)).toContain("assets/theme.css");
+    expect(parsed.assets.filter(a => a.fileName.endsWith(".js")).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("uses Vite's actual watcher to trigger a full reload for changed TSX, never silent owner reuse", async () => {
+    server = await createServer({
+      configFile: false,
+      root: fixtureRoot,
+      plugins: [zaakiyPlugin()],
+      server: { middlewareMode: true }
+    });
+    const socketSpy = vi.spyOn(server.ws, "send");
+    const changed = fileURLToPath(new URL("./fixtures/basic/src/main.tsx", import.meta.url));
+    server.watcher.emit("change", changed);
+    await vi.waitFor(() => {
+      expect(socketSpy).toHaveBeenCalledWith({ type: "full-reload", path: "*" });
+    }, { timeout: 3000, interval: 50 });
+  });
+
+  it("rejects a forbidden build-time import from a plain JavaScript browser entry", async () => {
+    await expect(build({
+      configFile: false,
+      root: forbiddenRoot,
+      plugins: [zaakiyPlugin()],
+      logLevel: "silent",
+      build: { write: false, emptyOutDir: false }
+    })).rejects.toThrow("ZV3001");
+  });
+
+  it("produces identical asset names and contents for repeated pinned Vite inputs", async () => {
+    const compile = async (): Promise<readonly { fileName: string; body: string }[]> => {
+      const built = await build({
+        configFile: false,
+        root: plainRoot,
+        plugins: [zaakiyPlugin()],
+        logLevel: "silent",
+        build: { write: false, emptyOutDir: false }
+      });
+      const result = Array.isArray(built) ? built[0] : built;
+      return (result as RollupOutput).output.map((item) => ({
+        fileName: item.fileName,
+        body: item.type === "chunk" ? item.code : String(item.source)
+      })).sort((a, b) => a.fileName.localeCompare(b.fileName));
+    };
+    const first = await compile();
+    expect(first.length).toBeGreaterThanOrEqual(4);
+    expect(await compile()).toEqual(first);
   });
 
   it("does not silently fall back to another JSX transform when compiler is missing", async () => {
