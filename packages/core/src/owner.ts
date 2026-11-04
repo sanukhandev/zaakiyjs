@@ -212,6 +212,15 @@ export function ownDisposable<T extends { dispose(): void }>(handle: T): T {
   return handle;
 }
 
+/** Create and own a signal effect without coupling signals back to Core.
+ * Caller supplies the public signals.effect invocation. The factory never runs
+ * without an active, live lexical owner. */
+export function ownEffect<T extends { dispose(): void }>(create: () => T): T {
+  if (!currentOwner) throw new Error("ownEffect requires runWithOwner");
+  asScope(currentOwner).ensureAlive();
+  return ownDisposable(create());
+}
+
 export function initializeOwnedComponent<T>(
   owner: OwnerScope,
   initialize: () => T
