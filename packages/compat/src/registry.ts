@@ -1,6 +1,5 @@
 import type { BrowserFamily, CompatibilityStrategy, FeatureDefinition } from "./types.js";
 
-const native: CompatibilityStrategy = { kind: "native", id: "native", byteEstimate: 0, security: "No code injection" };
 const unsupported: CompatibilityStrategy = { kind: "unsupported", id: "unsupported", byteEstimate: 0, security: "No unapproved global patch" };
 const tsES2019: CompatibilityStrategy = {
   kind: "syntax-transform", id: "typescript-5.9.3-es2019", byteEstimate: 0,
