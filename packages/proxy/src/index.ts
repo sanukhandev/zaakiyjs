@@ -37,12 +37,30 @@ export class MemoryRateLimitStore implements RateLimitStore {
 export function createProxyRouter(config: ProxyConfig): ProxyRouter {
   if (!config || !config.upstreams || typeof config.upstreams !== "object") throw new ProxyConfigurationError("Missing upstream configuration");
   const compiledUpstreams = new Map<string, { origin: URL; upstream: NonNullable<ProxyConfig["upstreams"][string]> }>();
+  const upstreamSnapshots: Record<string, NonNullable<ProxyConfig["upstreams"][string]>> = Object.create(null) as Record<string, NonNullable<ProxyConfig["upstreams"][string]>>;
   for (const [id, upstream] of Object.entries(config.upstreams)) {
     if (!/^[a-z][a-z0-9_-]*$/.test(id) || !upstream) throw new ProxyConfigurationError("Invalid upstream ID");
-    compiledUpstreams.set(id, { origin: cleanOrigin(upstream), upstream });
+    const approved = Object.freeze({ ...upstream,
+      allowedPrivateAddresses: upstream.allowedPrivateAddresses ? Object.freeze([...upstream.allowedPrivateAddresses]) : undefined
+    });
+    upstreamSnapshots[id] = approved;
+    compiledUpstreams.set(id, { origin: cleanOrigin(approved), upstream: approved });
   }
-  const routes = compileRoutes(config.routes, config.upstreams);
-  if (routes.some(r => r.route.access === "authenticated") && !config.authenticate) throw new ProxyConfigurationError("Protected routes require an authenticator");
+  if (!Array.isArray(config.routes)) throw new ProxyConfigurationError("Missing route configuration");
+  const routeSnapshots = config.routes.map(route => {
+    if (!route || !Array.isArray(route.methods)) throw new ProxyConfigurationError("Invalid route configuration");
+    return Object.freeze({ ...route,
+      methods: Object.freeze([...route.methods]),
+      requestHeaders: route.requestHeaders ? Object.freeze([...route.requestHeaders]) : undefined,
+      responseHeaders: route.responseHeaders ? Object.freeze([...route.responseHeaders]) : undefined,
+      rateLimit: route.rateLimit ? Object.freeze({ ...route.rateLimit }) : undefined,
+      retry: route.retry ? Object.freeze({ ...route.retry }) : undefined,
+      hooks: route.hooks ? Object.freeze({ ...route.hooks }) : undefined
+    });
+  });
+  const routes = compileRoutes(routeSnapshots, upstreamSnapshots);
+  const authenticator = config.authenticate;
+  if (routes.some(r => r.route.access === "authenticated") && !authenticator) throw new ProxyConfigurationError("Protected routes require an authenticator");
   const limiter = config.rateLimitStore ?? new MemoryRateLimitStore();
   const resolver = config.resolver ?? defaultResolver;
   const abortable = <T>(operation: Promise<T> | T, signal: AbortSignal): Promise<T> => {
@@ -107,7 +125,7 @@ export function createProxyRouter(config: ProxyConfig): ProxyRouter {
         if (signal.aborted) return finish(safeResponse(499, "CLIENT_CLOSED"), "cancelled");
         let principal: ProxyPrincipal | null = null;
         if (route.access === "authenticated") {
-          try { principal = await abortable(config.authenticate!({ request, routeId: route.id, signal }), signal); } catch { if (signal.aborted) throw signal.reason; principal = null; }
+          try { principal = await abortable(authenticator!({ request, routeId: route.id, signal }), signal); } catch { if (signal.aborted) throw signal.reason; principal = null; }
           if (!principal?.subject || typeof principal.subject !== "string") return finish(safeResponse(401, "UNAUTHENTICATED"), "authn");
           try {
             const approved = await abortable(route.authorize!({ principal, routeId: route.id, params, method, signal }), signal);
