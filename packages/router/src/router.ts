@@ -9,7 +9,7 @@ import type {
   ActiveRoute, CancellationReason, CompiledRoute, GuardDecision,
   NavigationOptions, NavigationResult, PageAdapterContext, PageView,
   RouteContext, RouteMatch, RouteModule, RouteTarget, RouterOptions,
-  RouterSignals
+  RouterSignals, ReadonlySearchParams
 } from "./types.js";
 import {
   NavigationCancelledError, NavigationDeniedError, RedirectLoopError,
@@ -56,6 +56,20 @@ function pathnameWithinBase(url: URL, base: string): string | null {
 }
 function serialize(url: URL): string {
   return url.pathname + url.search + url.hash;
+}
+function readonlySearch(value: string): ReadonlySearchParams {
+  const params = new URLSearchParams(value);
+  return Object.freeze({
+    get: (key: string) => params.get(key),
+    getAll: (key: string) => params.getAll(key),
+    has: (key: string, match?: string) => params.has(key, match),
+    entries: () => params.entries(),
+    keys: () => params.keys(),
+    values: () => params.values(),
+    forEach: (callback: (value: string, key: string) => void) => params.forEach(callback),
+    toString: () => params.toString(),
+    [Symbol.iterator]: () => params[Symbol.iterator]()
+  });
 }
 function paramsSame(a: Readonly<Record<string, string>>, b: Readonly<Record<string, string>>): boolean {
   const keys = Object.keys(a);
@@ -123,7 +137,7 @@ export class Router {
   private readonly urlState = signal("/");
   private readonly matchesState = signal<readonly ActiveRoute[]>([]);
   private readonly paramsState = signal<Readonly<Record<string, string>>>({});
-  private readonly searchState = signal(new URLSearchParams());
+  private readonly searchState = signal<ReadonlySearchParams>(readonlySearch(""));
   private readonly hashState = signal("");
   private readonly statusState = signal<"idle" | "loading" | "blocked" | "error">("idle");
   private readonly pendingState = signal<string | null>(null);
@@ -379,7 +393,7 @@ export class Router {
         this.urlState.value = destination;
         this.matchesState.value = [...this.active];
         this.paramsState.value = this.active.at(-1)?.params ?? {};
-        this.searchState.value = new URLSearchParams(to.search);
+        this.searchState.value = readonlySearch(to.search);
         this.hashState.value = to.hash;
         this.statusState.value = "idle";
         this.pendingState.value = null;
