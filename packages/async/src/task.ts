@@ -210,12 +210,12 @@ export function createTask<TInput, TResult>(options: TaskOptions<TInput, TResult
     }
     return start(id, input, runOptions.signal);
   }
-  function dispose(): void {
+  function dispose(kind: "manual" | "owner" = "manual"): void {
     if (closed) return;
     const hadWork = active.size > 0 || queue.length > 0;
     closed = true;
     detachOwner();
-    cancelAll("owner");
+    cancelAll(kind);
     // Final synchronous teardown is permitted; no later Promise may publish.
     pendingCount.value = 0;
     queuedCount.value = 0;
@@ -245,8 +245,8 @@ export function createTask<TInput, TResult>(options: TaskOptions<TInput, TResult
       error.value = null;
       status.value = "idle";
     },
-    dispose
+    dispose: () => dispose("manual")
   };
-  detachOwner = attachOwner(owner, dispose);
+  detachOwner = attachOwner(owner, () => dispose("owner"));
   return task;
 }

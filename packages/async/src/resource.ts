@@ -189,7 +189,7 @@ export function createResource<TData, TKey = void>(options: ResourceOptions<TDat
         throw typed;
       }
     ).finally(() => {
-      lease?.release();
+      lease?.release(cancellation.signal.aborted ? abortedReason(cancellation.signal).kind : "manual");
       cancellation.dispose();
       if (active === cancellation) active = null;
       if (id === generation && !closed) {
