@@ -5,8 +5,16 @@ import type {
 import type { Analysis } from "./analysis.js";
 import { sourceSpan } from "./analysis.js";
 
-const DOM_IMPORT = 'import { createElement as __zCreateElement, createText as __zCreateText, setProperty as __zSetProperty, setAttribute as __zSetAttribute, bindText as __zBindText, bindProperty as __zBindProperty, listen as __zListen } from "@zaakiyjs/dom/compiler";';
-const CORE_IMPORT = 'import { getOwner as __zGetOwner, createOwner as __zCreateOwner, runWithOwner as __zRunWithOwner } from "@zaakiyjs/core";';
+function runtimeImport(moduleName: string, names: readonly (readonly [string, string])[]): ts.ImportDeclaration {
+  return ts.factory.createImportDeclaration(
+    undefined,
+    ts.factory.createImportClause(false, undefined, ts.factory.createNamedImports(
+      names.map(([name, alias]) =>
+        ts.factory.createImportSpecifier(false, ts.factory.createIdentifier(name), ts.factory.createIdentifier(alias)))
+    )),
+    ts.factory.createStringLiteral(moduleName)
+  );
+}
 
 function isJsx(node: ts.Node): node is ts.JsxElement | ts.JsxSelfClosingElement {
   return ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node);
@@ -203,10 +211,17 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
       return ts.visitEachChild(node, visit, context);
     };
     const visited = ts.visitEachChild(file, visit, context);
-    const imports = ts.createSourceFile("__zaakiy_imports.ts", DOM_IMPORT + "\n" + CORE_IMPORT,
-      ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
-    return ts.factory.updateSourceFile(visited,
-      [...imports.statements, ...visited.statements]);
+    const dom = runtimeImport("@zaakiyjs/dom/compiler", [
+      ["createElement", "__zCreateElement"], ["createText", "__zCreateText"],
+      ["setProperty", "__zSetProperty"], ["setAttribute", "__zSetAttribute"],
+      ["bindText", "__zBindText"], ["bindProperty", "__zBindProperty"],
+      ["listen", "__zListen"]
+    ]);
+    const core = runtimeImport("@zaakiyjs/core", [
+      ["getOwner", "__zGetOwner"], ["createOwner", "__zCreateOwner"],
+      ["runWithOwner", "__zRunWithOwner"]
+    ]);
+    return ts.factory.updateSourceFile(visited, [dom, core, ...visited.statements]);
   };
 
   const fileName = analysis.sourceFile.fileName;
@@ -216,7 +231,8 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
     compilerOptions: {
       target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
       moduleResolution: ts.ModuleResolutionKind.Bundler,
-      jsx: ts.JsxEmit.Preserve,
+      // No JSX is allowed to survive the transform; this emits .js rather than .jsx assets.
+      jsx: ts.JsxEmit.ReactJSX,
       sourceMap: true,
       inlineSources: true,
       newLine: ts.NewLineKind.LineFeed,
