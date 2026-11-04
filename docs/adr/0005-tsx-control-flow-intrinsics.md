@@ -1,0 +1,43 @@
+# ADR 0005 — Typed compiler-only TSX control-flow intrinsics
+
+- **Status:** Implemented as a restricted M1 compiler vertical slice; cross-browser/release acceptance remains separate.
+- **Date:** 2026-11-04
+- **Ownership:** `@zaakiyjs/core` supplies typed function component contracts; `@zaakiyjs/compiler` owns syntactic recognition/lowering; `@zaakiyjs/dom/compiler` owns DOM regions.
+- **IR:** Preserve schema v1 `ConditionalBlock` and `KeyedLoop`; no new IR node kinds or mandatory JSX renderer.
+
+## Authoring
+
+```tsx
+import { Show, For } from "@zaakiyjs/core";
+import { signal } from "@zaakiyjs/signals";
+
+const open = signal(true);
+const rows = signal([{ id: "a", name: "One" }]);
+
+function App() {
+  return <main>
+    <Show when={open.value} fallback={<p>Closed</p>}>
+      <p>Open</p>
+    </Show>
+    <ul>
+      <For each={rows.value} by={row => row.id}>
+        {row => <li>{row.name}</li>}
+      </For>
+    </ul>
+  </main>;
+}
+```
+
+**Explicit import required:** Only named `Show`/`For` imports from `@zaakiyjs/core` (including aliases) are special. Unrelated local components with those names are never rewritten. These functions throw if invoked outside the compiler, so an uncompiled JSX tree cannot silently execute a virtual DOM runtime.
+
+**Show:** `when` is a required boolean JSX expression; one native element child is required. `fallback` is optional and must be a single native JSX element or `null`. A conditional region owns its branch scope, disposes the inactive branch before removal and does not reinitialize the active branch when the predicate stays unchanged.
+
+**For:** `each` accepts a readonly array; `by` is a required typed selector returning a primitive `PropertyKey`; the single JSX child must be an arrow render function with one named item argument and a single native element result. Each keyed item has a scope-owned signal; same-key replacements update targeted text/properties without reinitializing the element, and DOM reorders reuse existing focused nodes. The DOM ABI validates duplicate keys before mutation. Event handlers read the current item signal.
+
+**Fail closed:** JSX spreads, multiple sibling roots, destructured/async render callbacks, nested keyed loops, reactive keyed class/attributes, conditional children that directly contain another region, fragments and unsupported component children must produce deterministic compilation errors rather than silent JSX runtime fallbacks. Use a native element wrapper where necessary.
+
+## Safety, tests and migration
+
+No `innerHTML`, `eval`, `new Function`, runtime compiler or global Promise/timer patches are introduced. Component/region lifecycle and disposal follow [ADR 0004](0004-dom-region-abi.md); scheduler phases follow [ADR 0003](0003-signals-scheduler.md). TypeScript checks native JSX props and key selector types; source-level diagnostics reject unsupported shapes. Browser matrix, SSR/hydration and accessibility acceptance are additional release gates.
+
+The existing `IR_SCHEMA_VERSION=1` is retained; this is an additive compiler authoring feature, not a previously published API migration.
