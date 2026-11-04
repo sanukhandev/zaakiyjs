@@ -110,7 +110,8 @@ function contextFor(
 ): RouteContext {
   return {
     params: entry.params, search: new URLSearchParams(to.search), hash: to.hash,
-    from, to, signal, owner: entry.owner, services: createServices(entry.owner)
+    from, to, signal: AbortSignal.any([signal, entry.abort.signal]),
+    owner: entry.owner, services: createServices(entry.owner)
   };
 }
 /** No ambient browser access. All history and DOM access is injected. */
