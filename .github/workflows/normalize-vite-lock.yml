@@ -33,6 +33,7 @@ jobs:
           if(p.devDependencies.vite!=="6.3.5" && p.devDependencies.vite!=="6.4.5")
             throw new Error("Unexpected Vite dependency; inspect manually");
           p.devDependencies.vite="6.4.5";
+          p.pnpm={...p.pnpm,overrides:{...p.pnpm?.overrides,vite:"6.4.5"}};
           writeFileSync("package.json",JSON.stringify(p,null,2)+"\n");
           JS
           pnpm install --no-frozen-lockfile
