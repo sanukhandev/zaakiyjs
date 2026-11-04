@@ -6,7 +6,7 @@ export type {
   PageAdapterContext, PageAdapter, RouteModule, RouteDefinition, DefinedRoute,
   RouteTarget, RouteMatch, NavigationStatus, CancellationReason, NavigationResult,
   NavigationOptions, RouterSignals, HistoryAdapter, RouterOptions,
-  NavigationServices
+  NavigationServices, ReadonlySearchParams
 } from "./types.js";
 export { compileRoutes, matchRoutes, buildRoutePath } from "./match.js";
 export type { RouteTable } from "./match.js";
