@@ -171,8 +171,8 @@ class Builder {
   private branch(nodes: readonly IRNode[], childOwner: string): string {
     const scoped = new Builder(this.abi, this.names, this.rootSpan, childOwner);
     const root = nodes[0] ? scoped.child(nodes[0]) : undefined;
-    return "{\\n" + scoped.lines.join("\\n") + "\\nreturn " +
-      (root ?? (this.abi.createText + '(\\"\\")')) + ";\\n}";
+    return "{\n" + scoped.lines.join("\n") + "\nreturn " +
+      (root ?? (this.abi.createText + '("")')) + ";\n}";
   }
 
   private child(node: IRNode, parent?: string): string | undefined {
