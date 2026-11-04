@@ -447,6 +447,35 @@ describe("signals", () => {
     expect(results).toEqual([5, 10]);
     stop.dispose();
   });
+  it("reconnects previously disposed cold computed subscribers", () => {
+    const source = signal(1);
+    const inner = computed(() => source.value * 2);
+    const outer = computed(() => inner.value + 1);
+    const first = effect(() => { void outer.value; });
+    first.dispose();
+    source.value = 3;
+    const observed: number[] = [];
+    const second = effect(() => { observed.push(outer.value); });
+    source.value = 4;
+    flushSync();
+    expect(observed).toEqual([7, 9]);
+    second.dispose();
+    const inbound = source as unknown as { readonly observers: ReadonlySet<unknown> };
+    expect(inbound.observers.size).toBe(0);
+  });
+  it("releases failed computed dependencies when its consumer is disposed", () => {
+    const input = signal(0);
+    const errors: unknown[] = [];
+    const failing = computed(() => {
+      void input.value;
+      throw new Error("unavailable");
+    });
+    const stop = effect(() => { void failing.value; }, { onError: error => errors.push(error) });
+    expect(errors).toHaveLength(1);
+    expect((input as unknown as { readonly observers: ReadonlySet<unknown> }).observers.size).toBe(1);
+    stop.dispose();
+    expect((input as unknown as { readonly observers: ReadonlySet<unknown> }).observers.size).toBe(0);
+  });
   it("randomized graph agrees with a simple pure reference model", () => {
     let seed = 0x12345678;
     const next = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0);
