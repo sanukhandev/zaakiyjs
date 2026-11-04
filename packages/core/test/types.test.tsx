@@ -14,12 +14,12 @@ const Screen: Component<{ name: string }> = ({ name }) =>
       checked={false}
       onInput={(event) => { const name: string = event.type; void name; }}
       onKeyDown={(event) => { const key: string = event.key; void key; }}
-      ref={(element) => { const value: string = element.value; void value; }}
+      ref={(element) => { const value: string | undefined = element?.value; void value; }}
     />
     <button type="submit" disabled onClick={(event) => { const x: number = event.clientX; void x; }}>
       Submit
     </button>
-    <svg viewBox="0 0 24 24" ref={(element) => { const v: SVGAnimatedRect = element.viewBox; void v; }}>
+    <svg viewBox="0 0 24 24" ref={(element) => { const v: SVGAnimatedRect | undefined = element?.viewBox; void v; }}>
       <path d="M0 0" fill="red" strokeWidth={2} />
     </svg>
   </main>;
