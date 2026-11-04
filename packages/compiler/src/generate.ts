@@ -236,7 +236,8 @@ export function typeDiagnostics(request: CompileRequest, analysis: Analysis): Co
   const options: ts.CompilerOptions = {
     target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Bundler,
-    jsx: ts.JsxEmit.Preserve, jsxImportSource: "@zaakiyjs/core",
+    // Type-check against the JSX namespace from jsx-runtime; emission still uses preserve + our transformer.
+    jsx: ts.JsxEmit.ReactJSX, jsxImportSource: "@zaakiyjs/core",
     strict: true, skipLibCheck: true, noEmit: true, types: []
   };
   const host = ts.createCompilerHost(options);
