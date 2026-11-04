@@ -124,10 +124,12 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
 class Builder {
   private serial = 0;
   private readonly lines: string[] = [];
+  private readonly spans: SourceSpan[] = [];
   private readonly names: Set<string>;
   private readonly owner: string;
 
-  constructor(private readonly abi: AbiAliases, reserved: ReadonlySet<string>) {
+  constructor(private readonly abi: AbiAliases, reserved: ReadonlySet<string>,
+              private readonly rootSpan: SourceSpan) {
     this.names = new Set(reserved);
     this.owner = this.variable("owner");
   }
@@ -139,13 +141,16 @@ class Builder {
     this.names.add(name);
     return name;
   }
-  private push(source: string): void { this.lines.push(source); }
+  private push(code: string, span: SourceSpan = this.rootSpan): void {
+    this.lines.push(code);
+    this.spans.push(span);
+  }
 
   private attribute(el: string, node: PropertyBinding): void {
     const expr = "(" + node.expression.source + ")";
     if (node.expression.reactive) {
       this.push(this.abi.bindProperty + "(" + this.owner + ", " + el + ", " +
-        jsLiteral(node.name) + ", () => " + expr + ");");
+        jsLiteral(node.name) + ", () => " + expr + ");", node.expression.span);
       return;
     }
     const val = this.variable("value");
@@ -187,7 +192,7 @@ class Builder {
         if (node.expression.reactive) {
           this.push("const " + name + " = __zCreateText(\"\");");
           this.push(this.abi.bindText + "(" + this.owner + ", " + name + ", () => (" +
-            node.expression.source + "));");
+            node.expression.source + "));", node.expression.span);
         } else {
           const value = this.variable("value");
           this.push("const " + value + " = (" + node.expression.source + ");");
@@ -223,18 +228,19 @@ class Builder {
     return name;
   }
 
-  public build(node: IRNode): string {
+  public build(node: IRNode): { readonly code: string; readonly spans: readonly SourceSpan[] } {
     this.push("const " + this.owner + " = " + this.abi.getOwner + "();");
     this.push("if (" + this.owner + " == null) throw new Error(\"ZC runtime: JSX must execute inside an owner.\");");
     const root = this.child(node);
     this.push("return " + (root ?? (this.abi.createText + '("")')) + ";");
-    return "(() => {\n" + this.lines.join("\n") + "\n})()";
+    return { code: "(() => {\n" + this.lines.join("\n") + "\n})()", spans: this.spans };
   }
 }
 
-function toExpression(code: string, original: ts.Node, source: ts.SourceFile,
+function toExpression(generated: { readonly code: string; readonly spans: readonly SourceSpan[] },
+                      original: ts.Node, source: ts.SourceFile,
                       context: ts.TransformationContext): ts.Expression {
-  const holder = ts.createSourceFile("__zaakiy_emit.ts", "const __zaakiy_result = " + code + ";",
+  const holder = ts.createSourceFile("__zaakiy_emit.ts", "const __zaakiy_result = " + generated.code + ";",
     ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
   const statement = holder.statements[0];
   if (!statement || !ts.isVariableStatement(statement)) {
@@ -253,6 +259,21 @@ function toExpression(code: string, original: ts.Node, source: ts.SourceFile,
     return ts.visitEachChild(copy, clone, context);
   };
   const output = ts.visitNode(declaration.initializer, clone) as ts.Expression;
+  // Attach source ranges to individual generated statements, not just the
+  // enclosing JSX expression. A user breakpoint on a reactive binding must
+  // lead back to the original TSX binding, not an unmapped synthetic block.
+  const callee = ts.isCallExpression(output) && ts.isParenthesizedExpression(output.expression)
+    ? output.expression.expression : undefined;
+  if (!callee || !ts.isArrowFunction(callee) || !ts.isBlock(callee.body) ||
+      callee.body.statements.length !== generated.spans.length) {
+    throw new Error("Compiler internal error: generated statement/source mapping mismatch.");
+  }
+  callee.body.statements.forEach((statement, index) => {
+    const span = generated.spans[index];
+    if (span) ts.setSourceMapRange(statement, {
+      pos: span.start.offset, end: span.end.offset
+    });
+  });
   ts.setSourceMapRange(output, { pos: original.getStart(source), end: original.getEnd() });
   return output;
 }
@@ -274,7 +295,7 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
         const ir = roots.get(node.getStart(analysis.sourceFile));
         if (ir) {
           loweredJsx = true;
-          return toExpression(new Builder(aliases, reserved).build(ir), node, analysis.sourceFile, context);
+          return toExpression(new Builder(aliases, reserved, ir.span).build(ir), node, analysis.sourceFile, context);
         }
       }
       return ts.visitEachChild(node, visit, context);
