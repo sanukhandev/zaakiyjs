@@ -17,7 +17,7 @@ listen(owner: OwnerScope, node: EventTarget, name: string, fn: EventListener, op
 
 **Semantics:** static elements/text created once; dynamic binding bodies track signal reads; a write only mutates the target on a changed value. Text must use `Text.data` instead of replacing the subtree. Properties, attributes, class/style and SVG require distinct safe write paths. Listener registration returns an owner-attached disposable; never duplicate on signal changes or replace controlled inputs. `mount(factory, container)` creates a root owner and returns a disposal handle; its executable signature remains reserved.
 
-**Keyed lists:** key extraction must be deterministic and stable across moves; reuse existing nodes/owners for equal keys, move DOM ranges without reinitializing children, dispose removed keyed owners and preserve focused node identity. Duplicate keys must produce an actionable error or warning policy, not silent identity corruption. A keyed-loop ABI function is **not frozen yet**; agents must agree on range markers/key policies before adding it.
+**Keyed lists:** key extraction must be deterministic and stable across moves; reuse existing nodes/owners for equal keys, move DOM ranges without reinitializing children, dispose removed keyed owners and preserve focused node identity. Duplicate keys must produce an actionable error or warning policy, not silent identity corruption. The keyed region ABI is now **frozen for v1**, with range markers, duplicate-key rules and owner-scoped updates defined in [ADR 0004](../adr/0004-dom-region-abi.md).
 
 No compiler tool/AST/Vite import is allowed in browser runtime code. ABI evolution requires an explicit version change, generated-code compatibility test and migration note.
 
