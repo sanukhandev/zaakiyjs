@@ -77,7 +77,7 @@ export function validateIR(value: unknown): readonly CompilerDiagnostic[] {
       PropertyBinding: ["name", "target", "expression"],
       EventBinding: ["name", "expression"],
       ConditionalBlock: ["condition", "whenTrue", "whenFalse"],
-      KeyedLoop: ["collection", "key", "body"],
+      KeyedLoop: ["collection", "key", "body", "itemParameter"],
       ComponentCall: ["component", "props"],
       StyleToken: ["token", "variant"],
       CompatFeature: ["feature", "targets"]
@@ -119,6 +119,10 @@ export function validateIR(value: unknown): readonly CompilerDiagnostic[] {
       case "KeyedLoop":
         if (!expression(node.collection) || !expression(node.key)) {
           fail(path + " requires valid collection and key expressions.");
+        }
+        if (node.itemParameter !== undefined &&
+            (!string(node.itemParameter) || !/^[A-Za-z_$][\w$]*$/.test(node.itemParameter))) {
+          fail(path + ".itemParameter must be a simple identifier.");
         }
         descendants(node.body, path + ".body");
         break;

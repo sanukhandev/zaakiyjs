@@ -195,23 +195,29 @@ export function analyze(request: CompileRequest): Analysis {
             node.expression.name.text === "map") {
           const span = spanOf(source, child);
           const callback = node.arguments[0];
+          const itemParameter = callback && ts.isArrowFunction(callback) &&
+            callback.parameters.length === 1 && ts.isIdentifier(callback.parameters[0]!.name)
+            ? callback.parameters[0]!.name.text : undefined;
           const template = callback && ts.isArrowFunction(callback) ?
             (ts.isParenthesizedExpression(callback.body) ? callback.body.expression : callback.body) : undefined;
           const itemNode = template && isJsx(template) ? template : undefined;
           const jsxAttrs = itemNode && (ts.isJsxElement(itemNode)
             ? itemNode.openingElement.attributes.properties : itemNode.attributes.properties);
           const keyAttr = jsxAttrs?.find(a => ts.isJsxAttribute(a) && a.name.getText(source) === "key");
-          if (!keyAttr || !ts.isJsxAttribute(keyAttr) ||
+          if (!itemParameter || !itemNode || node.arguments.length !== 1 ||
+              !keyAttr || !ts.isJsxAttribute(keyAttr) ||
               !keyAttr.initializer || !ts.isJsxExpression(keyAttr.initializer) ||
               !keyAttr.initializer.expression) {
-            report("ZC2103", "Keyed list requires an explicit key expression and a frozen loop ABI.", child);
+            report("ZC2103", "Keyed array.map requires one named item parameter and a single JSX root with an explicit key expression.", child);
           }
           const key = keyAttr && ts.isJsxAttribute(keyAttr) && keyAttr.initializer &&
             ts.isJsxExpression(keyAttr.initializer) && keyAttr.initializer.expression
             ? expression(keyAttr.initializer.expression) : expression(node.expression.expression);
           nodes.push({
             kind: "KeyedLoop", id: idOf("KeyedLoop", span), span,
-            collection: expression(node.expression.expression), key, body: itemNode ? [element(itemNode, namespace)] : []
+            collection: expression(node.expression.expression.expression), key,
+            itemParameter,
+            body: itemNode ? [element(itemNode, namespace, true)] : []
           });
           continue;
         }
@@ -230,7 +236,8 @@ export function analyze(request: CompileRequest): Analysis {
   };
 
   const element = (node: ts.JsxElement | ts.JsxSelfClosingElement,
-                   parentNamespace: StaticElement["namespace"]): IRNode => {
+                   parentNamespace: StaticElement["namespace"],
+                   inKeyedLoop = false): IRNode => {
     const opening = ts.isJsxElement(node) ? node.openingElement : node;
     const tag = opening.tagName.getText(source);
     const span = spanOf(source, node);
@@ -246,6 +253,8 @@ export function analyze(request: CompileRequest): Analysis {
         continue;
       }
       const name = attr.name.getText(source);
+      // Key is consumed as a stable compiler loop identity; never emit to DOM.
+      if (inKeyedLoop && name === "key") continue;
       if (!isComponent && /^on/i.test(name) && !/^on[A-Z]/.test(name)) {
         report("ZC1006", "Inline event attributes must use typed onEvent handlers, not HTML on* strings.", attr);
         continue;

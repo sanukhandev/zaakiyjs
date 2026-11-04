@@ -12,7 +12,7 @@ export interface DynamicText extends IRNodeBase { readonly kind: "DynamicText"; 
 export interface PropertyBinding extends IRNodeBase { readonly kind: "PropertyBinding"; readonly name: string; readonly target: "property" | "attribute" | "class" | "style"; readonly expression: IRExpression }
 export interface EventBinding extends IRNodeBase { readonly kind: "EventBinding"; readonly name: string; readonly expression: IRExpression }
 export interface ConditionalBlock extends IRNodeBase { readonly kind: "ConditionalBlock"; readonly condition: IRExpression; readonly whenTrue: readonly IRNode[]; readonly whenFalse: readonly IRNode[] }
-export interface KeyedLoop extends IRNodeBase { readonly kind: "KeyedLoop"; readonly collection: IRExpression; readonly key: IRExpression; readonly body: readonly IRNode[] }
+export interface KeyedLoop extends IRNodeBase { readonly kind: "KeyedLoop"; readonly collection: IRExpression; readonly key: IRExpression; readonly body: readonly IRNode[]; readonly itemParameter?: string }
 export interface ComponentCall extends IRNodeBase { readonly kind: "ComponentCall"; readonly component: string; readonly props: readonly PropertyBinding[] }
 export interface StyleToken extends IRNodeBase { readonly kind: "StyleToken"; readonly token: string; readonly variant?: string }
 export interface CompatFeature extends IRNodeBase { readonly kind: "CompatFeature"; readonly feature: string; readonly targets: readonly string[] }
