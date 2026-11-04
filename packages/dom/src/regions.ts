@@ -216,7 +216,7 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
   keyOf: (item: Item) => Key,
   create: (item: Item, child: OwnerScope) => KeyedView<Item>
 ): BindingHandle {
-  let records = new Map<Key, RecordEntry<Key, Item>>();
+  const records = new Map<Key, RecordEntry<Key, Item>>();
   const clear = (): void => {
     const errors: unknown[] = [];
     for (const record of records.values()) {
