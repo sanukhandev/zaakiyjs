@@ -150,6 +150,7 @@ export class Router {
   private listening: (() => void) | null = null;
   private starting: Promise<NavigationResult> | null = null;
   private disposed = false;
+  private committing = false;
   private host: Element | null = null;
 
   constructor(private readonly options: RouterOptions) {
@@ -209,6 +210,9 @@ export class Router {
   }
 
   navigate<P extends string>(target: string | RouteTarget<P>, options: NavigationOptions = {}): Promise<NavigationResult> {
+    // Old page cleanup may synchronously navigate; let the current atomic
+    // commit finish before beginning a new transaction.
+    if (this.committing) return Promise.resolve().then(() => this.navigate(target, options));
     const value = typeof target === "string" ? target : this.href(target);
     return this.transition(value, options, false);
   }
@@ -287,7 +291,6 @@ export class Router {
         try { disposeOwner(entry.owner); } finally { entry.view?.node.parentNode?.removeChild(entry.view.node); }
       }
       finalTarget.appendChild(staging);
-      if (next[common]) mountOwner(next[common].owner);
     };
   }
 
@@ -376,30 +379,46 @@ export class Router {
       requireCurrent(tx, this.current, this.options.owner);
       const applyView = this.prepareView(next, common, from, to, tx.controller.signal);
       requireCurrent(tx, this.current, this.options.owner);
-      if (this.host) {
-        applyView();
-      } else {
-        for (let i = this.active.length - 1; i >= common; i--) disposeOwner(this.active[i]!.owner);
-        if (next[common]) mountOwner(next[common].owner);
-      }
-      staged = [];
-      this.active = next;
       const destination = serialize(to);
-      if (!isPop) {
-        if (historyMode === "push") this.options.history.push(destination);
-        else if (historyMode === "replace") this.options.history.replace(destination);
+      this.committing = true;
+      try {
+        if (this.host) {
+          applyView();
+        } else {
+          for (let i = this.active.length - 1; i >= common; i--) disposeOwner(this.active[i]!.owner);
+        }
+        // Route state and History become authoritative before any mount hooks
+        // execute, so a mount-triggered redirect can never publish stale state.
+        staged = [];
+        this.active = next;
+        if (!isPop) {
+          if (historyMode === "push") this.options.history.push(destination);
+          else if (historyMode === "replace") this.options.history.replace(destination);
+        }
+        batch(() => {
+          this.urlState.value = destination;
+          this.matchesState.value = [...this.active];
+          this.paramsState.value = this.active.at(-1)?.params ?? {};
+          this.searchState.value = readonlySearch(to.search);
+          this.hashState.value = to.hash;
+          this.statusState.value = "idle";
+          this.pendingState.value = null;
+          this.errorState.value = null;
+        });
+        this.current = null;
+      } finally {
+        this.committing = false;
       }
-      batch(() => {
-        this.urlState.value = destination;
-        this.matchesState.value = [...this.active];
-        this.paramsState.value = this.active.at(-1)?.params ?? {};
-        this.searchState.value = readonlySearch(to.search);
-        this.hashState.value = to.hash;
-        this.statusState.value = "idle";
-        this.pendingState.value = null;
-        this.errorState.value = null;
-      });
-      this.current = null;
+      // Mount only after native DOM insertion and state commit. Core guarantees
+      // exactly-once mount callbacks and child-first cleanup.
+      if (next[common]) {
+        try { mountOwner(next[common].owner); }
+        catch (error) {
+          this.statusState.value = "error";
+          this.errorState.value = error;
+          throw error;
+        }
+      }
       for (const subscriber of [...this.subscribers]) {
         try { subscriber(this.matchesState.peek()); }
         catch (error) { this.errorState.value = error; }
