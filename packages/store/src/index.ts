@@ -205,27 +205,32 @@ export function createStore<S extends object, A extends ActionDefinitions>(
 export function createStoreContext<T>(description?: string): ContextToken<T> {
   return createContext<T>(description);
 }
-export function provideStore<T>(owner: OwnerScope, token: ContextToken<T>, value: T): void {
-  // A provider cannot make an owned store outlive its owner, or cross SSR roots.
-  // Port-based test doubles without an OwnerScope remain valid.
-  if (value !== null && typeof value === "object") {
-    const descriptor = Object.getOwnPropertyDescriptor(value, "owner");
-    if (descriptor && "value" in descriptor && descriptor.value !== undefined) {
-      const storeOwner = descriptor.value as OwnerScope;
-      let cursor: OwnerScope | null = owner;
-      while (cursor && cursor !== storeOwner) cursor = cursor.parent;
-      if (!cursor || storeOwner.disposed) {
-        throw new Error("Store provider cannot outlive or cross its store owner");
-      }
-    }
+/** Only owned store instances are subject to store-specific lifetime checks.
+ * Plain interface adapters used for testing remain ordinary Core providers. */
+function assertStoreInScope<T>(consumer: OwnerScope, value: T): T {
+  if (value === null || typeof value !== "object") return value;
+  const descriptor = Object.getOwnPropertyDescriptor(value, "owner");
+  if (!descriptor || !("value" in descriptor) || descriptor.value === undefined) return value;
+  const storeOwner = descriptor.value as OwnerScope;
+  let scope: OwnerScope | null = consumer;
+  while (scope && scope !== storeOwner) scope = scope.parent;
+  if (!scope || storeOwner.disposed) {
+    throw new Error("Store provider cannot outlive or cross its store owner");
   }
-  provide(owner, token, value);
+  if ("disposed" in value && value.disposed === true) {
+    throw new Error("Store provider has been disposed");
+  }
+  return value;
+}
+export function provideStore<T>(owner: OwnerScope, token: ContextToken<T>, value: T): void {
+  provide(owner, token, assertStoreInScope(owner, value));
 }
 export function useStore<T>(owner: OwnerScope, token: ContextToken<T>): T | undefined {
-  return useContext(owner, token);
+  const value = useContext(owner, token);
+  return value === undefined ? undefined : assertStoreInScope(owner, value);
 }
 export function requireStore<T>(owner: OwnerScope, token: ContextToken<T>): T {
-  return requireContext(owner, token);
+  return assertStoreInScope(owner, requireContext(owner, token));
 }
 
 /** Once per application/request root, with no process-wide singleton registry. */
