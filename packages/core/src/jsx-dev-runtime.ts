@@ -1,2 +1,2 @@
-/** M0 TYPE-ONLY JSX development namespace; no jsxDEV runtime exists. */
+/** TSX development type namespace; the compiler owns JSX lowering. */
 export type { JSX } from "./jsx-runtime.js";

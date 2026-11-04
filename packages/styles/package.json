@@ -1,7 +1,7 @@
 {
   "name": "@zaakiyjs/styles",
   "version": "0.0.0",
-  "description": "ZaakiyJS styles — M0 type contracts only; not implemented",
+  "description": "ZaakiyJS deterministic brand-first atomic CSS compiler",
   "type": "module",
   "sideEffects": false,
   "files": [
@@ -19,9 +19,12 @@
   "main": "./dist/index.js",
   "scripts": {
     "lint": "eslint src test",
-    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "typecheck": "tsc --noEmit --project tsconfig.json && tsc --noEmit --project tsconfig.test.json",
     "build": "tsc --project tsconfig.build.json",
     "test": "vitest run test"
+  },
+  "dependencies": {
+    "postcss": "8.5.32"
   },
   "publishConfig": {
     "access": "public"
