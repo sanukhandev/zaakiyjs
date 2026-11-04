@@ -65,7 +65,7 @@ export function validateBasePath(path: string): void {
   if (!path.startsWith("/") || path.startsWith("//") || path.includes("?") || path.includes("#") || path.includes("\\") || path.includes("%") || path.split("/").some(segment => segment === ".." || segment === ".")) throw new ProxyConfigurationError("Unsafe upstream base path");
 }
 export function incomingURL(value: string): URL {
-  if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\") || value.includes("#") || [...value].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) throw new ProxyPolicyError("Invalid request URL");
+  if (value.length > 16_384 || !value.startsWith("/") || value.startsWith("//") || value.includes("\\") || value.includes("#") || [...value].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) throw new ProxyPolicyError("Invalid request URL");
   const path = value.split("?", 1)[0] ?? "";
   if (path.includes("//") || /%(?:2e|2f|5c|00|25)/i.test(path)) throw new ProxyPolicyError("Ambiguous path encoding");
   try { decodeURIComponent(path); decodeURIComponent(value.slice(path.length)); } catch { throw new ProxyPolicyError("Malformed URL encoding"); }
@@ -85,12 +85,18 @@ export function compileRoutes(routes: readonly ProxyRoute[], upstreams: Readonly
     routeIds.add(route.id);
     if (!Object.hasOwn(upstreams, route.upstream)) throw new ProxyConfigurationError("Unknown upstream");
     if (route.access !== "public" && route.access !== "authenticated") throw new ProxyConfigurationError("Explicit route access is required");
-    if (route.access === "authenticated" && !route.authorize) throw new ProxyConfigurationError("Protected routes require authorization");
+    if (route.access === "authenticated" && typeof route.authorize !== "function") throw new ProxyConfigurationError("Protected routes require authorization");
+    if (route.access === "public" && route.authorize !== undefined) throw new ProxyConfigurationError("Public routes cannot silently ignore authorization");
     if (!route.methods?.length || route.methods.some(m => !methods.has(m) || m !== m.toUpperCase())) throw new ProxyConfigurationError("Invalid allowed methods");
     if (new Set(route.methods).size !== route.methods.length) throw new ProxyConfigurationError("Duplicate route method");
     if (route.path !== "/" && (!route.path.startsWith("/") || route.path.includes("//") || route.path.includes("?") || route.path.includes("#") || route.path.includes("\\"))) throw new ProxyConfigurationError("Invalid route path");
     if (route.path.split("/").includes("..") || /%/.test(route.path)) throw new ProxyConfigurationError("Encoded route definitions are forbidden");
-    if (route.rateLimit) { assertCount(route.rateLimit.max, 1, "rateLimit.max"); assertCount(route.rateLimit.windowMs, 1, "rateLimit.windowMs"); }
+    if (route.rateLimit) {
+      assertCount(route.rateLimit.max, 1, "rateLimit.max");
+      assertCount(route.rateLimit.windowMs, 1, "rateLimit.windowMs");
+      if (!["principal", "tenant", "address"].includes(route.rateLimit.by)) throw new ProxyConfigurationError("Unknown rate-limit identity");
+      if (route.access === "public" && route.rateLimit.by !== "address") throw new ProxyConfigurationError("Public rate limiting requires trusted peer-address identity");
+    }
     assertCount(route.maxRequestBytes, 1_048_576, "maxRequestBytes", 100_000_000);
     assertCount(route.timeoutMs, 30_000, "route timeout", 300_000);
     if (route.retry && (!route.methods.every(m => m === "GET" || m === "HEAD") || ![1, 2].includes(route.retry.attempts))) throw new ProxyConfigurationError("Retries must be bounded and safe-method only");
