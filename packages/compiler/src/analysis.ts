@@ -262,7 +262,7 @@ export function analyze(request: CompileRequest): Analysis {
         if (isComponent) props.push(b);
         else attributes.push(b);
         if (!isComponent && name === "class") {
-          const classLiteral = ts.isStringLiteral(attr.initializer)
+          const classLiteral = attr.initializer && ts.isStringLiteral(attr.initializer)
             ? attr.initializer.text
             : attr.initializer && ts.isJsxExpression(attr.initializer) &&
               attr.initializer.expression && ts.isStringLiteral(attr.initializer.expression)
