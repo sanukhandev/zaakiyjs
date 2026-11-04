@@ -72,3 +72,7 @@ If a package change introduces a breaking protocol incompatibility, pause depend
 ## 8. What is deliberately NOT configured yet
 
 There are no actual package manifests, build scripts, npm credentials, Trusted Publishing associations, or release GitHub Actions in the repository today. Only documentation and a policy configuration file exist. They become operational during bootstrap, and must be tested before use.
+
+## Verified pre-release gates (P1 hardening)
+
+The independent [packed consumer and browser audit](../../tests/release/README.md) covers tarball exports, actual outside-workspace installation, TypeScript import/typecheck, same-runner deterministic build hashes, CSP, automated axe WCAG checks and a bounded Chromium GC regression. The verification script's strict `--enforce-release` mode rejects release blockers; normal PR CI allows the development stage's known placeholder versions while recording them as explicit blockers. **The repository currently has no approved root LICENSE and packages still use `0.0.0`, so publication is prohibited.** Verify npm scope control, trusted publishing association and release approval separately before enabling `npm publish`.
