@@ -40,8 +40,8 @@ Generated output imports helpers from @zaakiyjs/dom/compiler and owners from @za
 
 ## Explicit unsupported behavior
 
-- Unsupported conditional branch shapes (multiple roots), nested keyed loops, complex/deconstructed map parameters, non-native keyed roots, and unsupported reactive keyed attributes/props fail closed. Supported conditional/keyed forms use the reviewed additive DOM region ABI (ADR 0004).
-- JSX spreads, fragments, refs, component children, dynamic attributes/classes/styles, **all inline style attributes**, dynamic handler replacement, SVG foreignObject, unsafe HTML sinks and untrusted URL schemes produce focused diagnostics.
+- Root-level conditional/keyed regions, component-root templates with stale or nonreactive props, complex/deconstructed map parameters, and unsupported reactive keyed attributes/props fail closed. Nested keyed loops and multi-root fragment templates are supported within native host parents. Supported conditional/keyed forms use the reviewed additive DOM region ABI (ADR 0004).
+- JSX spreads, top-level fragments, refs, component children, dynamic attributes/classes/styles, **all inline style attributes**, dynamic handler replacement, SVG foreignObject, unsafe HTML sinks and untrusted URL schemes produce focused diagnostics.
 - Reactivity analysis recognizes `.value` reads from aliases and nested props, but cannot prove all indirect reactive dependencies (for example, an unknown function that internally reads a signal). Calls in detected reactive text expressions fail closed without purity proof; destructured snapshot reads do not become magically reactive.
 - Dynamic text child expressions must have primitive TS types; arrays, object views and prebuilt JSX nodes require an explicit child/view semantics contract.
 - No CSS generation, browser compatibility lowering, SSR, hydration, or tree-shaking of unrelated source declarations. The compiler does not claim to be a bundler. Supplying explicit `targetBrowsers` fails with ZC2301 until a tested browser compatibility profile is frozen.
@@ -81,3 +81,9 @@ This baseline is from [CI run 41793641788](https://github.com/sanukhandev/zaakiy
 **Integration status:** TypeScript 5.9.3 and the compiler lockfile importer are pinned. The current compiler branch passes frozen pnpm installation. Signals, Core and DOM are now merged. DOM region ABI v1 was frozen by ADR 0004 and the compiler validates real conditional/keyed fixtures in the DOM integration suite. Full browser matrix, CSS/Vite source semantics, extended TSX, accessibility/security and publication remain separately gated.
 
 No npm publication is authorized without per-package approval, scope verification, runtime/browser tests and release checks.
+
+## M1 extended control flow (ADR 0006)
+
+Within native host parents, the compiler now flattens JSX fragments to native children without introducing a wrapper element, accepts multiple `<Show>` branch roots and fragment fallbacks, and supports nested `<For>` loops with lexical item signal stacks. The existing `IR_SCHEMA_VERSION=1` and DOM region ABI v1 remain intact; `whenTrue`, `whenFalse`, and `body` already encode arrays of child IR nodes. At runtime, the compiler emits a native `DocumentFragment` for multi-root insertion; owners and stable comment anchors are still managed by the existing DOM region API.
+
+Component-root keyed templates that capture mutable item snapshots and root-level TSX fragments remain rejected until a separate reviewed signal-aware component-prop and top-level fragment contract is implemented. No virtual DOM is introduced. Three-browser acceptance is required for this extension.
