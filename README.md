@@ -266,3 +266,12 @@ The first implementation slice should be **one typed TSX counter** proving signa
 - [Independent npm release policy](docs/releasing/independent-npm.md)
 
 **Current status:** architecture/docs bootstrap only. Features and package names are planned, and the framework's performance, compatibility and release claims require implementation and evidence.
+
+---
+
+## About the creator
+
+**ZaakiyJS** was conceived by **Sanu Khan**, with the goal of creating an independent, compiler-first TypeScript frontend framework focused on precise reactivity, maintainable architecture, and optional verified AI-assisted development.
+
+**Creator's website:** [sanukhan.dev](https://sanukhan.dev)  
+**GitHub:** [@sanukhandev](https://github.com/sanukhandev)
