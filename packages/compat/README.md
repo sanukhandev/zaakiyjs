@@ -25,7 +25,7 @@ Consumers must import the subpath explicitly. No browser bundle should import th
 
 Mode defaults to off. In auto or strict, supply exactly one profile or explicit browser target list. Profiles are frozen aliases (not moving "latest"): modern-2024 = Chrome/Edge 124, Firefox 124, Safari 17.4; legacy-2020 = Chrome/Edge 80, Firefox 78, Safari 13.1.
 
-Supported families: chrome, edge, firefox, safari. Targets accept exact floors (chrome 124), inclusive minimums (chrome >=124) or bounded ranges (safari 16.4..17.4). An unbounded >= target is evaluated at its declared **minimum**; a future browser is not implicitly certified. Bounds are pinned in targets.ts; unsupported/ambiguous declarations throw. The package does not make live compatibility lookups.
+Supported families: chrome, edge, firefox, safari. Targets accept exact versions (chrome 124), inclusive minimums (chrome >=124) or bounded ranges (safari 16.4..17.4). An unbounded >= target is evaluated at its declared **minimum**; a future browser is not implicitly certified. Bounds are pinned in targets.ts; unsupported/ambiguous declarations throw. The package does not make live compatibility lookups.
 
 Example API call:
 
