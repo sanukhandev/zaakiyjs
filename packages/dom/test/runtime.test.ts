@@ -124,6 +124,8 @@ describe("compiler-lowered native DOM runtime", () => {
     expect(() => setAttribute(el, "href", "javascript:alert(1)")).toThrow();
     expect(() => setAttribute(el, "onclick", "alert(1)")).toThrow();
     expect(() => setProperty(el, "innerHTML", "<b>unsafe</b>")).toThrow();
+    expect(() => setAttribute(el, "srcdoc", "<script>alert(1)</script>")).toThrow();
+    expect(() => setAttribute(el, "style", "background:url(https://tracker.invalid)")).toThrow();
     expect(() => setProperty(el, "href", "java\nscript:alert(1)")).toThrow();
     expect(() => setStyle(el, "color", "url(javascript:alert(1))")).toThrow();
     expect(() => setAttribute(el, "srcset", "https://example.com/a 1x")).toThrow();
@@ -141,7 +143,61 @@ describe("compiler-lowered native DOM runtime", () => {
     const duplicate = cloneStatic(svg);
     expect(duplicate).not.toBe(svg);
     expect(duplicate.firstChild).not.toBe(path);
-    expect(duplicate.firstChild?.namespaceURI).toBe(path.namespaceURI);
+    expect(duplicate.firstElementChild?.namespaceURI).toBe(path.namespaceURI);
+  });
+
+
+  it("does not retain listeners across repeated application mounts", () => {
+    const container = document.createElement("div");
+    const called = vi.fn();
+    const detached: HTMLButtonElement[] = [];
+    for (let index = 0; index < 20; index++) {
+      const view = mount((owner) => {
+        const button = document.createElement("button");
+        listen(owner, button, "click", called);
+        detached.push(button);
+        return button;
+      }, container);
+      const button = detached[index]!;
+      button.click();
+      view.dispose();
+      expect(container.childNodes).toHaveLength(0);
+    }
+    for (const element of detached) element.click();
+    expect(called).toHaveBeenCalledTimes(20);
+  });
+
+  it("disposes removed keyed owners exactly once and updates retained item views", () => {
+    const owner = createOwner();
+    const parent = document.createElement("div");
+    const region = createRegion(parent);
+    const entries = signal([{ id: "a", label: "Alpha" }, { id: "b", label: "Bravo" }]);
+    const closed = vi.fn();
+    const updated = vi.fn();
+    bindKeyedRegion(owner, region, () => entries.value, (item) => item.id, (item) => {
+      const label = document.createElement("span");
+      label.textContent = item.label;
+      onCleanup(() => closed(item.id));
+      return {
+        node: label,
+        update(next: { id: string; label: string }) {
+          updated(next.id);
+          label.textContent = next.label;
+        }
+      };
+    });
+    flushSync();
+    const retained = parent.querySelectorAll("span")[1];
+    entries.value = [{ id: "b", label: "Updated" }];
+    flushSync();
+    expect(closed).toHaveBeenCalledTimes(1);
+    expect(closed).toHaveBeenCalledWith("a");
+    expect(updated).toHaveBeenCalledOnce();
+    expect(parent.querySelector("span")).toBe(retained);
+    expect(retained?.textContent).toBe("Updated");
+    disposeOwner(owner);
+    expect(closed).toHaveBeenCalledTimes(2);
+    expect(closed).toHaveBeenCalledWith("b");
   });
 
   it("keeps one listener during handler changes and removes it on disposal", () => {
