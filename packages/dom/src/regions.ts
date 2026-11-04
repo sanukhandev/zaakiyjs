@@ -2,9 +2,9 @@
  * Internal implementation of conditional and keyed DOM regions.
  * Not exported via package exports: the public compiler loop ABI is pending ADR.
  */
-import { createOwner, disposeOwner, initializeOwnedComponent, mountOwner, onCleanup, runWithOwner } from "@zaakiyjs/core";
+import { createOwner, disposeOwner, initializeOwnedComponent, mountOwner, onCleanup, onMount, runWithOwner } from "@zaakiyjs/core";
 import type { OwnerScope } from "@zaakiyjs/core";
-import { effect } from "@zaakiyjs/signals";
+import { effect, untrack } from "@zaakiyjs/signals";
 import type { BindingHandle } from "./index.js";
 
 export interface DomRegion {
@@ -31,23 +31,43 @@ function removeBetween(start: Node, end: Node): void {
   }
 }
 
-function ownEffect(owner: OwnerScope, run: () => void, dispose: () => void): BindingHandle {
+/** Mount child owners only after the containing root becomes mounted. */
+function mountChild(parent: OwnerScope, child: OwnerScope): void {
+  if (parent.state === "created" || parent.state === "initialized") {
+    runWithOwner(parent, () => onMount(() => {
+      if (!child.disposed) mountOwner(child);
+    }));
+  } else {
+    mountOwner(child);
+  }
+}
+
+function ownEffect(owner: OwnerScope, run: () => void, teardown: () => void): BindingHandle {
   if (owner.disposed) throw new Error("Cannot create a region in a disposed owner");
   return runWithOwner(owner, () => {
-    const active = effect(run, { phase: "render" });
+    let active: ReturnType<typeof effect> | undefined;
     let closed = false;
     const handle: BindingHandle = {
       dispose(): void {
         if (closed) return;
         closed = true;
-        try {
-          active.dispose();
-        } finally {
-          dispose();
-        }
+        const errors: unknown[] = [];
+        try { active?.dispose(); } catch (error) { errors.push(error); }
+        try { teardown(); } catch (error) { errors.push(error); }
+        if (errors.length === 1) throw errors[0];
+        if (errors.length > 1) throw new AggregateError(errors, "DOM region disposal failed");
       }
     };
-    onCleanup(() => handle.dispose());
+    try {
+      active = effect(run, { phase: "render" });
+      onCleanup(() => handle.dispose());
+    } catch (error) {
+      try { handle.dispose(); }
+      catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], "DOM region initialization failed");
+      }
+      throw error;
+    }
     return handle;
   });
 }
@@ -80,20 +100,20 @@ export function bindConditionalRegion(
       return;
     }
     const child = createOwner(owner);
-    let node: Node;
     try {
-      node = initializeOwnedComponent(child, () => create(child));
-    } catch (error) {
-      disposeOwner(child);
-      throw error;
-    }
-    try {
+      // Child component setup must not subscribe the conditional predicate.
+      const node = untrack(() => initializeOwnedComponent(child, () => create(child)));
       region.parent.insertBefore(node, region.end);
-      mountOwner(child);
       current = child;
+      mountChild(owner, child);
     } catch (error) {
-      disposeOwner(child);
+      current = null;
+      let cleanupError: unknown;
+      try { disposeOwner(child); } catch (caught) { cleanupError = caught; }
       removeBetween(region.start, region.end);
+      if (cleanupError !== undefined) {
+        throw new AggregateError([error, cleanupError], "Conditional mount and disposal failed");
+      }
       throw error;
     }
   }, clear);
@@ -214,55 +234,73 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
     const items = read();
     const next = new Map<Key, Item>();
     for (const item of items) {
-      const key = keyOf(item);
+      const key = untrack(() => keyOf(item));
       if (next.has(key)) throw new Error("Duplicate key in ZaakiyJS keyed region: " + String(key));
       next.set(key, item);
     }
 
     const focused = captureFocus(region.parent);
     try {
-      for (const [key, record] of records) {
-        if (!next.has(key)) {
-          removeEntry(record);
-          records.delete(key);
+      // Stage additions before removals. A failing factory cannot drop existing
+      // keyed DOM; newly created owners are rolled back on failure.
+      const ordered: RecordEntry<Key, Item>[] = [];
+      const added: RecordEntry<Key, Item>[] = [];
+      try {
+        for (const [key, item] of next) {
+          let record = records.get(key);
+          if (!record) {
+            const child = createOwner(owner);
+            let view: KeyedView<Item>;
+            try {
+              view = untrack(() => initializeOwnedComponent(child, () => create(item, child)));
+            } catch (error) {
+              try { disposeOwner(child); } catch { /* original error takes precedence */ }
+              throw error;
+            }
+            const doc = region.parent.ownerDocument ?? (region.parent as Document);
+            const start = doc.createComment("zaakiy-item:start");
+            const end = doc.createComment("zaakiy-item:end");
+            const fragment = doc.createDocumentFragment();
+            fragment.appendChild(start);
+            fragment.appendChild(view.node);
+            fragment.appendChild(end);
+            record = { key, item, owner: child, start, end, view };
+            try {
+              region.parent.insertBefore(fragment, region.end);
+              records.set(key, record);
+              added.push(record);
+              mountChild(owner, child);
+            } catch (error) {
+              if (!added.includes(record)) {
+                try { removeEntry(record); } catch { /* original error takes precedence */ }
+              }
+              throw error;
+            }
+          } else if (!Object.is(record.item, item)) {
+            // Item-level binding reads must not invalidate the entire keyed loop.
+            untrack(() => record?.view.update?.(item));
+            record.item = item;
+          }
+          ordered.push(record);
         }
+      } catch (error) {
+        const rollbackErrors: unknown[] = [];
+        for (const record of added) {
+          records.delete(record.key);
+          try { removeEntry(record); }
+          catch (cleanupError) { rollbackErrors.push(cleanupError); }
+        }
+        if (rollbackErrors.length) {
+          throw new AggregateError([error, ...rollbackErrors], "Keyed region update and rollback failed");
+        }
+        throw error;
       }
 
-      const ordered: RecordEntry<Key, Item>[] = [];
-      for (const [key, item] of next) {
-        let record = records.get(key);
-        if (!record) {
-          const child = createOwner(owner);
-          let view: KeyedView<Item>;
-          try {
-            view = initializeOwnedComponent(child, () => create(item, child));
-          } catch (error) {
-            disposeOwner(child);
-            throw error;
-          }
-          const doc = region.parent.ownerDocument ?? (region.parent as Document);
-          const start = doc.createComment("zaakiy-item:start");
-          const end = doc.createComment("zaakiy-item:end");
-          const fragment = doc.createDocumentFragment();
-          fragment.appendChild(start);
-          fragment.appendChild(view.node);
-          fragment.appendChild(end);
-          try {
-            region.parent.insertBefore(fragment, region.end);
-            mountOwner(child);
-          } catch (error) {
-            disposeOwner(child);
-            const inserted = { key, item, owner: child, start, end, view };
-            removeEntry(inserted);
-            throw error;
-          }
-          record = { key, item, owner: child, start, end, view };
-          records.set(key, record);
-        } else if (!Object.is(record.item, item)) {
-          record.view.update?.(item);
-          record.item = item;
+      for (const [key, record] of records) {
+        if (!next.has(key)) {
+          records.delete(key);
+          removeEntry(record);
         }
-        ordered.push(record);
       }
 
       // Right-to-left placement minimizes moves when suffixes are already stable.
