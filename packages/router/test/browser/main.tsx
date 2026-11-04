@@ -7,4 +7,6 @@ if (!outlet) throw new Error("Router browser fixture requires #app");
 
 const fixture = bootstrapRouter(outlet);
 (window as unknown as { __zaakiyRouter?: typeof fixture }).__zaakiyRouter = fixture;
-await fixture.ready;
+void fixture.ready.catch(error => {
+  window.setTimeout(() => { throw error; }, 0);
+});
