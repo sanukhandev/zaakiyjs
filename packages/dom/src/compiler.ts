@@ -214,7 +214,18 @@ export function bindText(owner: OwnerScope, node: Text, read: () => unknown): Bi
 export function bindProperty(
   owner: OwnerScope, node: Element, name: string, read: () => unknown
 ): BindingHandle {
-  return bind(owner, () => setProperty(node, name, read()));
+  // Cache the last *binding* value, not the mutable live DOM property.
+  // Unchanged reactive values must not erase user-edited input state when
+  // a keyed entry receives a new object instance during a list reorder.
+  let hasValue = false;
+  let previous: unknown;
+  return bind(owner, () => {
+    const next = read();
+    if (hasValue && Object.is(previous, next)) return;
+    setProperty(node, name, next);
+    previous = next;
+    hasValue = true;
+  });
 }
 
 export function bindAttribute(

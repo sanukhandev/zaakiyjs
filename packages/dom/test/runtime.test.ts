@@ -14,6 +14,25 @@ import { bindConditionalRegion, bindKeyedRegion, createRegion } from "../src/com
 afterEach(() => { document.body.replaceChildren(); });
 
 describe("compiler-lowered native DOM runtime", () => {
+  it("preserves user-edited input when a keyed item object changes but bound value is equal", () => {
+    const owner = createOwner();
+    const input = document.createElement("input");
+    const item = signal({ id: "b", name: "B" });
+    bindProperty(owner, input, "value", () => item.value.name);
+    expect(input.value).toBe("B");
+    input.value = "user edited";
+    input.focus();
+    input.setSelectionRange(3, 3);
+    item.value = { id: "b", name: "B" };
+    flushSync();
+    expect(input.value).toBe("user edited");
+    expect(input.selectionStart).toBe(3);
+    item.value = { id: "b", name: "Updated" };
+    flushSync();
+    expect(input.value).toBe("Updated");
+    disposeOwner(owner);
+  });
+
   it("runs factory once, mounts multiple nodes, and disposes only its range", () => {
     let calls = 0;
     const container = document.createElement("div");
