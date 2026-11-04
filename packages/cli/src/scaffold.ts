@@ -8,7 +8,7 @@ import {safeRelativePath, validateProjectName, writeProject, type PlannedWrite} 
 export type Preset = "minimal" | "standard" | "enterprise";
 export type Versions = Readonly<Record<"core" | "dom" | "signals" | "styles" | "vite-plugin", string>>;
 const requiredFiles = ["package.json.tmpl", "tsconfig.json", "vite.config.ts", "zaakiy.config.ts",
-  "index.html", "src/App.tsx", "src/main.tsx", "src/base.css", "tests/scaffold.test.mjs", ".gitignore", "README.md.tmpl"] as const;
+  "index.html", "src/App.tsx", "src/main.tsx", "src/base.css", "tests/scaffold.test.mjs", "gitignore.tmpl", "README.md.tmpl"] as const;
 const packageNames = ["core", "dom", "signals", "styles", "vite-plugin"] as const;
 const packageRoot = fileURLToPath(new URL("../templates/minimal/", import.meta.url));
 const requireModule = createRequire(import.meta.url);
@@ -57,12 +57,16 @@ export async function getInstalledVersions(workspace: boolean): Promise<Versions
 }
 export async function assertFrameworkReady(): Promise<void> {
   try {
-    const [core, dom, vite] = await Promise.all([
-      import("@zaakiyjs/core"), import("@zaakiyjs/dom"), import("@zaakiyjs/vite-plugin")
+    const [core, dom, vite, signals, styles] = await Promise.all([
+      import("@zaakiyjs/core"), import("@zaakiyjs/dom"), import("@zaakiyjs/vite-plugin"), import("@zaakiyjs/signals"), import("@zaakiyjs/styles")
     ]);
     const has = (value: unknown, name: string): boolean =>
       typeof (value as Record<string, unknown>)[name] === "function";
-    if (!has(core, "signal") || !has(dom, "mount") || !has(vite, "zaakiyPlugin")) {
+    const unimplemented = [core, dom, vite, signals, styles].some(module => {
+      const status = (module as {foundationStatus?: {implemented?: boolean}}).foundationStatus;
+      return status?.implemented === false;
+    });
+    if (unimplemented || !has(core, "signal") || !has(dom, "mount") || !has(vite, "zaakiyPlugin")) {
       throw new Error("signal(), mount() or zaakiyPlugin() is not exported by the installed packages");
     }
   } catch (error) {
@@ -86,7 +90,7 @@ export async function scaffoldPlan(name: string, preset: Preset, manager: string
     const info = await lstat(fullPath).catch(() => { throw new CliError("INVALID_TEMPLATE", "Missing template file " + file); });
     if (!info.isFile() || info.isSymbolicLink() || info.size > 100_000) throw new CliError("INVALID_TEMPLATE", "Unsafe template file " + file);
     const content = await readFile(fullPath, "utf8");
-    const path = file.endsWith(".tmpl") ? file.slice(0, -5) : file;
+    const path = file === "gitignore.tmpl" ? ".gitignore" : file.endsWith(".tmpl") ? file.slice(0, -5) : file;
     files.push({path: safeRelativePath(path), content: replaceTokens(content, name, preset, manager, versions)});
   }
   JSON.parse(files.find(file => file.path === "package.json")?.content ?? "");
