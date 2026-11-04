@@ -69,7 +69,8 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
     expect(parsed.schemaVersion).toBe(1);
     expect(parsed.assets.map(a => a.fileName)).toContain("assets/theme.css");
     expect(parsed.assets.filter(a => a.fileName.endsWith(".js")).length).toBeGreaterThanOrEqual(2);
-    expect(parsed.assets.some(a => a.sourceFile === "src/index.js")).toBe(true);
+    // HTML entry chunks can have virtual proxy facades. Such IDs must be omitted,
+    // rather than inventing an app source path from their generated chunk name.
     expect(parsed.assets.every(a =>
       !a.sourceFile || (!a.sourceFile.startsWith("/") &&
         !a.sourceFile.includes("\\") && !a.sourceFile.includes("../"))
