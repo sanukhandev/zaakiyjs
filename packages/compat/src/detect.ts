@@ -23,6 +23,17 @@ export function detectSourceFeatures(input: SourceInput): DetectionResult {
   const sf = ts.createSourceFile(input.fileName, input.source, ts.ScriptTarget.Latest, true, kind);
   const requirements: FeatureRequirement[] = [];
   const diagnostics: CompatibilityDiagnostic[] = [];
+  const parse = ts.transpileModule(input.source, {
+    fileName: input.fileName, reportDiagnostics: true,
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
+      jsx: ts.JsxEmit.Preserve, isolatedModules: true }
+  });
+  for (const issue of parse.diagnostics ?? []) {
+    if (issue.category !== ts.DiagnosticCategory.Error) continue;
+    diagnostics.push({ code: "ZK2002", severity: "error",
+      message: "Unable to analyze invalid TypeScript/JavaScript syntax.",
+      reference: { origin: "source", file: input.fileName, offset: issue.start } });
+  }
   const report = (id: string, node: ts.Node, usage: "direct" | "scoped-helper" = "direct"): void => {
     requirements.push({ id, reference: at(input.fileName, sf, node), usage });
   };
@@ -120,7 +131,13 @@ export function detectIRFeatures(document: CompatIRDocument): DetectionResult {
     }] };
   }
   const requirements: FeatureRequirement[] = [];
+  const diagnostics: CompatibilityDiagnostic[] = [];
   function visit(node: CompatIRNode): void {
+    if (node.kind === "CompatFeature" && (typeof node.feature !== "string" || !node.feature)) {
+      diagnostics.push({ code: "ZK2003", severity: "error",
+        message: "Compiler CompatFeature node is missing a feature ID.",
+        reference: { origin: "ir", file: node.span?.file ?? document.sourceFile } });
+    }
     if (node.kind === "CompatFeature" && node.feature) {
       requirements.push({ id: node.feature, reference: {
         origin: "ir", file: node.span?.file ?? document.sourceFile,
@@ -130,7 +147,7 @@ export function detectIRFeatures(document: CompatIRDocument): DetectionResult {
     for (const nested of nodesOf(node)) visit(nested);
   }
   for (const root of document.nodes) visit(root);
-  return { requirements, diagnostics: [] };
+  return { requirements, diagnostics };
 }
 export function detectStylesFeatures(evidence: readonly CssFeatureEvidence[]): DetectionResult {
   return { requirements: evidence.map(item => ({
