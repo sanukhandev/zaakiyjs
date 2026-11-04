@@ -211,7 +211,7 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
     expect(result.js[0]?.code).toContain("initializeOwnedComponent as");
   });
 
-  it("lowers static conditionals but rejects dynamic owner-lifetime regions", () => {
+  it("lowers static and reactive conditionals through the versioned region ABI", () => {
     const yes = compile({ fileName, source: "function App() { return <main>{true ? <span>yes</span> : <span>no</span>}</main>; }" });
     expect(yes.diagnostics.filter(d => d.severity === "error")).toEqual([]);
     expect(allText(execute("function App() { return <main>{true ? <span>yes</span> : <span>no</span>}</main>; }", "App").root)).toBe("yes");
@@ -219,8 +219,10 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
       signalDecl,
       "function App() {const flag = signal(true); return <main>{flag.value ? <span>yes</span> : <span>no</span>}</main>; }"
     ].join("\n") });
-    expect(dynamic.js).toHaveLength(0);
-    expect(dynamic.diagnostics.some(d => d.code === "ZC2201")).toBe(true);
+    expect(dynamic.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(dynamic.js).toHaveLength(1);
+    expect(dynamic.js[0]?.code).toContain("bindConditionalRegion as");
+    expect(dynamic.js[0]?.code).toContain("createRegion as");
   });
 
   it("prunes unreachable literal branches in optimized IR without changing their source identity", () => {

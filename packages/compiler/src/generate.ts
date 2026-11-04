@@ -30,6 +30,8 @@ interface AbiAliases {
   readonly bindText: string;
   readonly bindProperty: string;
   readonly listen: string;
+  readonly createRegion: string;
+  readonly bindConditionalRegion: string;
   readonly getOwner: string;
   readonly createOwner: string;
   readonly initializeOwnedComponent: string;
@@ -60,6 +62,8 @@ function allocateRuntimeAliases(source: ts.SourceFile): {
       bindText: free("__zBindText"),
       bindProperty: free("__zBindProperty"),
       listen: free("__zListen"),
+      createRegion: free("__zCreateRegion"),
+      bindConditionalRegion: free("__zBindConditionalRegion"),
       getOwner: free("__zGetOwner"),
       createOwner: free("__zCreateOwner"),
       initializeOwnedComponent: free("__zInitializeOwnedComponent")
@@ -80,9 +84,8 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
         node.children.forEach(visit);
         break;
       case "ConditionalBlock":
-        if (node.condition.source.trim() !== "true" &&
-            node.condition.source.trim() !== "false") {
-          error("ZC2201", "Reactive conditional regions require a coordinated owner/range DOM ABI.", node.span);
+        if (node.whenTrue.length > 1 || node.whenFalse.length > 1) {
+          error("ZC2201", "Conditional branches must return at most one DOM root in ABI v1.", node.span);
         }
         node.whenTrue.forEach(visit);
         node.whenFalse.forEach(visit);
@@ -129,9 +132,9 @@ class Builder {
   private readonly owner: string;
 
   constructor(private readonly abi: AbiAliases, reserved: ReadonlySet<string>,
-              private readonly rootSpan: SourceSpan) {
+              private readonly rootSpan: SourceSpan, injectedOwner?: string) {
     this.names = new Set(reserved);
-    this.owner = this.variable("owner");
+    this.owner = injectedOwner ?? this.variable("owner");
   }
 
   private variable(prefix: string): string {
@@ -161,6 +164,15 @@ class Builder {
       this.push(this.abi.setAttribute + "(" + el + ", " + jsLiteral(node.name) + ", " +
         val + " == null ? null : String(" + val + "));");
     }
+  }
+
+  /** Produce an owner-scoped branch factory without leaking its statement spans
+   * into the outer JSX IIFE's statement/source-map alignment. */
+  private branch(nodes: readonly IRNode[], childOwner: string): string {
+    const scoped = new Builder(this.abi, this.names, this.rootSpan, childOwner);
+    const root = nodes[0] ? scoped.child(nodes[0]) : undefined;
+    return "{\\n" + scoped.lines.join("\\n") + "\\nreturn " +
+      (root ?? (this.abi.createText + '(\\"\\")')) + ";\\n}";
   }
 
   private child(node: IRNode, parent?: string): string | undefined {
@@ -212,9 +224,22 @@ class Builder {
         break;
       }
       case "ConditionalBlock": {
-        const constant = node.condition.source.trim() === "true";
-        const branch = constant ? node.whenTrue : node.whenFalse;
-        for (const branchNode of branch) this.child(branchNode, parent);
+        const literal = node.condition.source.trim();
+        if (literal === "true" || literal === "false") {
+          const branch = literal === "true" ? node.whenTrue : node.whenFalse;
+          for (const branchNode of branch) this.child(branchNode, parent);
+          return undefined;
+        }
+        if (!parent) throw new Error("ZC2201: dynamic conditional requires a host parent element");
+        const region = this.variable("region");
+        const trueOwner = this.variable("true_owner");
+        const falseOwner = this.variable("false_owner");
+        this.push("const " + region + " = " + this.abi.createRegion + "(" + parent + ");", node.span);
+        const trueFactory = "(" + trueOwner + ") => " + this.branch(node.whenTrue, trueOwner);
+        const falseFactory = node.whenFalse.length
+          ? ", (" + falseOwner + ") => " + this.branch(node.whenFalse, falseOwner) : "";
+        this.push(this.abi.bindConditionalRegion + "(" + this.owner + ", " + region +
+          ", () => Boolean(" + node.condition.source + "), " + trueFactory + falseFactory + ");", node.span);
         return undefined;
       }
       case "PropertyBinding":
@@ -306,7 +331,8 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
       ["createElement", aliases.createElement], ["createText", aliases.createText],
       ["setProperty", aliases.setProperty], ["setAttribute", aliases.setAttribute],
       ["bindText", aliases.bindText], ["bindProperty", aliases.bindProperty],
-      ["listen", aliases.listen]
+      ["listen", aliases.listen], ["createRegion", aliases.createRegion],
+      ["bindConditionalRegion", aliases.bindConditionalRegion]
     ]);
     const core = runtimeImport("@zaakiyjs/core", [
       ["getOwner", aliases.getOwner], ["createOwner", aliases.createOwner],
