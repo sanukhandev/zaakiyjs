@@ -188,7 +188,7 @@ describe("component and resource integration", () => {
   it("initializes each component owner exactly once without rerendering", () => {
     const root = createOwner();
     const componentOwner = createOwner(root);
-    const call = vi.fn((_props: Readonly<{ label: string }>) => ({} as ViewNode));
+    const call = vi.fn((props: Readonly<{ label: string }>) => { void props; return {} as ViewNode; });
     executeComponent(call, { label: "A" }, componentOwner);
     expect(call).toHaveBeenCalledTimes(1);
     expect(() => executeComponent(call, { label: "B" }, componentOwner)).toThrow(/already initialized/);
