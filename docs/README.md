@@ -1,6 +1,6 @@
 # ZaakiyJS Engineering Documentation
 
-> **Current state:** M0 workspace contracts and CI/tooling baseline under development; runtime/compiler/styling/CLI features are **not yet implemented or published**. Never mistake compiled contract stubs for framework functionality.
+> **Current state:** initial seven foundation implementation slices are merged and validated through workspace lint, strict typecheck, build, unit/integration fixtures and a generated Counter Chromium smoke. No packages have been published to npm; full browser, SEO/SSR, compatibility and release gates remain open. The M0 documents below preserve historical contract choices, not a claim that source packages remain type-only.
 
 ## Start here
 

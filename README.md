@@ -3,7 +3,7 @@
 
 > **AI-assisted. Compiler-first. Signal-driven. Native DOM.**
 >
-> **Project status: M0 seven-package contract/toolchain scaffold — runtime, compiler and CLI functionality still not implemented or published.** The APIs, CLI commands, package names and performance budgets below are product targets, not working functionality. No claim is made that ZaakiyJS is the first AI frontend framework.
+> **Project status: Initial seven-package compiler/runtime/toolchain vertical slices implemented and CI-verified in the source monorepo; not yet published to npm.** Real TSX Counter scaffolding, compilation, native DOM updates, and browser smoke tests pass; full API/browser/release coverage and performance budgets remain targets. No claim is made that ZaakiyJS is the first AI frontend framework.
 
 ZaakiyJS is a proposed, independent **TypeScript/TSX frontend framework** inspired by React, Angular and Vue, designed to compile declarative components into precise native DOM updates. It combines a fine-grained reactive runtime, SOLID/MVVM application architecture, brand-driven CSS, integrated networking/async primitives, hybrid SEO rendering and optional **reviewed Gemini optimization**.
 
@@ -133,7 +133,7 @@ cd my-app
 pnpm dev
 ```
 
-**These commands are not yet available on npm.** The command `start --project` creates/scaffolds an app; `zaakiy dev` starts the development server.
+**The CLI source is implemented but not published to npm.** The `start --project` workflow is validated inside the pnpm workspace; standalone npm scaffolding deliberately refuses the unpublished `0.0.0` package set. `zaakiy dev` delegates to the generated project's development script.
 
 ### CLI generation
 
@@ -265,7 +265,7 @@ The first implementation slice should be **one typed TSX counter** proving signa
 - [Testing and quality gates](docs/development/testing-and-quality.md)
 - [Independent npm release policy](docs/releasing/independent-npm.md)
 
-**Current status:** architecture/docs bootstrap only. Features and package names are planned, and the framework's performance, compatibility and release claims require implementation and evidence.
+**Current status:** seven foundation packages have source implementations and merged CI gates. The workspace generated-app smoke compiles and increments a Counter in Chromium. npm publication, compatibility across Chromium/Firefox/WebKit, typed full `<Show>`/`<For>` coverage, broader SSR/networking ecosystem and performance/release claims remain unproven or deferred.
 
 ---
 

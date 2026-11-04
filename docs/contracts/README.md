@@ -1,6 +1,6 @@
 # ZaakiyJS M0 shared contracts — revision 1
 
-**Status:** Contract baseline for independent implementation, **NOT** working framework code. Every package currently exposes types and an explicit `foundationStatus.implemented === false`. Runtime functions, the TSX transform and CLI commands must not be assumed to exist.
+**Status:** Historical M0 type-only contract baseline, retained for API ownership and compatibility review. This describes the original starting point, **not** the present implementation state. The seven packages now have executable implementation slices; check their current public exports, tests, and acceptance gates before claiming support.
 
 Implementers must treat this directory and the public types in `packages/*/src` as an inter-package change boundary. Any incompatible change requires an ADR, coordinated type/behavior tests and affected package version intent.
 
@@ -17,7 +17,7 @@ Implementers must treat this directory and the public types in `packages/*/src` 
 | `zaakiyPlugin`, virtual CSS module, generated assets | `@zaakiyjs/vite-plugin` | `@zaakiyjs/vite-plugin` |
 | `zaakiy` command and generators | `@zaakiyjs/cli` | CLI executable (not yet shipped) |
 
-`@zaakiyjs/core` may provide owner-scoped wrappers/re-exports of signals APIs; `signals` must not import `core`. Value-level exports in this table are *reserved*, not exported by the M0 skeleton, except `IR_SCHEMA_VERSION`.
+`@zaakiyjs/core` may provide owner-scoped wrappers/re-exports of signals APIs; `signals` must not import `core`. Value-level exports in this table were *reserved* in M0; their actual implemented availability and support must be checked against the current package exports and behavioral tests.
 
 ## Dependency graph
 
@@ -45,4 +45,4 @@ Arrows point from dependencies to consumers. `compiler` and `styles` are build-o
 
 ## M0 scope and verification
 
-Root `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test`, and frozen install validate package metadata, type contracts, real ESM module outputs and exported status flags. The cross-package TSX example is **noEmit / typecheck-only** with `jsx: preserve`; it does **not** prove compiler-generated DOM or JSX runtime functionality. All seven packages start at `0.0.0` for the pre-implementation baseline, but are independently versioned (`fixed: []`, `linked: []`). Publishing remains blocked pending scope/license/API review.
+At M0, root `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test` and frozen install validated metadata and type-only contract stubs. Later implementation PRs added executable compilation, real DOM updates, generated app/build tests, and a Chromium Counter smoke. The packages still use independent versioning (`fixed: []`, `linked: []`) and unpublished `0.0.0` source manifests; publishing remains blocked pending scope, license, browser matrix and artifact review.

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.20.0",
-  "description": "ZaakiyJS M0 contracts-only workspace (framework behavior not implemented)",
+  "description": "ZaakiyJS seven-package compiler-first framework workspace (unpublished foundation implementations)",
   "scripts": {
     "lint": "node scripts/ci/verify-workspaces.mjs && eslint . && turbo run lint",
     "typecheck": "pnpm build && tsc --noEmit --project tsconfig.json && turbo run typecheck",
