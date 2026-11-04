@@ -180,6 +180,21 @@ describe("HTTP security and lifecycle regressions", () => {
     client.dispose();
   });
 
+  it("enforces maxElapsedMs during an uncooperative Fetch attempt", async () => {
+    vi.useFakeTimers();
+    const transport = vi.fn(async () => new Promise<Response>(() => {}));
+    const client = createHttpClient({ baseURL, fetch: transport });
+    const work = client.get("/hang", {
+      retry: { maxAttempts: 2, maxElapsedMs: 25 }
+    });
+    const result = expect(work).rejects.toMatchObject({ code: "TIMEOUT" });
+    await vi.advanceTimersByTimeAsync(25);
+    await result;
+    expect(transport).toHaveBeenCalledTimes(1);
+    client.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("honors retry elapsed deadline and prevents Retry-After override storms", async () => {
     const transport = vi.fn(async () => new Response(null, { status: 503, headers: { "retry-after": "3" } }));
     const client = createHttpClient({ baseURL, fetch: transport });

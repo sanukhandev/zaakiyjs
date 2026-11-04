@@ -26,6 +26,7 @@ export function normalizeRetry(input?: RetryPolicy | false): RetryConfig {
     ["maxElapsedMs", result.maxElapsedMs]] as const)
     if (!Number.isFinite(value) || value < 0) throw configError("retry." + name + " must be nonnegative and finite");
   if (result.maxDelayMs < result.baseDelayMs) throw configError("maxDelayMs cannot be less than baseDelayMs");
+  if (result.maxElapsedMs === 0) throw configError("retry.maxElapsedMs must be positive");
   if (result.statusCodes.some(x => !Number.isInteger(x) || x < 400 || x > 599))
     throw configError("retry.statusCodes must contain valid HTTP error status codes");
   return result;

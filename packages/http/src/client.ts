@@ -102,7 +102,13 @@ export function createHttpClient(options: ClientOptions): HttpClient {
     validateResponseSize(maxBytes);
     if (request.idempotencyKey !== undefined && (!request.idempotencyKey || /[\r\n]/.test(request.idempotencyKey)))
       throw configError("Invalid idempotency key");
-    const operation = createOperation(request.signal, request.timeoutMs ?? options.timeoutMs);
+    // A retry elapsed deadline is an end-to-end ceiling, not merely a backoff budget.
+    // Even an uncooperative first Fetch attempt must settle by this deadline.
+    const configuredTimeout = request.timeoutMs ?? options.timeoutMs;
+    const deadline = policy.maxAttempts > 1 ? policy.maxElapsedMs : undefined;
+    const effectiveTimeout = deadline === undefined ? configuredTimeout :
+      Math.min(configuredTimeout ?? deadline, deadline);
+    const operation = createOperation(request.signal, effectiveTimeout);
     active.add(operation);
     try {
       const signal = operation.signal;
