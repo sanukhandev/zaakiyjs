@@ -97,7 +97,15 @@ function execute(source: string, entry: string, globals: Record<string, unknown>
   const noImports = asset.code.split("\n")
     .filter(line => !line.trimStart().startsWith("import "))
     .join("\n").replace(/^export\s+/gm, "");
-  const context = { ...env, ...globals, __fixture: undefined as (() => FakeNode) | undefined };
+  const aliases: Record<string, unknown> = {};
+  for (const match of asset.code.matchAll(/\b(\w+)\s+as\s+(__z\w+)/g)) {
+    const original = match[1];
+    const alias = match[2];
+    if (!original || !alias) continue;
+    const stubName = "__z" + original[0]!.toUpperCase() + original.slice(1);
+    if (stubName in env) aliases[alias] = env[stubName as keyof typeof env];
+  }
+  const context = { ...env, ...aliases, ...globals, __fixture: undefined as (() => FakeNode) | undefined };
   runInNewContext(noImports + "\n__fixture = " + entry + ";", context, { timeout: 1000 });
   if (!context.__fixture) throw new Error("Missing fixture export: " + entry);
   return { root: context.__fixture(), elements, writes };
@@ -109,8 +117,8 @@ function allText(node: FakeNode): string {
 
 describe("TSX-to-DOM compiler safe vertical slice", () => {
   it("does not capture user variables with generated local DOM or owner names", () => {
-    const source = 'function App(){const __z_owner="outer"; const __z_text_1="text";' +
-      'return <span>{__z_owner + __z_text_1}</span>;}';
+    const source = 'function App(){const __z_owner_0="outer"; const __z_text_2="text";' +
+      'return <span>{__z_owner_0 + __z_text_2}</span>;}';
     const result = compile({ fileName, source });
     expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
     expect(allText(execute(source, "App").root)).toBe("outertext");
@@ -122,6 +130,7 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
     expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
     expect(result.js[0]?.code).toContain("createText as __zCreateText_");
     expect(result.js[0]?.code).not.toMatch(/createText as __zCreateText[,}]/);
+    expect(allText(execute(source, "App").root)).toBe("own");
   });
 
   it("keeps user side-effect import order ahead of compiler runtime helpers", () => {
