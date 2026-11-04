@@ -315,6 +315,16 @@ describe("@zaakiyjs/store", () => {
     disposeOwner(appB);
   });
 
+  it("rejects root factories returning already disposed stores", () => {
+    const app = createOwner();
+    const token = createStoreContext<ReturnType<typeof setup>["store"]>("FactoryLifetime");
+    const invalid = setup(app).store;
+    invalid.dispose();
+    expect(() => getOrCreateRootStore(app, token, () => invalid)).toThrow(/already disposed/);
+    expect(useStore(app, token)).toBeUndefined();
+    disposeOwner(app);
+  });
+
   it("does not resurrect a manually disposed root store", () => {
     const root = createOwner();
     const token = createStoreContext<ReturnType<typeof setup>["store"]>("DisposedRoot");
