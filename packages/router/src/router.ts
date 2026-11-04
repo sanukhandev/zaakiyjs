@@ -13,7 +13,7 @@ import type {
 } from "./types.js";
 import {
   NavigationCancelledError, NavigationDeniedError, RedirectLoopError,
-  RouteConfigurationError, UnsafeNavigationError
+  RouteConfigurationError, RouteNotFoundError, UnsafeNavigationError
 } from "./types.js";
 
 const ORIGIN = "https://zaakiy.invalid";
@@ -85,7 +85,12 @@ function prefixLength(previous: readonly RuntimeEntry[], next: readonly RouteMat
         a.pathname !== b.pathname || !paramsSame(a.params, b.params)) break;
   }
   // Query/hash changes reload only the leaf. Parent layouts remain stable.
-  if (oldUrl !== newUrl && index === next.length && index > 0) index--;
+  if (oldUrl !== newUrl && index === next.length && index > 0) {
+    const before = new URL(oldUrl, ORIGIN);
+    const after = new URL(newUrl, ORIGIN);
+    // A hash-only change must not destroy a live page's owner or input state.
+    if (before.pathname !== after.pathname || before.search !== after.search) index--;
+  }
   return index;
 }
 function abortReason(signal: AbortSignal): CancellationReason {
@@ -386,6 +391,7 @@ export class Router {
         const localPath = pathnameWithinBase(to, this.base);
         if (localPath === null) throw new UnsafeNavigationError("Navigation outside configured application base");
         const matches = matchRoutes(this.table, localPath);
+        if (matches.length === 0) throw new RouteNotFoundError("No route matched " + localPath);
         common = prefixLength(this.active, matches, options.force ?? false, committedUrl, serialize(to));
         staged = [];
         this.pendingOwners.set(tx.id, staged);
