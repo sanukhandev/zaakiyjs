@@ -36,6 +36,8 @@ export type CSSProperties = Readonly<Record<string, string | number | null | und
 
 export interface GlobalAttributes<E extends Element> extends EventAttributes {
   readonly children?: JSXChild;
+  /** Compile-time loop identity; never emitted as a DOM attribute. */
+  readonly key?: string | number | symbol;
   readonly ref?: ElementRef<E>;
   readonly id?: string;
   readonly class?: string;
@@ -125,6 +127,6 @@ type NativeIntrinsicElements = {
 export namespace JSX {
   export type Element = ViewNode;
   export interface ElementChildrenAttribute { children: unknown }
-  export interface IntrinsicAttributes { readonly key?: string | number }
+  export interface IntrinsicAttributes { readonly key?: string | number | symbol }
   export type IntrinsicElements = NativeIntrinsicElements;
 }
