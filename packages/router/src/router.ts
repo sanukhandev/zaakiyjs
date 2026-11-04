@@ -280,11 +280,12 @@ export class Router {
   private async transition(raw: string, options: NavigationOptions, isPop: boolean): Promise<NavigationResult> {
     if (this.disposed) throw new Error("Router disposed");
     const historyMode: VisitMode = options.history ?? (isPop ? "none" : "push");
+    // Validate the target before aborting another valid, in-flight navigation.
+    const from = normalizeUrl(this.urlState.peek(), ORIGIN + "/");
+    let to = normalizeUrl(raw, serialize(from));
     const tx: Transaction = { controller: new AbortController(), id: ++this.nextId };
     this.current?.controller.abort("superseded");
     this.current = tx;
-    const from = normalizeUrl(this.urlState.peek(), ORIGIN + "/");
-    let to = normalizeUrl(raw, serialize(from));
     const committedUrl = serialize(from);
     const attemptedUrl = serialize(to);
     if (attemptedUrl === committedUrl && this.active.length > 0 && !options.force) {
