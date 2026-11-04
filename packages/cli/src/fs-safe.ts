@@ -1,5 +1,5 @@
 import {randomUUID} from "node:crypto";
-import {lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile} from "node:fs/promises";
+import {lstat, mkdir, mkdtemp, rename, rm, writeFile} from "node:fs/promises";
 import {dirname, isAbsolute, join, relative, resolve, sep} from "node:path";
 import {CliError} from "./args.js";
 

@@ -1,7 +1,7 @@
 import {createRequire} from "node:module";
 import {spawnSync} from "node:child_process";
 import {readFile, stat} from "node:fs/promises";
-import {join} from "node:path";
+import {join, dirname} from "node:path";
 import type {CliDiagnostic} from "./types.js";
 
 const packages = ["core", "dom", "signals", "styles", "vite-plugin"] as const;
@@ -70,7 +70,22 @@ export async function diagnoseProject(cwd: string): Promise<CliDiagnostic[]> {
       continue;
     }
     try {
-      projectRequire.resolve(specifier);
+      const entry = projectRequire.resolve(specifier);
+      let folder = dirname(entry);
+      let packageVersion: string | undefined;
+      for (;;) {
+        const text = await textFile(join(folder, "package.json"));
+        if (text) {
+          const installed = JSON.parse(text) as {name?: string; version?: string};
+          if (installed.name === specifier) {packageVersion = installed.version; break;}
+        }
+        const parent = dirname(folder);
+        if (parent === folder) break;
+        folder = parent;
+      }
+      if (!packageVersion) issues.push(diagnostic("MISSING_PACKAGE_VERSION", "Cannot identify installed version for " + specifier));
+      else if (packageVersion === "0.0.0") issues.push(diagnostic("FOUNDATION_NOT_READY", specifier + " remains at the M0 contract-only version 0.0.0."));
+      else if (!/^\d+\.\d+\.\d+/.test(packageVersion)) issues.push(diagnostic("INVALID_PACKAGE_VERSION", "Invalid installed version for " + specifier));
     } catch {
       issues.push(diagnostic("INVALID_PACKAGE_EXPORT", specifier + " is not installed or its main export cannot be resolved."));
     }

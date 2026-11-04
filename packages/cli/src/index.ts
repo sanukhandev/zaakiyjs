@@ -100,7 +100,7 @@ export async function runCli(argv: readonly string[], io?: Partial<CliIO>): Prom
       return 0;
     }
     if (args.command === "start") {
-      assertOptions(args, ["project", "template", "path", "package-manager", "dry-run", "force", "skip-install", "workspace"], 0);
+      assertOptions(args, ["project", "template", "path", "package-manager", "dry-run", "force", "workspace"], 0);
       const name = valueOption(args.options, "project");
       if (!name) throw new CliError("MISSING_PROJECT", "Use: zaakiy start --project <name>.");
       const preset = parsePreset(valueOption(args.options, "template"));
@@ -143,7 +143,7 @@ export async function runCli(argv: readonly string[], io?: Partial<CliIO>): Prom
       return runProjectScript(args.command, cwd, packageManager(valueOption(args.options, "package-manager")));
     }
     if (args.command === "doctor") {
-      assertOptions(args, ["cwd"], 0);
+      assertOptions(args, ["cwd", "json"], 0);
       const relative = valueOption(args.options, "cwd");
       const cwd = relative ? resolve(root, safeRelativePath(relative)) : root;
       const issues = await diagnoseProject(cwd);

@@ -4,7 +4,7 @@ export interface ParsedArgs {
   options: Record<string, string | boolean>;
 }
 const valueFlags = new Set(["project", "template", "architecture", "path", "package-manager", "cwd"]);
-const booleanFlags = new Set(["dry-run", "force", "skip-install", "workspace", "json", "help", "version"]);
+const booleanFlags = new Set(["dry-run", "force", "workspace", "json", "help", "version"]);
 export class CliError extends Error {
   constructor(public readonly code: string, message: string, public readonly exitCode = 1) {
     super(message);
@@ -47,7 +47,7 @@ export function flagOption(options: ParsedArgs["options"], key: string): boolean
   return options[key] === true;
 }
 export function assertOptions(args: ParsedArgs, allowed: readonly string[], maxPositionals: number): void {
-  const unsupported = Object.keys(args.options).filter(key => !allowed.includes(key) && key !== "help" && key !== "version" && key !== "json");
+  const unsupported = Object.keys(args.options).filter(key => !allowed.includes(key) && key !== "help" && key !== "version");
   if (unsupported.length) throw new CliError("INVALID_OPTION", "Unsupported option for " + args.command + ": --" + unsupported.join(", --"));
   if (args.positionals.length > maxPositionals) throw new CliError("TOO_MANY_ARGUMENTS", "Unexpected arguments: " + args.positionals.slice(maxPositionals).join(" "));
 }
