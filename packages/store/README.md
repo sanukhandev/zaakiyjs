@@ -57,7 +57,7 @@ Model/repository modules own business rules, stores own shared state, ViewModels
 - store.select(state => ...) uses the existing lazy computed() engine, including memoization and dynamic dependency switching. The selector factory itself is not cached. Each invocation creates one derivation; retain shared selectors in the ViewModel. Parameterized selector caches and their eviction policies are deferred.
 - store.reset() restores the original captured immutable values, updating individual fields in a single Signals.batch. It does not hold on to the caller's mutable original input.
 - store.dispose() and owner disposal make later field reads and actions fail with a disposed error. A failing action propagates its exception and retains earlier writes; Signals.batch coalesces notifications, not rollback. Invalid patch values and keys are checked before applying patch fields.
-- createStoreContext<T>(), provideStore(), useStore(), and requireStore() delegate hierarchical lookup and overrides to Core context. For actual Store instances, provideStore rejects cross-application ownership and provider scopes that outlive the store owner. Test-double ports without an owner are supported. Providers never use a mutable process-wide map.
+- createStoreContext<T>(), provideStore(), useStore(), and requireStore() delegate hierarchical lookup and overrides to Core context. For actual Store instances, provideStore, useStore and requireStore reject cross-application ownership, stale disposed instances and scopes that outlive the store owner. Test-double ports without an owner are supported. Providers never use a mutable process-wide map.
 - getOrCreateRootStore(owner, token, root => createStore({ owner: root, ... })) creates one instance per application/request root and context token, and rejects mismatched factory ownership. Independently mounted applications or server requests have isolated roots.
 
 ## Ownership and limitations
@@ -66,4 +66,4 @@ Attach effect handles to their own Core owner with onCleanup or ownEffect; child
 
 No automatic snapshots, serialization, hydration, persistence, logging or telemetry are provided. Never place application secrets in client state. No localStorage, global patching, eval or dynamic generated code.
 
-This P1 implementation remains on a draft PR until the integration owner updates the root seven-package M0 verifier, reconciles the frozen pnpm lockfile, and validates real package/root builds. It is not an npm publication.
+P1 integration updates admit Store to the workspace verifier without relaxing mandatory M0 checks, and the frozen pnpm lockfile includes Store's Core/Signals workspace links. Package and root CI must pass before the PR is ready for review. Publication, merge, persistence, and external-effect lifetime changes require independent approval.
