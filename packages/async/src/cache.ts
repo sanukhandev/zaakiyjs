@@ -48,7 +48,10 @@ class ScopedCache implements ResourceCache {
     private readonly detachOwner: () => void
   ) {}
   get disposed(): boolean { return this.closed; }
-  get size(): number { return this.values.size; }
+  get size(): number {
+    if (!this.closed) this.trim(Date.now());
+    return this.values.size;
+  }
   assertAccess(owner: OwnerScope | null, scope?: object): void {
     this.requireLive();
     if (this.root) {
@@ -96,10 +99,15 @@ class ScopedCache implements ResourceCache {
       operation = created;
       this.running.add(created);
       if (deduplicate) this.shared.set(key, created);
+      // Consume the producer's failure even if every consumer has cancelled.
+      // Avoid a rejecting auxiliary .finally() promise that could become unhandled.
       void promise.then(value => {
         if (!controller.signal.aborted && !this.closed) this.put(key, value);
-      }, () => { /* Consumers receive the original rejection; also observe orphaned producers. */ })
+      }, () => { /* The original rejection is delivered to each consumer. */ })
         .then(() => {
+          this.running.delete(created);
+          if (this.shared.get(key) === created) this.shared.delete(key);
+        }, () => {
           this.running.delete(created);
           if (this.shared.get(key) === created) this.shared.delete(key);
         });
@@ -114,7 +122,10 @@ class ScopedCache implements ResourceCache {
         released = true;
         current.consumers--;
         if (current.consumers === 0) {
-          if (!current.controller.signal.aborted) current.controller.abort(new CancellationError("manual"));
+          // Do not abort a producer whose result has already been published.
+          if (this.running.has(current) && !current.controller.signal.aborted) {
+            current.controller.abort(new CancellationError("manual"));
+          }
           this.running.delete(current);
           if (this.shared.get(key) === current) this.shared.delete(key);
         }
@@ -159,6 +170,8 @@ export function createResourceCache(options: CacheOptions = {}): ResourceCache {
   }
   let release = (): void => {};
   const cache = new ScopedCache(owner ? rootOf(owner) : null, options.scope, maxEntries, cacheTimeMs, () => release());
-  release = attachOwner(owner, () => cache.dispose());
+  // The cache is root-scoped, even when its factory is called by a child owner.
+  // Sibling resources must not lose their cache when the creator unmounts.
+  release = attachOwner(owner ? rootOf(owner) : null, () => cache.dispose());
   return cache;
 }
