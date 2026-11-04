@@ -1,7 +1,7 @@
 {
   "name": "@zaakiyjs/compiler",
   "version": "0.0.0",
-  "description": "ZaakiyJS compiler — M0 type contracts only; not implemented",
+  "description": "Node-only TypeScript/TSX to versioned IR and native ZaakiyJS DOM compiler (safe v1 subset)",
   "type": "module",
   "sideEffects": false,
   "files": [
@@ -25,5 +25,11 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "typescript": "5.9.3"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }
