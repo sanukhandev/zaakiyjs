@@ -26,7 +26,6 @@ def start(page: Page, base: str, path: str = "/app/") -> None:
         expected = f'Navigation to "{target}" is interrupted by another navigation to "{target}"'
         if expected not in str(error) or page.url != target:
             raise
-    page.wait_for_function("window.__zaakiyRouter !== undefined", timeout=6000)
     expect(page.get_by_role("heading", name="ZaakiyJS Router acceptance")).to_be_visible()
     assert page.evaluate("window.__zaakiyRouter.router.signals.status.value") == "idle"
 
