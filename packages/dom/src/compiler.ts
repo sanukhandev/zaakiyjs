@@ -17,7 +17,8 @@ const URL_NAMES = new Set([
   "xlink:href", "background", "longdesc", "manifest"
 ]);
 const UNSAFE_PROPERTIES = new Set([
-  "innerhtml", "outerhtml", "srcdoc", "insertadjacenthtml", "style",
+  "innerhtml", "outerhtml", "innertext", "outertext", "textcontent",
+  "srcdoc", "insertadjacenthtml", "style",
   "__proto__", "prototype", "constructor"
 ]);
 

@@ -145,6 +145,8 @@ describe("compiler-lowered native DOM runtime", () => {
     expect(() => setAttribute(el, "href", "javascript:alert(1)")).toThrow();
     expect(() => setAttribute(el, "onclick", "alert(1)")).toThrow();
     expect(() => setProperty(el, "innerHTML", "<b>unsafe</b>")).toThrow();
+    expect(() => setProperty(el, "outerText", "destructive")).toThrow();
+    expect(() => setProperty(el, "textContent", "destructive")).toThrow();
     expect(() => setAttribute(el, "srcdoc", "<script>alert(1)</script>")).toThrow();
     expect(() => setAttribute(el, "style", "background:url(https://tracker.invalid)")).toThrow();
     expect(() => setProperty(el, "href", "java\nscript:alert(1)")).toThrow();
@@ -370,6 +372,47 @@ describe("compiler-lowered native DOM runtime", () => {
     expect(() => setAttribute(frame, "src", "mailto:evil@example.com")).toThrow();
     setAttribute(link, "href", "https://example.com/allowed");
     expect(link.getAttribute("href")).toBe("https://example.com/allowed");
+  });
+
+
+  it("preserves native listener ordering when a reactive handler changes", () => {
+    const owner = createOwner();
+    const button = document.createElement("button");
+    const order: string[] = [];
+    button.addEventListener("click", () => order.push("native-before"));
+    const which = signal<"one" | "two">("one");
+    listenStable(owner, button, "click", () => () => order.push(which.value));
+    button.addEventListener("click", () => order.push("native-after"));
+    button.click();
+    which.value = "two";
+    flushSync();
+    button.click();
+    expect(order).toEqual([
+      "native-before", "one", "native-after",
+      "native-before", "two", "native-after"
+    ]);
+    disposeOwner(owner);
+  });
+
+  it("updates reactive SVG attributes without replacing nodes or losing namespaces", () => {
+    const owner = createOwner();
+    const svg = createElement("svg", "svg");
+    const path = createElement("path", "svg");
+    svg.appendChild(path);
+    const fill = signal("red");
+    const href = signal("#a");
+    bindAttribute(owner, path, "fill", () => fill.value);
+    bindAttribute(owner, path, "xlink:href", () => href.value);
+    expect(path.getAttribute("fill")).toBe("red");
+    expect(path.getAttributeNS("http://www.w3.org/1999/xlink", "href")).toBe("#a");
+    fill.value = "blue";
+    href.value = "#b";
+    flushSync();
+    expect(path.getAttribute("fill")).toBe("blue");
+    expect(path.getAttributeNS("http://www.w3.org/1999/xlink", "href")).toBe("#b");
+    expect(svg.firstChild).toBe(path);
+    expect(path.namespaceURI).toBe("http://www.w3.org/2000/svg");
+    disposeOwner(owner);
   });
 
   it("keeps one listener during handler changes and removes it on disposal", () => {
