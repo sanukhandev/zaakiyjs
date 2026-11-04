@@ -169,7 +169,7 @@ export function analyze(request: CompileRequest): Analysis {
           const itemNode = template && isJsx(template) ? template : undefined;
           const jsxAttrs = itemNode && (ts.isJsxElement(itemNode)
             ? itemNode.openingElement.attributes.properties : itemNode.attributes.properties);
-          const keyAttr = jsxAttrs?.find(a => ts.isJsxAttribute(a) && a.name.text === "key");
+          const keyAttr = jsxAttrs?.find(a => ts.isJsxAttribute(a) && a.name.getText(source) === "key");
           if (!keyAttr || !ts.isJsxAttribute(keyAttr) ||
               !keyAttr.initializer || !ts.isJsxExpression(keyAttr.initializer) ||
               !keyAttr.initializer.expression) {
