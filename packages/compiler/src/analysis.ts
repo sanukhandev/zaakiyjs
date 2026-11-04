@@ -261,11 +261,17 @@ export function analyze(request: CompileRequest): Analysis {
         if (!b) continue;
         if (isComponent) props.push(b);
         else attributes.push(b);
-        if (!isComponent && name === "class" && /^["']/.test(b.expression.source)) {
-          const tokens = JSON.parse(b.expression.source) as string;
-          for (const token of tokens.trim().split(/\s+/).filter(Boolean)) {
-            attributes.push({ kind: "StyleToken", id: idOf("StyleToken:" + token, b.span),
-              span: b.span, token });
+        if (!isComponent && name === "class") {
+          const classLiteral = ts.isStringLiteral(attr.initializer)
+            ? attr.initializer.text
+            : attr.initializer && ts.isJsxExpression(attr.initializer) &&
+              attr.initializer.expression && ts.isStringLiteral(attr.initializer.expression)
+              ? attr.initializer.expression.text : null;
+          if (classLiteral !== null) {
+            for (const token of classLiteral.trim().split(/\s+/).filter(Boolean)) {
+              attributes.push({ kind: "StyleToken", id: idOf("StyleToken:" + token, b.span),
+                span: b.span, token });
+            }
           }
         }
       }
