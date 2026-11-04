@@ -214,6 +214,85 @@ describe("scope-local typed context", () => {
     disposeOwner(root);
   });
 
+  it("retains inherited providers during child-only cleanup without allowing registrations", () => {
+    const app = createOwner();
+    const child = createOwner(app);
+    const release = vi.fn();
+    const token = createContext<{ release(): void }>("Repository");
+    provide(app, token, { release });
+    runWithOwner(child, () => onCleanup(() => {
+      expect(child.disposed).toBe(true);
+      expect(child.parent).toBe(app);
+      expect(requireContext(child, token).release).toBe(release);
+      expect(() => provide(child, token, { release })).toThrow(/disposed/);
+      expect(() => createOwner(child)).toThrow(/disposed/);
+      expect(() => runWithOwner(child, () => onCleanup(() => {}))).toThrow(/disposed/);
+      requireContext(child, token).release();
+    }));
+    disposeOwner(child);
+    expect(release).toHaveBeenCalledOnce();
+    expect(child.parent).toBeNull();
+    expect(() => requireContext(child, token)).toThrow(/disposed/);
+    expect(requireContext(app, token).release).toBe(release);
+    disposeOwner(app);
+  });
+
+  it("retains ancestor and shadowed providers through complete application teardown", () => {
+    const order: string[] = [];
+    const app = createOwner();
+    const feature = createOwner(app);
+    const component = createOwner(feature);
+    const token = createContext<{ release(): void }>("ScopedResource");
+    provide(app, token, { release: () => order.push("app-resource") });
+    provide(feature, token, { release: () => order.push("feature-resource") });
+    runWithOwner(component, () => onCleanup(() => {
+      expect(component.disposed).toBe(true);
+      expect(feature.disposed).toBe(true);
+      expect(app.disposed).toBe(true);
+      expect(component.parent).toBe(feature);
+      requireContext(component, token).release();
+      expect(() => provide(app, token, { release: () => {} })).toThrow(/disposed/);
+    }));
+    runWithOwner(feature, () => onCleanup(() => {
+      requireContext(feature, token).release();
+    }));
+    runWithOwner(app, () => onCleanup(() => {
+      requireContext(app, token).release();
+    }));
+    disposeOwner(app);
+    expect(order).toEqual(["feature-resource", "feature-resource", "app-resource"]);
+    expect(app.parent).toBeNull();
+    expect(feature.parent).toBeNull();
+    expect(component.parent).toBeNull();
+    for (const owner of [app, feature, component]) {
+      expect(getOwnerProviders(owner).size).toBe(0);
+      expect(() => requireContext(owner, token)).toThrow(/disposed/);
+    }
+  });
+
+  it("continues provider-aware cleanup after failures and handles reentrant disposal", () => {
+    const app = createOwner();
+    const child = createOwner(app);
+    const token = createContext<{ release(): void }>("RecoveryResource");
+    const release = vi.fn();
+    provide(app, token, { release });
+    runWithOwner(child, () => {
+      onCleanup(() => {
+        disposeOwner(child);
+        disposeOwner(app);
+        requireContext(child, token).release();
+      });
+      onCleanup(() => { throw new Error("failed cleanup"); });
+    });
+    expect(() => disposeOwner(app)).toThrow("failed cleanup");
+    expect(release).toHaveBeenCalledOnce();
+    expect(child.parent).toBeNull();
+    expect(child.disposed).toBe(true);
+    expect(app.disposed).toBe(true);
+    expect(getOwnerProviders(app).size).toBe(0);
+    expect(() => disposeOwner(app)).not.toThrow();
+  });
+
   it("returns undefined or typed missing-provider error", () => {
     const root = createOwner();
     expect(useContext(root, RepositoryToken)).toBeUndefined();
