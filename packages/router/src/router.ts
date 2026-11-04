@@ -13,7 +13,7 @@ import type {
 } from "./types.js";
 import {
   NavigationCancelledError, NavigationDeniedError, RedirectLoopError,
-  RouteConfigurationError, RouteNotFoundError, UnsafeNavigationError
+  RouteConfigurationError, RouteNotFoundError, RouteModuleLoadError, RouteLoaderError, UnsafeNavigationError
 } from "./types.js";
 
 const ORIGIN = "https://zaakiy.invalid";
@@ -423,15 +423,26 @@ export class Router {
             for (let i = common; i < next.length; i++) {
               const entry = next[i]!;
               const compiled = this.table.byId.get(entry.route.id)!;
-              const module = await abortable(this.moduleFor(compiled),
-                AbortSignal.any([tx.controller.signal, entry.abort.signal]));
+              let module: RouteModule | undefined;
+              try {
+                module = await abortable(this.moduleFor(compiled),
+                  AbortSignal.any([tx.controller.signal, entry.abort.signal]));
+              } catch (error) {
+                if (error instanceof NavigationCancelledError) throw error;
+                throw new RouteModuleLoadError(entry.route.id, error);
+              }
               requireCurrent(tx, this.current, this.options.owner);
               if (entry.owner.disposed) throw new NavigationCancelledError("owner-disposed");
               (entry as { module?: RouteModule }).module = module;
               const loader = module?.loader ?? entry.route.loader;
               if (loader) {
                 const ctx = contextFor(entry, from, to, tx.controller.signal);
-                (entry as { data: unknown }).data = await abortable(loader(ctx), ctx.signal);
+                try {
+                  (entry as { data: unknown }).data = await abortable(loader(ctx), ctx.signal);
+                } catch (error) {
+                  if (error instanceof NavigationCancelledError) throw error;
+                  throw new RouteLoaderError(entry.route.id, error);
+                }
                 requireCurrent(tx, this.current, this.options.owner);
                 if (entry.owner.disposed) throw new NavigationCancelledError("owner-disposed");
               }
