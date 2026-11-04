@@ -166,12 +166,21 @@ class Scope implements OwnerScope {
       this.cleanups.length = 0;
       this.providers.clear();
       const parent = this.parent;
+      // Capture the complete ancestry before severing this link. A teardown
+      // request can be pending on a grandparent even if the intermediate
+      // parent itself was never asked to dispose.
+      const ancestors: Scope[] = [];
+      for (let cursor = parent; cursor !== null; cursor = cursor.parent) {
+        ancestors.push(cursor);
+      }
       parent?.children.delete(this);
       this.parent = null; // Retained disposed scopes must not retain their app.
       this.cleanupInProgress = false;
-      // Resume an ancestor whose disposal was requested inside this child's
-      // cleanup. Keep the original error aggregation contract intact.
-      try { parent?.finishDeferredDisposal(); } catch (error) { errors.push(error); }
+      // Every pending ancestor now gets a chance to finish, child-first.
+      // Any cleanup failures are aggregated with the original disposal errors.
+      for (const ancestor of ancestors) {
+        try { ancestor.finishDeferredDisposal(); } catch (error) { errors.push(error); }
+      }
     }
     if (errors.length === 1) throw errors[0];
     if (errors.length > 1) throw new AggregateError(errors, "Owner disposal failed");
