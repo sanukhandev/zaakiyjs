@@ -7,6 +7,13 @@ import { describe, expect, it } from "vitest";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("store publishable ESM artifacts", () => {
+  it("loads the built ESM entrypoint without the TypeScript test runner", async () => {
+    const entry = await import("../dist/index.js");
+    expect(typeof entry.createStore).toBe("function");
+    expect(typeof entry.createStoreContext).toBe("function");
+    expect(typeof entry.getOrCreateRootStore).toBe("function");
+  });
+
   it("emits public ESM and type declarations before packing", () => {
     const manifest = JSON.parse(readFileSync(resolve(packageRoot, "package.json"), "utf8")) as {
       exports: { ".": { types: string; import: string } };
