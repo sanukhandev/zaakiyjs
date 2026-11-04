@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   analyzeCompatibility, compareVersions, detectIRFeatures, detectSourceFeatures,
   getFeature, listFeatures, parseMode, resolveTargets, serializeManifest, toStylesTargets,
@@ -98,6 +98,17 @@ describe("syntax/API/IR/CSS detection and planning", () => {
     expect(r.manifest.shims).toEqual([expect.objectContaining({
       id: "abort-any", module: "@zaakiyjs/compat/abort"
     })]);
+  });
+  it("deduplicates scoped helper inclusion for repeated imports and calls", () => {
+    const r = analyzeCompatibility({
+      mode: "strict", targets: oldFirefox, sources: source(
+        'import { composeAbortSignals } from "@zaakiyjs/compat/abort";' +
+        'const first = composeAbortSignals([a]); const second = composeAbortSignals([b]);'
+      )
+    });
+    expect(r.ok).toBe(true);
+    expect(r.manifest.shims.filter(item => item.id === "abort-any")).toHaveLength(1);
+    expect(r.manifest.detectedFeatures.find(item => item.id === "web.abort-signal-any")?.requiredBy).toHaveLength(2);
   });
   it("treats direct and scoped AbortSignal API calls separately", () => {
     const r = analyzeCompatibility({
@@ -204,6 +215,19 @@ describe("manifest reproducibility and security", () => {
     expect(one.manifest.hash).toMatch(/^fnv1a64:[0-9a-f]{16}$/);
     expect(validateManifest(one.manifest)).toBe(true);
     expect(validateManifest({ ...one.manifest, estimatedExtraBytes: 999 })).toBe(false);
+  });
+  it("resolves plans with no network access", () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+      throw new Error("Network access during compatibility analysis");
+    });
+    try {
+      const r = analyzeCompatibility({ mode: "strict", targets: modern,
+        sources: source("const c = new AbortController();") });
+      expect(r.ok).toBe(true);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
   it("does not put source content, tokens or secrets in the manifest", () => {
     const secret = "sk-this-is-private-test-material";
