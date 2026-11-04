@@ -21,6 +21,7 @@ describe("mode and target contracts", () => {
       { browser: "chrome", minimum: "124" }, { browser: "safari", minimum: "16.4", maximum: "17.4" }
     ]);
     expect(resolveTargets(modern, "auto").length).toBe(4);
+    expect(resolveTargets({ browsers: ["chrome 124"] }, "strict")[0]).toEqual({ browser: "chrome", minimum: "124", maximum: "124" });
     expect(compareVersions("15.4", "15.3")).toBe(1);
     expect(compareVersions("16.0", "16")).toBe(0);
   });
