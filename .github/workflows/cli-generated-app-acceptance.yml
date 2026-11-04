@@ -71,6 +71,72 @@ jobs:
             cat /tmp/zaakiy-browser-dom.txt
             exit 1
           fi
+      - name: Compile and exercise native Show and For in Chromium
+        shell: bash
+        run: |
+          cat > apps/smoke-app/src/App.tsx <<'TSX'
+          import { Show, For } from "@zaakiyjs/core";
+          import { signal } from "@zaakiyjs/signals";
+          const visible = signal(true);
+          const rows = signal([{ id: "a", label: "Alpha" }, { id: "b", label: "Beta" }]);
+          export function App() {
+            return <main>
+              <button id="toggle" onClick={() => {visible.value = !visible.value;}}>toggle</button>
+              <button id="reorder" onClick={() => {rows.value = [...rows.value].reverse();}}>reorder</button>
+              <button id="replace" onClick={() => {rows.value = rows.value.map(
+                row => row.id === "a" ? {id:"a",label:"Alpha2"} : row
+              );}}>replace</button>
+              <Show when={visible.value} fallback={<p id="hidden">Hidden</p>}><p id="shown">Shown</p></Show>
+              <ol><For each={rows.value} by={row => row.id}>{row => <li><span>{row.label}</span></li>}</For></ol>
+            </main>;
+          }
+          TSX
+          pnpm --dir apps/smoke-app typecheck
+          pnpm --dir apps/smoke-app build
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("apps/smoke-app/dist/index.html")
+          html = path.read_text()
+          script = """<script type="module">
+          document.addEventListener("DOMContentLoaded", () => {
+            setTimeout(() => {
+              const originals = [...document.querySelectorAll("ol li")];
+              const initial = originals.map(node => node.textContent).join(",");
+              document.querySelector("#toggle")?.click();
+              document.querySelector("#reorder")?.click();
+              document.querySelector("#replace")?.click();
+              setTimeout(() => {
+                const next = [...document.querySelectorAll("ol li")];
+                const ok = originals.length === 2 &&
+                  initial === "Alpha,Beta" &&
+                  document.querySelector("#hidden")?.textContent === "Hidden" &&
+                  !document.querySelector("#shown") &&
+                  next[0] === originals[1] && next[1] === originals[0] &&
+                  next.map(node => node.textContent).join(",") === "Beta,Alpha2";
+                document.body.setAttribute("data-zaakiy-control-flow", ok ? "pass" : "fail");
+              }, 120);
+            }, 60);
+          });
+          </script>"""
+          assert "</body>" in html
+          path.write_text(html.replace("</body>", script + "</body>"))
+          PY
+          pnpm --dir apps/smoke-app exec vite preview --host 127.0.0.1 --port 4174 > /tmp/zaakiy-control-flow-preview.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4174/ >/dev/null; then break; fi
+            sleep 1
+          done
+          google-chrome --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu \
+            --virtual-time-budget=3000 --dump-dom http://127.0.0.1:4174/ \
+            > /tmp/zaakiy-control-flow-browser.txt 2>/tmp/zaakiy-control-flow-stderr.txt
+          if ! grep -q 'data-zaakiy-control-flow="pass"' /tmp/zaakiy-control-flow-browser.txt; then
+            cat /tmp/zaakiy-control-flow-preview.log
+            cat /tmp/zaakiy-control-flow-stderr.txt
+            cat /tmp/zaakiy-control-flow-browser.txt
+            exit 1
+          fi
       - name: Assert generated artifacts and no build tool imports in browser code
         shell: bash
         run: |

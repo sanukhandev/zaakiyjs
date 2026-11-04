@@ -513,3 +513,147 @@ function originalLineAt(map: { mappings: string }, generatedLine: number, genera
     expect(parseToIR(request).document.irVersion).toBe(1);
   });
 });
+
+describe("typed Show/For compiler intrinsics", () => {
+  const prelude = [
+    'import { Show, For } from "@zaakiyjs/core";',
+    'import { signal } from "@zaakiyjs/signals";',
+  ].join("\n");
+
+  it("lowers typed Show fallback and keyed For to the frozen region ABI", () => {
+    const source = [
+      prelude,
+      'const visible = signal(true);',
+      'const items = signal([{id: 1, label: "one"}]);',
+      'function App(){return <main><Show when={visible.value} fallback={<p>hidden</p>}><p>shown</p></Show>',
+      '<ol><For each={items.value} by={row => row.id}>{row => <li>{row.label}</li>}</For></ol></main>;}'
+    ].join("\n");
+    const ir = parseToIR({ fileName, source });
+    expect(ir.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(ir.document.nodes[0]?.kind).toBe("StaticElement");
+    const result = compile({ fileName, source });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.js).toHaveLength(1);
+    const code = result.js[0]?.code ?? "";
+    expect(code).toContain("bindConditionalRegion");
+    expect(code).toContain("bindKeyedRegion");
+    expect(code).toContain("update:");
+    expect(code).not.toContain("react/jsx-runtime");
+    const parsedRoot = ir.document.nodes[0];
+    if (parsedRoot?.kind === "StaticElement") {
+      const show = parsedRoot.children.find(node => node.kind === "ConditionalBlock");
+      expect(show?.kind).toBe("ConditionalBlock");
+      const list = parsedRoot.children.find(node => node.kind === "StaticElement" && node.tag === "ol");
+      expect(list?.kind).toBe("StaticElement");
+      if (list?.kind === "StaticElement") {
+        const loop = list.children.find(node => node.kind === "KeyedLoop");
+        expect(loop?.kind).toBe("KeyedLoop");
+        if (loop?.kind === "KeyedLoop") {
+          expect(loop.collection.source).toBe("items.value");
+          expect(loop.itemParameter).toBe("row");
+          expect(loop.key.source).toContain("row.id");
+        }
+      }
+    }
+  });
+
+  it("recognizes alias imports without hijacking unrelated local components", () => {
+    const source = [
+      'import {Show as Visible, For as Each} from "@zaakiyjs/core";',
+      'const list = [{id: 1}];',
+      'function App(){return <main><Visible when={true}><p>Y</p></Visible>',
+      '<Each each={list} by={x => x.id}>{row => <p>{row.id}</p>}</Each></main>;}'
+    ].join("\n");
+    const result = compile({ fileName, source });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.js[0]?.code).toContain("bindKeyedRegion");
+    const unrelated = compile({ fileName, source:
+      'function Show(props: {children?: unknown}) {return <b>custom</b>}; function App(){return <main><Show /></main>}' });
+    expect(unrelated.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(unrelated.js[0]?.code).not.toContain("bindConditionalRegion(");
+  });
+
+  it("fails closed for malformed control flow without emitting JS", () => {
+    const bad = [
+      prelude,
+      'const items = [{id: 1}];',
+      'function App(){return <main><Show when={true}><p>a</p><p>b</p></Show>',
+      '<For each={items} by={row => row.id}>{row => <p>{row.id}</p>}</For>',
+      '<For each={items} by={row => row.id}>{row => <p>{row.id}</p>}<p>extra</p></For>',
+      '</main>;}'
+    ].join("\n");
+    const result = compile({fileName, source: bad});
+    expect(result.js).toEqual([]);
+    expect(result.diagnostics.some(d => d.code === "ZC2403")).toBe(true);
+    expect(result.diagnostics.some(d => d.code === "ZC2404")).toBe(true);
+    const noImport = compile({fileName, source:
+      'function App() {return <main><Show when={true}><p>x</p></Show></main>}'});
+    expect(noImport.js).toEqual([]);
+  });
+
+
+  it("never rewrites a locally shadowed core intrinsic import", () => {
+    const source = [
+      'import {Show} from "@zaakiyjs/core";',
+      'function App(Show: typeof import("@zaakiyjs/core").Show) {',
+      '  return <main><Show when={true}><p>local call</p></Show></main>; }'
+    ].join("\n");
+    const result = compile({fileName, source});
+    expect(result.js).toEqual([]);
+    expect(result.diagnostics.some(d => d.code === "ZC2102")).toBe(true);
+  });
+
+  it("rejects side-effectful key selector factory evaluation", () => {
+    const source = [
+      'import {For} from "@zaakiyjs/core";',
+      'const items = [{id: 1}];',
+      'const keyFactory = () => (row: {id:number}) => row.id;',
+      'function App(){ return <ul><For each={items} by={keyFactory()}>',
+      '  {row => <li>{row.id}</li>}</For></ul>; }'
+    ].join("\n");
+    const result = compile({fileName, source});
+    expect(result.js).toEqual([]);
+    expect(result.diagnostics.some(d => d.code === "ZC2405")).toBe(true);
+  });
+
+
+  it("diagnoses root-level and nested control-flow ABI constraints", () => {
+    const root = compile({fileName, source: [
+      'import {Show} from "@zaakiyjs/core";',
+      'function App(){return <Show when={true}><p>bare root</p></Show>;}'
+    ].join("\n")});
+    expect(root.js).toEqual([]);
+    expect(root.diagnostics.some(d => d.code === "ZC2201")).toBe(true);
+
+    const nested = compile({fileName, source: [
+      'import {For} from "@zaakiyjs/core";',
+      'const rows = [{id: 1}];',
+      'function App(){return <ul><For each={rows} by={row => row.id}>',
+      '{row => <li><For each={rows} by={child => child.id}>',
+      '{child => <span>{child.id}</span>}</For></li>}',
+      '</For></ul>;}'
+    ].join("\n")});
+    expect(nested.js).toEqual([]);
+    expect(nested.diagnostics.some(d => d.code === "ZC2202")).toBe(true);
+    expect(nested.diagnostics.some(d => d.code === "ZC9001")).toBe(false);
+  });
+
+  it("keeps generated assets deterministic and rejects invalid key types", () => {
+    const source = [
+      prelude,
+      'const rows = [{id: "a"}];',
+      'function App(){return <ul><For each={rows} by={x => x.id}>{row => <li>{row.id}</li>}</For></ul>}'
+    ].join("\n");
+    const a = compile({fileName, source});
+    const b = compile({fileName, source});
+    expect(a.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(a.js[0]?.code).toBe(b.js[0]?.code);
+    expect(a.js[0]?.map).toBe(b.js[0]?.map);
+    const invalid = compile({fileName, source: [
+      prelude, 'const rows = [{id: "a"}];',
+      'function App(){return <ul><For each={rows} by={x => ({id:x.id})}>{row => <li>{row.id}</li>}</For></ul>}'
+    ].join("\n")});
+    expect(invalid.js).toEqual([]);
+    expect(invalid.diagnostics.some(d => d.severity === "error")).toBe(true);
+  });
+});

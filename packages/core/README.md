@@ -72,3 +72,29 @@ Set `"jsx": "preserve"` and `"jsxImportSource": "@zaakiyjs/core"`. JSX types cov
 Package dependency: `@zaakiyjs/signals` (currently type-only imports from Core). No global DI registry, async context patch, or HTML evaluation. The Core package has also been validated with real Signals and DOM implementations in an isolated integration branch (four dedicated cross-package tests); those independently developed package PRs must still be integrated through normal review. The shared M0 root export assertion was updated separately to accept genuinely implemented packages. Compiler-generated TSX integration and browser compatibility remain the responsibility of their respective packages.
 
 First npm release is **not** authorized until namespace, license, package pack and compatibility reviews.
+
+## Typed compiler-only control flow (M1)
+
+Import `Show` and `For` from `@zaakiyjs/core` inside TSX source compiled by `@zaakiyjs/compiler`:
+
+```tsx
+import { Show, For } from "@zaakiyjs/core";
+import { signal } from "@zaakiyjs/signals";
+
+const active = signal(true);
+const tasks = signal([{ id: 1, title: "Ship" }]);
+function Tasks() {
+  return <main>
+    <Show when={active.value} fallback={<p>Paused</p>}>
+      <p>Active</p>
+    </Show>
+    <ul>
+      <For each={tasks.value} by={task => task.id}>
+        {task => <li>{task.title}</li>}
+      </For>
+    </ul>
+  </main>;
+}
+```
+
+These exported functions are **compile-time intrinsics**, not runtime JSX components; direct invocation intentionally throws. The compiler lowers to DOM ABI v1 `ConditionalBlock`/`KeyedLoop`, preserving per-item owner and signal identity. A single native child/root is required for the restricted M1 authoring slice. `by` accepts an inline arrow or named function reference returning a primitive key. Use a wrapping native element around nested regions. See [ADR 0005](../../docs/adr/0005-tsx-control-flow-intrinsics.md) for diagnostics, unsupported syntax and browser gates.

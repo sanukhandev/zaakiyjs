@@ -22,6 +22,7 @@ The compiler result is ordered arrays of JS and CSS assets, diagnostics, optiona
 - Synchronous nested functional components initialized under child owners.
 - Compile-time literal conditional elimination and dynamic true/false conditional regions through the reviewed owner-scoped DOM ABI.
 - A constrained native-element `items.map(item => <Element key={item.id}>...)` keyed-loop lowering path with stable owner/node identity and signal-backed item replacement; no JSX interpreter.
+- Typed compiler-only `<Show when={...} fallback={<p>...}>...` and `<For each={...} by={item => item.id}>{item => <li>...</li>}</For>` intrinsics imported from `@zaakiyjs/core`, lowered to the existing region ABI. Native single-root templates only; see ADR 0005.
 - Static class utility token discovery (metadata only, not CSS generation).
 - Impure **nonreactive** expressions evaluated once at setup; reactive expressions containing unknown calls fail closed.
 - Hygienic generated identifiers, stable ESM import ordering, and no browser DOM/helper imports for TSX modules without JSX.
