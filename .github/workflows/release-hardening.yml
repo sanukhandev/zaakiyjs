@@ -108,6 +108,14 @@ jobs:
           npm pack axe-core@4.14.0 --pack-destination "$RUNNER_TEMP" --silent
           tar -xOzf "$RUNNER_TEMP/axe-core-4.14.0.tgz" package/axe.min.js > apps/release-app/public/axe.min.js
           test -s apps/release-app/public/axe.min.js
+          python3 - <<'PY'
+          from pathlib import Path
+          file = Path("apps/release-app/index.html")
+          html = file.read_text()
+          assert "</head>" in html
+          file.write_text(html.replace("</head>",
+            '    <script src="/axe.min.js" defer></script>\n  </head>'))
+          PY
       - name: Strict fixture typecheck and optimized production build
         run: pnpm --dir apps/release-app typecheck && pnpm --dir apps/release-app build
       - name: Install pinned Playwright and three matching browsers
