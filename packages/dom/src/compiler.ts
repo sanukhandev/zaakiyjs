@@ -313,3 +313,7 @@ export function listenStable(
 export function cloneStatic<T extends Node>(template: T): T {
   return template.cloneNode(true) as T;
 }
+
+/** Stable compiler-generated range/keyed ABI v1; no Node/compiler imports. */
+export { createRegion, bindConditionalRegion, bindKeyedRegion } from "./regions.js";
+export type { DomRegion, KeyedView } from "./regions.js";

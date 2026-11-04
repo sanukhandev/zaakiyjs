@@ -9,7 +9,7 @@ import {
   cloneStatic, createElement, createText, listen, listenStable, setAttribute,
   setProperty, setStyle
 } from "../src/compiler.js";
-import { bindConditionalRegion, bindKeyedRegion, createRegion } from "../src/regions.js";
+import { bindConditionalRegion, bindKeyedRegion, createRegion } from "../src/compiler.js";
 
 afterEach(() => { document.body.replaceChildren(); });
 
@@ -232,6 +232,57 @@ describe("compiler-lowered native DOM runtime", () => {
     expect(closed).toHaveBeenCalledWith("b");
   });
 
+
+  it("switches true and false conditional views with isolated child owners", () => {
+    const app = createOwner();
+    const host = document.createElement("div");
+    const region = createRegion(host);
+    const visible = signal(true);
+    const releases: string[] = [];
+    bindConditionalRegion(app, region, () => visible.value,
+      () => {
+        const node = document.createElement("strong");
+        node.textContent = "yes";
+        onCleanup(() => releases.push("yes"));
+        return node;
+      },
+      () => {
+        const node = document.createElement("em");
+        node.textContent = "no";
+        onCleanup(() => releases.push("no"));
+        return node;
+      }
+    );
+    expect(host.textContent).toBe("yes");
+    visible.value = false;
+    flushSync();
+    expect(host.textContent).toBe("no");
+    expect(releases).toEqual(["yes"]);
+    visible.value = true;
+    flushSync();
+    expect(host.textContent).toBe("yes");
+    expect(releases).toEqual(["yes", "no"]);
+    disposeOwner(app);
+    expect(releases).toEqual(["yes", "no", "yes"]);
+  });
+
+  it("rejects replaced same-key items without an update handler instead of showing stale DOM", () => {
+    const owner = createOwner();
+    const parent = document.createElement("div");
+    const region = createRegion(parent);
+    const entries = signal([{ id: "a", label: "one" }]);
+    bindKeyedRegion(owner, region, () => entries.value, item => item.id, item => {
+      const node = document.createElement("span");
+      node.textContent = item.label;
+      return { node };
+    });
+    const retained = parent.querySelector("span");
+    entries.value = [{ id: "a", label: "two" }];
+    expect(() => flushSync()).toThrow(/requires a view.update/);
+    expect(parent.querySelector("span")).toBe(retained);
+    expect(parent.textContent).toBe("one");
+    disposeOwner(owner);
+  });
 
   it("waits for connected DOM before running conditional child mount hooks", () => {
     const host = document.createElement("div");
