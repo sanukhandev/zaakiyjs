@@ -1,0 +1,96 @@
+name: Compat Browser Smoke
+
+on:
+  pull_request:
+    paths:
+      - "packages/compat/**"
+      - "pnpm-lock.yaml"
+      - "scripts/ci/verify-workspaces.mjs"
+      - ".github/workflows/compat-browser.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/compat/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/compat-browser.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  playwright:
+    name: compat / chromium-firefox-webkit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Frozen workspace install
+        run: pnpm install --frozen-lockfile
+      - name: Build compatibility package
+        run: pnpm --filter @zaakiyjs/compat build
+      - name: Validate exports, package contents and build-only boundary
+        shell: bash
+        run: |
+          node --input-type=module <<'JS'
+          import { execFileSync } from "node:child_process";
+          import { readFileSync } from "node:fs";
+          const root = await import("./packages/compat/dist/index.js");
+          const browser = await import("./packages/compat/dist/abort.js");
+          if (typeof root.analyzeCompatibility !== "function" || typeof browser.composeAbortSignals !== "function") {
+            throw new Error("Compiled package entrypoints are not importable");
+          }
+          const source = readFileSync("packages/compat/dist/abort.js", "utf8");
+          if (/from ["'](?:typescript|zone\.js|@zaakiyjs\/compiler)/.test(source)) {
+            throw new Error("Build-time module leaked into abort entrypoint");
+          }
+          const pack = JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json"], {
+            cwd: "packages/compat", encoding: "utf8"
+          }));
+          const paths = new Set(pack[0].files.map(file => file.path));
+          for (const required of ["dist/index.js", "dist/index.d.ts", "dist/abort.js",
+            "dist/abort.d.ts", "README.md", "CHANGELOG.md"]) {
+            if (!paths.has(required)) throw new Error("npm pack is missing " + required);
+          }
+          console.log("PASS: ESM exports and npm pack contents");
+          JS
+      - name: Install pinned Playwright and browser engines
+        run: |
+          python3 -m pip install 'playwright==1.64.1'
+          python3 -m playwright install --with-deps chromium firefox webkit
+      - name: Run real-browser abort helper acceptance
+        shell: bash
+        run: |
+          python3 -m http.server 4189 --bind 127.0.0.1 > /tmp/zaakiy-compat-browser.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in {1..50}; do
+            if curl --fail --silent http://127.0.0.1:4189/packages/compat/test/fixtures/browser-abort.html > /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/zaakiy-compat-browser.log
+            exit 1
+          fi
+          python3 packages/compat/test/fixtures/browser_acceptance.py --base-url http://127.0.0.1:4189
+      - name: Save browser server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compat-browser-logs
+          path: /tmp/zaakiy-compat-browser.log
+          if-no-files-found: ignore
