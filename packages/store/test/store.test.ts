@@ -301,6 +301,29 @@ describe("@zaakiyjs/store", () => {
     disposeOwner(b.request);
   });
 
+  it("refuses cross-request and longer-lived providers of owned stores", () => {
+    const appA = createOwner();
+    const appB = createOwner();
+    const feature = createOwner(appA);
+    const token = createStoreContext<ReturnType<typeof setup>["store"]>("ScopedOwnership");
+    const appStore = setup(appA).store;
+    const featureStore = setup(feature).store;
+    expect(() => provideStore(appB, token, appStore)).toThrow(/cannot outlive or cross/);
+    expect(() => provideStore(appA, token, featureStore)).toThrow(/cannot outlive or cross/);
+    expect(() => provideStore(feature, token, appStore)).not.toThrow();
+    disposeOwner(appA);
+    disposeOwner(appB);
+  });
+
+  it("does not resurrect a manually disposed root store", () => {
+    const root = createOwner();
+    const token = createStoreContext<ReturnType<typeof setup>["store"]>("DisposedRoot");
+    const created = getOrCreateRootStore(root, token, owner => setup(owner).store);
+    created.dispose();
+    expect(() => getOrCreateRootStore(root, token, owner => setup(owner).store)).toThrow(/already disposed/);
+    disposeOwner(root);
+  });
+
   it("uses owned context providers and rejects mismatched root ownership", () => {
     const app = createOwner();
     const other = createOwner();
