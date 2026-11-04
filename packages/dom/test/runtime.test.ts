@@ -304,6 +304,36 @@ describe("compiler-lowered native DOM runtime", () => {
     expect(host.childNodes).toHaveLength(0);
   });
 
+
+  it("rejects stateful object coercion at attribute and CSS sinks", () => {
+    const node = document.createElement("a");
+    let coercions = 0;
+    const malicious = {
+      toString() {
+        coercions++;
+        return coercions === 1 ? "https://safe.example/" : "javascript:alert(1)";
+      }
+    };
+    expect(() => setAttribute(node, "href", malicious as unknown as string)).toThrow();
+    expect(() => setStyle(node, "--background", malicious as unknown as string)).toThrow();
+    expect(coercions).toBe(0);
+  });
+
+  it("releases conditional owner resources after a failed first render", () => {
+    const parent = document.createElement("div");
+    const owner = createOwner();
+    const region = createRegion(parent);
+    const cleanup = vi.fn();
+    expect(() => bindConditionalRegion(owner, region, () => true, () => {
+      onCleanup(cleanup);
+      throw new Error("failed conditional view");
+    })).toThrow("failed conditional view");
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(parent.querySelector("*")).toBeNull();
+    disposeOwner(owner);
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects unsafe URL protocols including protocol-obfuscated controls", () => {
     const link = document.createElement("a");
     for (const unsafe of [
