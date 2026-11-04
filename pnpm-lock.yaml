@@ -54,6 +54,12 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/node@22.15.30)(jsdom@26.1.0)
 
+  packages/http:
+    devDependencies:
+      '@zaakiyjs/async':
+        specifier: workspace:^
+        version: link:../async
+
   packages/async:
     dependencies:
       '@zaakiyjs/core':

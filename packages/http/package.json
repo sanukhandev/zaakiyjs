@@ -14,5 +14,6 @@
     "build": "tsc --project tsconfig.build.json",
     "test": "vitest run test"
   },
-  "publishConfig": { "access": "public" }
+  "publishConfig": { "access": "public" },
+  "devDependencies": { "@zaakiyjs/async": "workspace:^" }
 }

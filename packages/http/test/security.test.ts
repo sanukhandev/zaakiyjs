@@ -123,6 +123,37 @@ describe("HTTP security and lifecycle regressions", () => {
     client.dispose();
   });
 
+  it("refuses mutation replay if an interceptor strips or changes its idempotency key", async () => {
+    for (const action of ["delete", "replace"] as const) {
+      const transport = vi.fn(async () => new Response(null, { status: 503 }));
+      const client = createHttpClient({ baseURL, fetch: transport });
+      client.interceptors.request.use(ctx => {
+        if (action === "delete") ctx.headers.delete("idempotency-key");
+        else ctx.headers.set("idempotency-key", "different");
+      });
+      await expect(client.post("/save", { id: 1 }, {
+        idempotencyKey: "original",
+        retry: { maxAttempts: 2, allowUnsafeMethods: true }
+      })).rejects.toMatchObject({ code: "INVALID_CONFIG" });
+      expect(transport).not.toHaveBeenCalled();
+      client.dispose();
+    }
+  });
+
+  it("validates the final response exactly once, allowing schema transforms", async () => {
+    const parse = vi.fn((value: unknown): number => {
+      if (typeof value !== "string") throw new Error("Expected string");
+      return Number(value);
+    });
+    const client = createHttpClient({ baseURL, fetch: async () =>
+      new Response("42", { headers: { "content-type": "text/plain" } })
+    });
+    client.interceptors.response.use(value => ({ ...value, data: "43" }));
+    expect(await client.get<number>("/number", { responseSchema: { parse } })).toBe(43);
+    expect(parse).toHaveBeenCalledOnce();
+    client.dispose();
+  });
+
   it("honors retry elapsed deadline and prevents Retry-After override storms", async () => {
     const transport = vi.fn(async () => new Response(null, { status: 503, headers: { "retry-after": "3" } }));
     const client = createHttpClient({ baseURL, fetch: transport });

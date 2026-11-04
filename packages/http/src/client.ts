@@ -125,6 +125,11 @@ export function createHttpClient(options: ClientOptions): HttpClient {
         ctx = normalizeContext(ctx, signal, baseOrigin, allowed);
       }
       assertActive(signal);
+      // The wire-level key must match the key authorized for mutation retry.
+      // An interceptor must not silently strip or replace server idempotency protection.
+      if (request.idempotencyKey !== undefined &&
+          ctx.headers.get("idempotency-key") !== request.idempotencyKey)
+        throw configError("Interceptors cannot change the configured idempotency key");
       if (ctx.body && !replayable(ctx.body) && (policy.maxAttempts > 1 || (options.auth?.refreshToken && request.auth !== false)))
         throw configError("Streaming request bodies cannot be replayed");
       if (!retryAllowed(ctx.method, policy, request.idempotencyKey) && policy.maxAttempts > 1)
@@ -180,8 +185,7 @@ export function createHttpClient(options: ClientOptions): HttpClient {
           }
           const raw = ctx.method === "HEAD" ? null :
             await awaitActive(parseResponse(response, request.responseType ?? "auto", maxBytes, signal), signal);
-          const parsed = await validate(request.responseSchema, raw, "RESPONSE_VALIDATION", signal);
-          httpResponse = { data: parsed, status: response.status, headers: response.headers, url: response.url || ctx.url.href };
+          httpResponse = { data: raw, status: response.status, headers: response.headers, url: response.url || ctx.url.href };
           terminal = undefined;
           break;
         } catch (cause) {

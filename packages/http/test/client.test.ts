@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHttpClient, HttpError } from "../src/index.js";
-import { createResource, createTask } from "../../async/src/index.js";
+import { createResource, createTask } from "@zaakiyjs/async";
 const baseURL = "https://api.example.test/v1/";
 const json = (data: unknown, status = 200): Response => new Response(JSON.stringify(data), { status, headers: { "content-type": "application/json" } });
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
