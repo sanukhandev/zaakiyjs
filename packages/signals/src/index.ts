@@ -88,9 +88,8 @@ function observe(source: Source): void {
   if (source === observer) throw new Error("ZaakiyJS circular computed dependency");
   if (seen.has(source)) return;
   seen.add(source);
-  // Cold computeds retain dependency identities without upstream subscriptions.
-  // Always reattach on tracked reads; source sets deduplicate observers.
-  if (!(observer instanceof ComputedNode && observer.observers.size === 0)) {
+  // Cold computed dependencies are relinked when the first observer attaches.
+  if (!observer.dependencies.has(source) && !(observer instanceof ComputedNode && observer.observers.size === 0)) {
     source.addObserver(observer);
   }
 }
@@ -208,7 +207,9 @@ class ComputedNode<T> implements ComputedSignal<T> {
     if (this.observers.has(observer)) return;
     if (this.observers.size === 0) {
       this.checkStaleness();
-      if (!this.dirty) for (const source of this.dependencies) source.addObserver(this as ComputedNode<unknown>);
+      // Reconnect known dependencies even if dirty. The next read prunes stale
+      // sources; already-known sources must be subscribed when observed.
+      for (const source of this.dependencies) source.addObserver(this as ComputedNode<unknown>);
     }
     this.observers.add(observer);
   }
