@@ -1,6 +1,6 @@
 # ADR 0006 — Nested keyed regions and multi-root fragment templates
 
-- **Status:** Proposed acceptance for native DOM nested keyed lists and fragment templates; final CI and review required before merge.
+- **Status:** Implementation reviewed for the restricted native DOM subset; final integrated CI remains mandatory before merge.
 - **Date:** 2026-11-04
 - **Extends:** ADR 0004 (DOM region ABI v1), ADR 0005 (TSX control-flow).
 - **IR:** No schema change: `ConditionalBlock.whenTrue/whenFalse` and `KeyedLoop.body` already contain arrays of IR nodes. `IR_SCHEMA_VERSION` remains 1.
