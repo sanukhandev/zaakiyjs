@@ -93,6 +93,14 @@ function allText(node: FakeNode): string {
 }
 
 describe("TSX-to-DOM compiler safe vertical slice", () => {
+  it("does not import DOM/core runtime helpers for a TSX module without any JSX", () => {
+    const result = compile({ fileName, source: "export const answer: number = 42;" });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.js).toHaveLength(1);
+    expect(result.js[0]?.code).not.toContain("@zaakiyjs/dom/compiler");
+    expect(result.js[0]?.code).not.toContain("@zaakiyjs/core");
+  });
+
   it("emits static JSX and text with no virtual DOM or framework runtime imports", () => {
     const result = compile({ fileName, source: "function App() { return <main>Hello</main>; }" });
     expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
