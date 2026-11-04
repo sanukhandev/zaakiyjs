@@ -65,7 +65,7 @@ export function validateBasePath(path: string): void {
   if (!path.startsWith("/") || path.startsWith("//") || path.includes("?") || path.includes("#") || path.includes("\\") || path.includes("%") || path.split("/").some(segment => segment === ".." || segment === ".")) throw new ProxyConfigurationError("Unsafe upstream base path");
 }
 export function incomingURL(value: string): URL {
-  if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\") || value.includes("#") || /[\x00-\x1f\x7f]/.test(value)) throw new ProxyPolicyError("Invalid request URL");
+  if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\") || value.includes("#") || [...value].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) throw new ProxyPolicyError("Invalid request URL");
   const path = value.split("?", 1)[0] ?? "";
   if (path.includes("//") || /%(?:(?:2e|2f|5c|00|25(?:2e|2f|5c)))/i.test(path)) throw new ProxyPolicyError("Ambiguous path encoding");
   try { decodeURIComponent(path); } catch { throw new ProxyPolicyError("Malformed path encoding"); }
