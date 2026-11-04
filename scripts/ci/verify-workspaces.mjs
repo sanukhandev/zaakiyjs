@@ -2,7 +2,8 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const expected = new Set(["signals", "core", "dom", "compiler", "styles", "vite-plugin", "cli"]);
-const optionalP1 = new Set(["store", "forms", "router", "compat", "async"]);\nconst scriptNames = ["lint", "typecheck", "build", "test"];
+const optionalP1 = new Set(["store", "forms", "router", "compat", "async"]);
+const scriptNames = ["lint", "typecheck", "build", "test"];
 const manifestByName = new Map();
 let errors = 0;
 function fail(message) { console.error(message); errors++; }
