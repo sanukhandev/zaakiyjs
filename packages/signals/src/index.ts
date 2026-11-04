@@ -31,7 +31,9 @@ let microtaskQueued = false;
 let flushing = false;
 const renderQueue = new Set<EffectNode>();
 const userQueue = new Set<EffectNode>();
-const MAX_EXECUTIONS_PER_FLUSH = 10_000;
+const MAX_EXECUTIONS_PER_FLUSH = 1_000_000;
+const MAX_RUNS_PER_EFFECT_PER_FLUSH = 1_000;
+let flushSequence = 0;
 
 function reportUnobservedError(error: unknown): void { throw error; }
 
@@ -54,21 +56,30 @@ function drain(): void {
   if (flushing) return;
   flushing = true;
   const errors: unknown[] = [];
+  const flushId = ++flushSequence;
   let executions = 0;
   try {
     while (renderQueue.size || userQueue.size) {
-      if (++executions > MAX_EXECUTIONS_PER_FLUSH) {
-        errors.push(new Error("ZaakiyJS reactive cycle: exceeded " + MAX_EXECUTIONS_PER_FLUSH + " effect executions in one flush"));
-        break;
-      }
       const queue = renderQueue.size ? renderQueue : userQueue;
       const next = queue.values().next().value;
       if (next === undefined) break;
       queue.delete(next);
-      if (!next.disposed) {
-        try { next.execute(); }
-        catch (error) { errors.push(error); }
+      if (next.disposed) continue;
+      if (++executions > MAX_EXECUTIONS_PER_FLUSH) {
+        errors.push(new Error("ZaakiyJS reactive cycle: exceeded " + MAX_EXECUTIONS_PER_FLUSH + " effect executions in one flush"));
+        break;
       }
+      if (next.lastFlushId === flushId) {
+        if (++next.runsThisFlush > MAX_RUNS_PER_EFFECT_PER_FLUSH) {
+          errors.push(new Error("ZaakiyJS reactive cycle: effect ran over " + MAX_RUNS_PER_EFFECT_PER_FLUSH + " times in one flush"));
+          break;
+        }
+      } else {
+        next.lastFlushId = flushId;
+        next.runsThisFlush = 1;
+      }
+      try { next.execute(); }
+      catch (error) { errors.push(error); }
     }
   } finally {
     if (errors.length && (renderQueue.size || userQueue.size)) {
@@ -224,6 +235,8 @@ class ComputedNode<T> implements ComputedSignal<T> {
 class EffectNode implements EffectHandle {
   dependencies = new Set<Source>();
   disposed = false;
+  lastFlushId = 0;
+  runsThisFlush = 0;
   private running = false;
   private cleanup: (() => void) | undefined;
   readonly phase: EffectPhase;
