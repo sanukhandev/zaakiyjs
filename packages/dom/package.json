@@ -1,7 +1,7 @@
 {
   "name": "@zaakiyjs/dom",
   "version": "0.0.0",
-  "description": "ZaakiyJS dom — M0 type contracts only; not implemented",
+  "description": "Owner-scoped targeted native DOM runtime for compiled ZaakiyJS views",
   "type": "module",
   "sideEffects": false,
   "files": [
@@ -33,5 +33,8 @@
   "dependencies": {
     "@zaakiyjs/core": "workspace:^",
     "@zaakiyjs/signals": "workspace:^"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
   }
 }
