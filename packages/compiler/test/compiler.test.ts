@@ -577,7 +577,7 @@ describe("typed Show/For compiler intrinsics", () => {
     const bad = [
       prelude,
       'const items = [{id: 1}];',
-      'function App(){return <main><Show when={true}><p>a</p><p>b</p></Show>',
+      'function App(){return <main><Show when={true}>invalid text</Show>',
       '<For each={items} by={row => row.id}>{row => <p>{row.id}</p>}</For>',
       '<For each={items} by={row => row.id}>{row => <p>{row.id}</p>}<p>extra</p></For>',
       '</main>;}'
@@ -617,7 +617,7 @@ describe("typed Show/For compiler intrinsics", () => {
   });
 
 
-  it("diagnoses root-level and nested control-flow ABI constraints", () => {
+  it("diagnoses root control-flow and accepts properly scoped nested loops", () => {
     const root = compile({fileName, source: [
       'import {Show} from "@zaakiyjs/core";',
       'function App(){return <Show when={true}><p>bare root</p></Show>;}'
@@ -633,9 +633,9 @@ describe("typed Show/For compiler intrinsics", () => {
       '{child => <span>{child.id}</span>}</For></li>}',
       '</For></ul>;}'
     ].join("\n")});
-    expect(nested.js).toEqual([]);
-    expect(nested.diagnostics.some(d => d.code === "ZC2202")).toBe(true);
-    expect(nested.diagnostics.some(d => d.code === "ZC9001")).toBe(false);
+    expect(nested.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(nested.js).toHaveLength(1);
+    expect((nested.js[0]?.code.match(/__zBindKeyedRegion\(/g) ?? []).length).toBe(2);
   });
 
   it("keeps generated assets deterministic and rejects invalid key types", () => {
@@ -655,5 +655,99 @@ describe("typed Show/For compiler intrinsics", () => {
     ].join("\n")});
     expect(invalid.js).toEqual([]);
     expect(invalid.diagnostics.some(d => d.severity === "error")).toBe(true);
+  });
+});
+
+describe("nested keyed and fragment-backed region lowering", () => {
+  const imports = 'import {Show, For} from "@zaakiyjs/core";';
+  it("compiles multi-root Show branches and fragment-based keyed views to IR v1", () => {
+    const source = [
+      imports,
+      'const visible = true; const rows = [{id: "a", label: "A"}];',
+      'function App(){return <main>',
+      '<Show when={visible} fallback={<><p>off</p><small>fallback</small></>}>',
+      '<p>one</p><p>two</p></Show>',
+      '<For each={rows} by={item => item.id}>',
+      '{item => <><strong>{item.label}</strong><em>{item.id}</em></>}',
+      '</For></main>;}'
+    ].join("\n");
+    const parsed = parseToIR({fileName, source});
+    const ir = parsed.document.nodes[0];
+    expect(ir?.kind).toBe("StaticElement");
+    if (ir?.kind === "StaticElement") {
+      const conditional = ir.children.find(n => n.kind === "ConditionalBlock");
+      expect(conditional?.kind).toBe("ConditionalBlock");
+      if (conditional?.kind === "ConditionalBlock") {
+        expect(conditional.whenTrue).toHaveLength(2);
+        expect(conditional.whenFalse).toHaveLength(2);
+      }
+      const loop = ir.children.find(n => n.kind === "KeyedLoop");
+      expect(loop?.kind).toBe("KeyedLoop");
+      if (loop?.kind === "KeyedLoop") expect(loop.body).toHaveLength(2);
+    }
+    const output = compile({fileName, source});
+    expect(output.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(output.js).toHaveLength(1);
+    expect(output.js[0]?.code).toContain("document.createDocumentFragment()");
+    expect(output.irVersion).toBe(1);
+    expect(output.manifest?.domAbiVersion).toBe(1);
+  });
+  it("compiles nested For loops with parent item signal and immutable same-key replacement", () => {
+    const source = [
+      imports, 'import {signal} from "@zaakiyjs/signals";',
+      'const groups = signal([{id: "g", name: "One", children: [{id:"c",name:"Child"}]}]);',
+      'function App(){return <main><For each={groups.value} by={group => group.id}>',
+      '{group => <section><h2>{group.name}</h2>',
+      '<For each={group.children} by={child => child.id}>',
+      '{child => <span>{group.name}:{child.name}</span>}</For></section>}',
+      '</For></main>;}'
+    ].join("\n");
+    const output = compile({fileName, source});
+    expect(output.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(output.js).toHaveLength(1);
+    const code = output.js[0]?.code ?? "";
+    expect((code.match(/bindKeyedRegion as/g) ?? []).length).toBe(1);
+    expect((code.match(/__zBindKeyedRegion\(/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(code).not.toContain("ZC9001");
+    expect(output.irVersion).toBe(1);
+  });
+  it("does not silently compile a root fragment without an agreed mount-source contract", () => {
+    const output = compile({fileName, source:'function App(){return <><p>one</p><p>two</p></>}'});
+    expect(output.js).toEqual([]);
+    expect(output.diagnostics.some(d => d.code === "ZC2101")).toBe(true);
+  });
+});
+
+describe("signal-aware component-root keyed templates", () => {
+  const fileName = "packages/compiler/test/component-root.tsx";
+
+  it("accepts a lazy item getter and retains stable signal-aware props", () => {
+    const source = [
+      'import {For} from "@zaakiyjs/core";',
+      'import {computed} from "@zaakiyjs/signals";',
+      'const rows = [{id:"one",label:"One"}];',
+      'function Row(props:{live:()=>{id:string;label:string}}) {',
+      ' const label = computed(() => props.live().label); return <li>{label.value}</li>; }',
+      'function App(){return <ul><For each={rows} by={item=>item.id}>',
+      ' {item => <Row live={() => item} />}</For></ul>;}'
+    ].join("\n");
+    const result = compile({fileName,source});
+    expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    expect(result.js).toHaveLength(1);
+    expect(result.js[0]?.code).toContain("initializeOwnedComponent");
+    expect(result.js[0]?.code).toContain(".value");
+  });
+
+  it("rejects item snapshots passed as component props instead of live accessors", () => {
+    const source = [
+      'import {For} from "@zaakiyjs/core";',
+      'const rows = [{id:"one",label:"One"}];',
+      'function Row(props:{item:{id:string;label:string}}) { return <li>{props.item.label}</li>; }',
+      'function App(){return <ul><For each={rows} by={row=>row.id}>',
+      ' {row => <Row item={row} />}</For></ul>;}'
+    ].join("\n");
+    const result = compile({fileName,source});
+    expect(result.js).toEqual([]);
+    expect(result.diagnostics.some(d=>d.code==="ZC2206")).toBe(true);
   });
 });
