@@ -24,7 +24,7 @@ function add(
   const names: BrowserFamily[] = ["chrome", "edge", "firefox", "safari"];
   const support = Object.fromEntries(names.map((browser, i) => [browser, minimum[i]])) as unknown as Record<BrowserFamily, string | null>;
   return Object.freeze({
-    id, category, minimumSupport: Object.freeze(support), strategy, detection,
+    id, category, minimumSupport: Object.freeze(support), strategy: Object.freeze({ ...strategy }), detection,
     verification: "metadata-only" as const, evidence
   });
 }
@@ -37,7 +37,7 @@ export const FEATURE_REGISTRY: readonly FeatureDefinition[] = Object.freeze([
   add("module.dynamic-import", "module", ["63", "79", "67", "11.1"], unsupported, "TS AST import() call", "MDN dynamic import; bundler output may vary"),
   add("web.abort-controller", "web-api", ["66", "79", "57", "12.1"], unsupported, "Identifier/new AbortController; native required", "MDN AbortController; Safari 11.1 partial fetch cancellation excluded"),
   add("web.abort-signal-any", "web-api", ["116", "116", "124", "17.4"], abortAny, "AbortSignal.any property access", "MDN AbortSignal.any browser support"),
-  add("web.abort-signal-timeout", "web-api", ["124", "124", "100", "16"], abortTimeout, "AbortSignal.timeout property access", "MDN AbortSignal.timeout browser support"),
+  add("web.abort-signal-timeout", "web-api", ["103", "103", "100", "16"], abortTimeout, "AbortSignal.timeout property access", "MDN AbortSignal.timeout browser support"),
   add("web.abort-reason", "web-api", ["98", "98", "97", "15.4"], unsupported, "AbortSignal.reason/AbortController.abort(reason)", "MDN AbortSignal.reason browser support"),
   add("web.fetch", "web-api", ["42", "79", "39", "10.1"], unsupported, "global fetch() call", "MDN Fetch API"),
   add("web.resize-observer", "web-api", ["64", "79", "69", "13.1"], unsupported, "new ResizeObserver", "MDN ResizeObserver"),
