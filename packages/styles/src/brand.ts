@@ -23,9 +23,13 @@ const bannedCss = /[;{}<>\\]|\/\*|\*\/|@import|(?:url|expression|behavior|image-
 
 /** Values are declarations, never selectors or raw rules. Reject CSS breakout and external fetches. */
 export function safeCssValue(value: string): boolean {
-  if (typeof value !== "string" || !value.trim() || value.length > 512 || bannedCss.test(value) || /[\u0000-\u001f]/.test(value)) return false;
+  if (typeof value !== "string" || !value.trim() || value.length > 512 || bannedCss.test(value)) return false;
   let depth = 0;
-  for (const char of value) { if (char === "(") depth++; if (char === ")" && --depth < 0) return false; }
+  for (const char of value) {
+    if (char.charCodeAt(0) <= 31) return false;
+    if (char === "(") depth++;
+    if (char === ")" && --depth < 0) return false;
+  }
   if ((value.match(/"/gu)?.length ?? 0) % 2 || (value.match(/'/gu)?.length ?? 0) % 2) return false;
   return depth === 0;
 }

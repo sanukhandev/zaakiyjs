@@ -172,7 +172,7 @@ export function compileStyles(request: StyleCompilerRequest): StyleCompilerResul
       root.walkDecls("user-select", d => { d.cloneBefore({ prop: "-webkit-user-select" }); });
     }
     css = root.toString();
-    if (!request.minify) css = css.replace(/\}(?=[^\}]|$)/gu, "}\n").replace(/;@layer/gu, ";\n@layer").trimEnd() + "\n";
+    if (!request.minify) css = css.replace(/\}(?=[^}]|$)/gu, "}\n").replace(/;@layer/gu, ";\n@layer").trimEnd() + "\n";
   } catch (error) {
     diagnostics.push({ code: "ZSTY_CSS_PARSE", message: `CSS parsing failed: ${error instanceof Error ? error.message : String(error)}`, severity: "error" });
     return { ...empty, diagnostics };
