@@ -108,6 +108,25 @@ describe("syntax/API/IR/CSS detection and planning", () => {
     expect(r.ok).toBe(false);
     expect(r.manifest.unsupportedFeatures).toContain("web.abort-signal-any");
   });
+  it("does not falsely reject native AbortSignal.timeout in Chrome 110", () => {
+    const result = analyzeCompatibility({
+      mode: "strict", targets: { browsers: ["chrome >=110"] },
+      sources: source("const s = AbortSignal.timeout(20);")
+    });
+    expect(result.ok).toBe(true);
+    expect(result.manifest.detectedFeatures.find(f => f.id === "web.abort-signal-timeout")?.status).toBe("native");
+    expect(result.manifest.shims).toEqual([]);
+  });
+  it("fails strict CSS analysis when Styles cannot encode an Edge target", () => {
+    const result = analyzeCompatibility({
+      mode: "strict", targets: { browsers: ["edge >=124"] },
+      cssFeatures: [{ feature: "css.nesting", file: "app.css" }]
+    });
+    expect(result.ok).toBe(false);
+    expect(result.manifest.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "ZK2501", severity: "error" })
+    ]));
+  });
   it("detects timeout, abort reasons, fetch and structuredClone", () => {
     const r = detectSourceFeatures({ fileName: "app.ts", source:
       "const abortSignal = AbortSignal.timeout(20); abortSignal.reason; fetch('/api'); structuredClone({x: 1});" });
