@@ -40,24 +40,31 @@ function assertWritableName(name: string): void {
 
 function assertSafeUrl(value: unknown, name: string, base: string): void {
   const input = String(value);
-  if ([...input].some((character) => { const code = character.charCodeAt(0); return code <= 0x1f || code === 0x7f; })) {
-    throw new TypeError("Control characters in URL binding: " + name);
+  for (const char of input) {
+    const code = char.charCodeAt(0);
+    if (code <= 31 || code === 127) {
+      throw new TypeError("Control characters in URL binding: " + name);
+    }
   }
   const trimmed = input.trim();
-  // A plain relative URL is safe without resolving against about:blank documents.
-  // A scheme or protocol-relative URL must still pass the protocol allowlist.
-  if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed) && !trimmed.startsWith("//")) return;
-  // srcset is a URL list; a scalar URL parser is not an adequate validator.
-  if (name.toLowerCase() === "srcset") {
-    throw new TypeError("srcset requires a separately approved URL-list policy");
-  }
+  if (!trimmed) return;
+  // Resolve relative addresses against a harmless HTTPS base if this document
+  // has no usable HTTP(S) base (e.g. JSDOM about:blank).
   let url: URL;
   try {
-    url = new URL(trimmed, base);
+    const baseUrl = new URL(base);
+    const safeBase = ["https:", "http:"].includes(baseUrl.protocol)
+      ? base : "https://zaakiy.invalid/";
+    url = new URL(trimmed, safeBase);
   } catch {
-    throw new TypeError("Malformed URL binding: " + name);
+    // An invalid base is not a reason to disable URL validation.
+    try { url = new URL(trimmed, "https://zaakiy.invalid/"); }
+    catch { throw new TypeError("Malformed URL binding: " + name); }
   }
-  if (!["https:", "http:", "mailto:", "tel:"].includes(url.protocol)) {
+  const protocols = name.toLowerCase() === "href"
+    ? ["https:", "http:", "mailto:", "tel:"]
+    : ["https:", "http:"];
+  if (!protocols.includes(url.protocol)) {
     throw new TypeError("Blocked URL scheme in DOM binding: " + name);
   }
 }
@@ -89,7 +96,8 @@ export function setText(target: Text, next: string): void {
 
 export function setProperty(target: Element, name: string, value: unknown): void {
   assertWritableName(name);
-  if (UNSAFE_PROPERTIES.has(name.toLowerCase()) || name.toLowerCase() === "srcset") {
+  if (UNSAFE_PROPERTIES.has(name.toLowerCase()) ||
+    ["srcset", "imagesrcset", "ping"].includes(name.toLowerCase())) {
     throw new TypeError("Unsafe or unsupported DOM property: " + name);
   }
   const record = target as unknown as Record<string, unknown>;
@@ -111,8 +119,13 @@ export function setProperty(target: Element, name: string, value: unknown): void
 
 export function setAttribute(target: Element, name: string, value: string | null): void {
   assertWritableName(name);
-  if (["srcset", "srcdoc", "style"].includes(name.toLowerCase())) {
-    throw new TypeError("srcset requires a separately approved URL-list policy");
+  // Runtime callers can bypass TS. Never validate one string coercion but commit
+  // another (a stateful toString() could then bypass URL and style policies).
+  if (value !== null && typeof value !== "string") {
+    throw new TypeError("DOM attribute value must be a string or null: " + name);
+  }
+  if (["srcset", "imagesrcset", "ping", "srcdoc", "style"].includes(name.toLowerCase())) {
+    throw new TypeError("Unsafe or unsupported DOM attribute: " + name);
   }
   validateValue(target, name, value);
   if (name === "xlink:href") {
@@ -136,6 +149,9 @@ export function setClass(target: Element, value: string | null): void {
 /** Static or reactive CSS values: no executable CSS functions or arbitrary URLs. */
 export function setStyle(target: Element, name: string, value: string | null): void {
   if (!CSS_NAME.test(name)) throw new TypeError("Invalid CSS property: " + name);
+  if (value !== null && typeof value !== "string") {
+    throw new TypeError("DOM style value must be a string or null: " + name);
+  }
   if (value !== null && /(?:url\s*\(|expression\s*\(|@import|[{}])/i.test(value)) {
     throw new TypeError("Potentially unsafe CSS value: " + name);
   }
@@ -161,7 +177,14 @@ function bind(owner: OwnerScope, run: () => void): BindingHandle {
         active.dispose();
       }
     };
-    onCleanup(() => handle.dispose());
+    try {
+      onCleanup(() => handle.dispose());
+    } catch (error) {
+      try { handle.dispose(); } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], "DOM binding registration failed");
+      }
+      throw error;
+    }
     return handle;
   });
 }
@@ -235,7 +258,12 @@ export function listen(
         node.removeEventListener(eventName, handler, options);
       }
     };
-    onCleanup(() => handle.dispose());
+    try {
+      onCleanup(() => handle.dispose());
+    } catch (error) {
+      handle.dispose();
+      throw error;
+    }
     return handle;
   });
 }
@@ -253,7 +281,13 @@ export function listenStable(
   const listener = listen(owner, node, name, wrapper, options);
   let binding: BindingHandle;
   try {
-    binding = bind(owner, () => { current = read(); });
+    binding = bind(owner, () => {
+      const next = read();
+      if (typeof next !== "function") {
+        throw new TypeError("Stable event handler must be a function");
+      }
+      current = next;
+    });
   } catch (error) {
     listener.dispose();
     throw error;

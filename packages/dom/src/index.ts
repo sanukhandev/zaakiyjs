@@ -60,18 +60,23 @@ export function mount(factory: MountFactory, container: DomTarget): MountHandle 
     const nodes: readonly Node[] = Array.isArray(view)
       ? view as readonly Node[]
       : [view as Node];
+    // Validate the complete root list before inserting any of it.
+    const unique = new Set<Node>();
     for (const node of nodes) {
-      if (!node || typeof node.nodeType !== "number") {
-        throw new TypeError("Compiled mount factory must return native DOM nodes");
+      if (!node || typeof node.nodeType !== "number" || unique.has(node)) {
+        throw new TypeError("Compiled mount factory must return distinct native DOM nodes");
       }
-      container.insertBefore(node, end);
+      unique.add(node);
     }
+    for (const node of nodes) container.insertBefore(node, end);
     mountOwner(owner);
   } catch (error) {
-    try {
-      disposeOwner(owner);
-    } finally {
-      removeRange();
+    let cleanupError: unknown;
+    try { disposeOwner(owner); }
+    catch (caught) { cleanupError = caught; }
+    finally { removeRange(); }
+    if (cleanupError !== undefined) {
+      throw new AggregateError([error, cleanupError], "DOM mount and cleanup failed");
     }
     throw error;
   }
