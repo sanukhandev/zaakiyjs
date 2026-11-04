@@ -1,0 +1,20 @@
+{
+  "name": "zaakiyjs-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.20.0",
+  "description": "ZaakiyJS monorepo bootstrap and quality gates (framework not implemented)",
+  "scripts": {
+    "lint": "node scripts/ci/verify-workspaces.mjs && eslint . && pnpm -r --if-present run lint",
+    "typecheck": "tsc --noEmit --project tsconfig.json && pnpm -r --if-present run typecheck",
+    "build": "tsc --project tsconfig.build.json && pnpm -r --if-present run build",
+    "ci": "pnpm lint && pnpm typecheck && pnpm build"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.1",
+    "eslint": "9.39.1",
+    "typescript-eslint": "8.46.0",
+    "typescript": "5.9.3"
+  }
+}
