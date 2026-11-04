@@ -1,94 +1,135 @@
-import {createRequire} from "node:module";
 import {spawnSync} from "node:child_process";
 import {readFile, stat} from "node:fs/promises";
-import {join, dirname} from "node:path";
+import {join, resolve, sep} from "node:path";
 import type {CliDiagnostic} from "./types.js";
 
 const packages = ["core", "dom", "signals", "styles", "vite-plugin"] as const;
-async function textFile(path: string): Promise<string | undefined> {
-  try {return await readFile(path, "utf8");}
-  catch (error) {if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error;}
+type JsonObject = Record<string, unknown>;
+
+async function readText(path: string): Promise<string | undefined> {
+  try { return await readFile(path, "utf8"); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
 }
-function diagnostic(code: string, message: string, severity: CliDiagnostic["severity"] = "error"): CliDiagnostic {
+function obj(value: unknown): JsonObject {
+  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {};
+}
+function failure(code: string, message: string, severity: CliDiagnostic["severity"] = "error"): CliDiagnostic {
   return {code, message, severity};
 }
-export async function diagnoseProject(cwd: string): Promise<CliDiagnostic[]> {
-  const issues: CliDiagnostic[] = [];
-  const nodeVersion = process.versions.node.split(".").map(Number);
-  if ((nodeVersion[0] ?? 0) < 20 || ((nodeVersion[0] ?? 0) === 20 && (nodeVersion[1] ?? 0) < 19)) {
-    issues.push(diagnostic("NODE_UNSUPPORTED", "Node.js 20.19 or newer is required."));
+function currentNodeSupported(): boolean {
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  return (major ?? 0) > 20 || ((major ?? 0) === 20 && (minor ?? 0) >= 19);
+}
+function findExportPath(value: unknown, condition: "import" | "types"): string | undefined {
+  if (typeof value === "string") return value;
+  const record = obj(value);
+  const direct = record[condition] ?? record.default;
+  return typeof direct === "string" ? direct : undefined;
+}
+async function inspectInstalled(cwd: string, name: string): Promise<CliDiagnostic[]> {
+  const specifier = "@zaakiyjs/" + name;
+  const prefix = resolve(cwd, "node_modules", "@zaakiyjs", name);
+  const manifestPath = join(prefix, "package.json");
+  const raw = await readText(manifestPath);
+  if (!raw) return [failure("MISSING_INSTALLED_PACKAGE", specifier + " is not installed or has no package manifest.")];
+
+  let info: JsonObject;
+  try { info = obj(JSON.parse(raw) as unknown); }
+  catch { return [failure("INVALID_INSTALLED_MANIFEST", specifier + "/package.json is not valid JSON.")]; }
+  const result: CliDiagnostic[] = [];
+  if (info.name !== specifier) result.push(failure("PACKAGE_NAME_MISMATCH", "Installed package name does not match " + specifier));
+  if (typeof info.version !== "string" || !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(info.version)) {
+    result.push(failure("INVALID_PACKAGE_VERSION", "Installed " + specifier + " has invalid SemVer."));
+  } else if (info.version === "0.0.0") {
+    result.push(failure("FOUNDATION_NOT_READY", specifier + " is the M0 contract-only 0.0.0 version."));
   }
-  const manager = process.env.npm_config_user_agent?.split("/")[0] ?? "npm";
-  if (["npm", "pnpm", "yarn"].includes(manager)) {
-    const command = process.platform === "win32" ? manager + ".cmd" : manager;
-    const result = spawnSync(command, ["--version"], {encoding: "utf8", shell: process.platform === "win32"});
-    const major = Number((result.stdout ?? "").split(".")[0]);
-    const minimum = manager === "pnpm" ? 10 : manager === "yarn" ? 4 : 10;
-    if (result.status !== 0 || !Number.isInteger(major) || major < minimum) issues.push(diagnostic("PACKAGE_MANAGER_UNSUPPORTED", manager + " " + minimum + "+ is required."));
-  } else issues.push(diagnostic("PACKAGE_MANAGER_UNKNOWN", "Unrecognized package manager " + manager, "warning"));
-  const required = ["package.json", "tsconfig.json", "vite.config.ts", "zaakiy.config.ts", "index.html", "src/main.tsx", "src/App.tsx"];
-  for (const name of required) {
-    const path = join(cwd, name);
-    try {if (!(await stat(path)).isFile()) issues.push(diagnostic("INVALID_PROJECT_FILE", name + " must be a file"));}
-    catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") issues.push(diagnostic("MISSING_PROJECT_FILE", "Missing required project file " + name));
-      else issues.push(diagnostic("UNREADABLE_PROJECT_FILE", String(error)));
+  const exportsRoot = obj(info.exports)["."] as unknown;
+  for (const condition of ["import", "types"] as const) {
+    const path = findExportPath(exportsRoot, condition);
+    if (typeof path !== "string" || !path.startsWith("./")) {
+      result.push(failure("INVALID_PACKAGE_EXPORT", specifier + " lacks a relative " + condition + " public export."));
+      continue;
     }
-  }
-  const config = await textFile(join(cwd, "tsconfig.json"));
-  if (config !== undefined) {
-    try {
-      const ts: unknown = JSON.parse(config);
-      const options = (ts && typeof ts === "object" && "compilerOptions" in ts ? ts.compilerOptions : undefined) as Record<string, unknown> | undefined;
-      if (options?.strict !== true || options?.jsx !== "preserve" || options?.jsxImportSource !== "@zaakiyjs/core") {
-        issues.push(diagnostic("INVALID_TS_CONFIG", "tsconfig.json must enable strict, jsx: preserve and jsxImportSource: @zaakiyjs/core."));
-      }
-    } catch {issues.push(diagnostic("INVALID_TS_CONFIG", "tsconfig.json is not valid JSON."));}
-  }
-  const vite = await textFile(join(cwd, "vite.config.ts"));
-  if (vite !== undefined && (!vite.includes("zaakiyPlugin") || !vite.includes("@zaakiyjs/vite-plugin"))) {
-    issues.push(diagnostic("MISSING_VITE_PLUGIN", "vite.config.ts must import and register zaakiyPlugin()."));
-  }
-  const packageText = await textFile(join(cwd, "package.json"));
-  let manifest: Record<string, unknown> = {};
-  try {
-    if (packageText) manifest = JSON.parse(packageText) as Record<string, unknown>;
-  } catch {issues.push(diagnostic("INVALID_PACKAGE_JSON", "package.json is invalid JSON."));}
-  const declared = {...(manifest.dependencies as Record<string, string> | undefined),
-    ...(manifest.devDependencies as Record<string, string> | undefined)};
-  const scripts = manifest.scripts as Record<string, string> | undefined;
-  for (const script of ["dev", "build", "test"]) {
-    if (!scripts || typeof scripts[script] !== "string" || !scripts[script].trim()) {
-      issues.push(diagnostic("MISSING_SCRIPT", "package.json has no executable " + script + " script."));
-    }
-  }
-  const projectRequire = createRequire(join(cwd, "package.json"));
-  for (const name of packages) {
-    const specifier = "@zaakiyjs/" + name;
-    if (typeof declared[specifier] !== "string") {
-      issues.push(diagnostic("MISSING_DEPENDENCY", "Missing " + specifier + " dependency declaration."));
+    const absolute = resolve(prefix, path);
+    if (!absolute.startsWith(prefix + sep)) {
+      result.push(failure("INVALID_PACKAGE_EXPORT", specifier + " export escapes its package root."));
       continue;
     }
     try {
-      const entry = projectRequire.resolve(specifier);
-      let folder = dirname(entry);
-      let packageVersion: string | undefined;
-      for (;;) {
-        const text = await textFile(join(folder, "package.json"));
-        if (text) {
-          const installed = JSON.parse(text) as {name?: string; version?: string};
-          if (installed.name === specifier) {packageVersion = installed.version; break;}
-        }
-        const parent = dirname(folder);
-        if (parent === folder) break;
-        folder = parent;
-      }
-      if (!packageVersion) issues.push(diagnostic("MISSING_PACKAGE_VERSION", "Cannot identify installed version for " + specifier));
-      else if (packageVersion === "0.0.0") issues.push(diagnostic("FOUNDATION_NOT_READY", specifier + " remains at the M0 contract-only version 0.0.0."));
-      else if (!/^\d+\.\d+\.\d+/.test(packageVersion)) issues.push(diagnostic("INVALID_PACKAGE_VERSION", "Invalid installed version for " + specifier));
+      if (!(await stat(absolute)).isFile()) throw new Error("not a file");
     } catch {
-      issues.push(diagnostic("INVALID_PACKAGE_EXPORT", specifier + " is not installed or its main export cannot be resolved."));
+      result.push(failure("MISSING_PACKAGE_EXPORT", specifier + " " + condition + " export is missing on disk: " + path));
     }
+  }
+  return result;
+}
+export async function diagnoseProject(cwd: string): Promise<CliDiagnostic[]> {
+  const issues: CliDiagnostic[] = [];
+  if (!currentNodeSupported()) issues.push(failure("NODE_UNSUPPORTED", "Node.js 20.19 or newer is required."));
+
+  const manager = process.env.npm_config_user_agent?.split("/")[0] ?? "npm";
+  if (["npm", "pnpm", "yarn"].includes(manager)) {
+    const command = process.platform === "win32" ? manager + ".cmd" : manager;
+    const check = spawnSync(command, ["--version"], {encoding: "utf8", shell: process.platform === "win32"});
+    const major = Number((check.stdout ?? "").trim().split(".")[0]);
+    const minimum = manager === "pnpm" ? 10 : manager === "yarn" ? 4 : 10;
+    if (check.status !== 0 || !Number.isInteger(major) || major < minimum) {
+      issues.push(failure("PACKAGE_MANAGER_UNSUPPORTED", manager + " " + minimum + "+ is required."));
+    }
+  } else issues.push(failure("PACKAGE_MANAGER_UNKNOWN", "Unknown package manager: " + manager));
+
+  const required = ["package.json", "tsconfig.json", "vite.config.ts", "zaakiy.config.ts",
+    "index.html", "src/main.tsx", "src/App.tsx"];
+  for (const filename of required) {
+    try {
+      if (!(await stat(join(cwd, filename))).isFile()) throw new Error("not a file");
+    } catch {
+      issues.push(failure("MISSING_PROJECT_FILE", "Missing required file: " + filename));
+    }
+  }
+
+  const tsconfig = await readText(join(cwd, "tsconfig.json"));
+  if (tsconfig !== undefined) {
+    try {
+      const options = obj(obj(JSON.parse(tsconfig) as unknown).compilerOptions);
+      if (options.strict !== true || options.jsx !== "preserve" || options.jsxImportSource !== "@zaakiyjs/core") {
+        issues.push(failure("INVALID_TS_CONFIG", "Use strict: true, jsx: preserve and jsxImportSource: @zaakiyjs/core."));
+      }
+    } catch {
+      issues.push(failure("INVALID_TS_CONFIG", "tsconfig.json must be parseable JSON with strict TSX settings."));
+    }
+  }
+
+  const vite = await readText(join(cwd, "vite.config.ts"));
+  if (vite !== undefined && (!vite.includes("@zaakiyjs/vite-plugin") || !/\bzaakiyPlugin\s*\(/.test(vite))) {
+    issues.push(failure("MISSING_VITE_PLUGIN", "vite.config.ts must register zaakiyPlugin from @zaakiyjs/vite-plugin."));
+  }
+
+  const manifest = await readText(join(cwd, "package.json"));
+  if (!manifest) return issues;
+  let pkg: JsonObject;
+  try { pkg = obj(JSON.parse(manifest) as unknown); }
+  catch {
+    issues.push(failure("INVALID_PACKAGE_JSON", "package.json is not valid JSON."));
+    return issues;
+  }
+  const declared: JsonObject = {...obj(pkg.dependencies), ...obj(pkg.devDependencies)};
+  const scripts = obj(pkg.scripts);
+  for (const script of ["dev", "build", "test"]) {
+    if (typeof scripts[script] !== "string" || !String(scripts[script]).trim()) {
+      issues.push(failure("MISSING_SCRIPT", "Missing executable project script: " + script));
+    }
+  }
+  for (const name of packages) {
+    const specifier = "@zaakiyjs/" + name;
+    if (typeof declared[specifier] !== "string") {
+      issues.push(failure("MISSING_DEPENDENCY", "Missing package dependency " + specifier));
+      continue;
+    }
+    issues.push(...await inspectInstalled(cwd, name));
   }
   return issues;
 }
