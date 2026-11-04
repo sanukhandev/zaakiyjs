@@ -108,6 +108,54 @@ describe("owner-scoped lifecycle", () => {
     expect(root.state).toBe("disposed");
   });
 
+  it("mounts nested route, feature and component owners before their ancestors", () => {
+    const order: string[] = [];
+    const app = createOwner();
+    const route = createOwner(app);
+    const feature = createOwner(route);
+    const component = createOwner(feature);
+    for (const [label, owner] of [
+      ["app", app], ["route", route], ["feature", feature], ["component", component]
+    ] as const) {
+      runWithOwner(owner, () => onMount(() => order.push(label)));
+    }
+    mountOwner(app);
+    expect(order).toEqual(["component", "feature", "route", "app"]);
+    for (const owner of [app, route, feature, component]) expect(owner.state).toBe("active");
+    expect(() => mountOwner(component)).toThrow(/only mount once/);
+    disposeOwner(app);
+  });
+
+  it("disposes the whole application when a descendant mount callback fails", () => {
+    const app = createOwner();
+    const child = createOwner(app);
+    const appCleanup = vi.fn();
+    const childCleanup = vi.fn();
+    runWithOwner(app, () => onCleanup(appCleanup));
+    runWithOwner(child, () => {
+      onCleanup(childCleanup);
+      onMount(() => { throw new Error("child failed"); });
+    });
+    expect(() => mountOwner(app)).toThrow("child failed");
+    expect(app.disposed).toBe(true);
+    expect(child.disposed).toBe(true);
+    expect(childCleanup).toHaveBeenCalledOnce();
+    expect(appCleanup).toHaveBeenCalledOnce();
+  });
+
+  it("requires explicit mount for owners added after initial application mount", () => {
+    const app = createOwner();
+    mountOwner(app);
+    const dynamic = createOwner(app);
+    const onDynamicMount = vi.fn();
+    runWithOwner(dynamic, () => onMount(onDynamicMount));
+    expect(dynamic.state).toBe("created");
+    expect(onDynamicMount).not.toHaveBeenCalled();
+    mountOwner(dynamic);
+    expect(onDynamicMount).toHaveBeenCalledOnce();
+    disposeOwner(app);
+  });
+
   it("disposes after a failing mount hook without leaving partial state", () => {
     const root = createOwner();
     const cleanup = vi.fn();
