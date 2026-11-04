@@ -376,7 +376,12 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         .map((entry): GeneratedAssetRecord | null => {
           if (entry.type === "chunk") {
             for (const mod of Object.keys(entry.modules)) {
-              if (/(?:^|\/)(?:@zaakiyjs\/(?:compiler|styles|ai|proxy|vite-plugin)|packages\/(?:compiler|styles|ai|proxy|vite-plugin))(?:\/|$)/.test(normalizePath(mod))) {
+              const id = normalizePath(mod);
+              // Inspect executable package roots, not similarly named fixture paths.
+              // A source fixture nested under packages/vite-plugin/test is app code.
+              const packageSource = /(?:^|\/)packages\/(?:compiler|styles|ai|proxy|vite-plugin)\/(?:src|dist)(?:\/|$)/;
+              const installedPackage = /(?:^|\/)node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?@zaakiyjs\/(?:compiler|styles|ai|proxy|vite-plugin)(?:\/|$)/;
+              if (packageSource.test(id) || installedPackage.test(id)) {
                 this.error("ZV3002: Build-only package entered browser chunk " + entry.fileName + ": " + mod);
               }
             }

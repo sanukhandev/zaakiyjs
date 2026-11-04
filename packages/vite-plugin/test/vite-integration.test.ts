@@ -114,7 +114,7 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
       expect(css).toBeDefined();
       expect(String(css?.source)).toContain("flex");
       expect(manifest).toBeDefined();
-      expect(js.every(chunk => !/\@zaakiyjs\/(?:ai|proxy|compiler|styles|vite-plugin)/.test(chunk.type === "chunk" ? chunk.code : ""))).toBe(true);
+      expect(js.every(chunk => !/@zaakiyjs\/(?:ai|proxy|compiler|styles|vite-plugin)/.test(chunk.type === "chunk" ? chunk.code : ""))).toBe(true);
     }
   );
 });
