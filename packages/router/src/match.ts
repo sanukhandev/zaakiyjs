@@ -35,7 +35,7 @@ function rank(a: CompiledRoute, b: CompiledRoute): number {
     const bv = b.tokens[i]?.kind === "literal" ? 3 : b.tokens[i]?.kind === "param" ? 2 : b.tokens[i]?.kind === "wildcard" ? 0 : 1;
     if (av !== bv) return bv - av;
   }
-  return a.fullPath.localeCompare(b.fullPath);
+  return b.parents.length - a.parents.length || a.fullPath.localeCompare(b.fullPath);
 }
 export interface RouteTable {
   readonly routes: readonly CompiledRoute[];
@@ -44,7 +44,7 @@ export interface RouteTable {
 export function compileRoutes(definitions: readonly RouteDefinition[]): RouteTable {
   const all: CompiledRoute[] = [];
   const byId = new Map<string, CompiledRoute>();
-  const seen = new Set<string>();
+  const seen = new Map<string, CompiledRoute>();
   const visiting = new Set<RouteDefinition>();
   const walk = (routes: readonly RouteDefinition[], parent: string, ancestors: readonly RouteDefinition[]): void => {
     for (const route of routes) {
@@ -61,8 +61,12 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): RouteTab
       if (new Set(names).size !== names.length) throw new RouteConfigurationError("Duplicate route parameter in " + fullPath);
       const entry: CompiledRoute = { route, fullPath, tokens, parents: [...ancestors, route] };
       const key = signature(entry);
-      if (seen.has(key)) throw new RouteConfigurationError("Ambiguous route pattern: " + fullPath);
-      seen.add(key);
+      const previous = seen.get(key);
+      // An empty-path index child can legitimately share its layout's URL.
+      if (previous && !(route.path === "" && ancestors.includes(previous.route))) {
+        throw new RouteConfigurationError("Ambiguous route pattern: " + fullPath);
+      }
+      seen.set(key, entry);
       byId.set(route.id, entry);
       all.push(entry);
       if (route.children?.length) {
@@ -98,9 +102,14 @@ export function matchRoutes(table: RouteTable, pathname: string): readonly Route
     const result: RouteMatch[] = [];
     let prefix = "";
     for (const ancestor of entry.parents) {
-      // The combined params object is available at every layout level.
       prefix = normalized(prefix + "/" + ancestor.path);
-      result.push({ route: ancestor, params: { ...params }, pathname: prefix });
+      const localParams: Record<string, string> = {};
+      compileTokens(prefix).forEach((token, index) => {
+        if (token.kind === "param" && params[token.name] !== undefined) {
+          localParams[token.name] = params[token.name]!;
+        }
+      });
+      result.push({ route: ancestor, params: localParams, pathname: prefix });
     }
     return result;
   }
