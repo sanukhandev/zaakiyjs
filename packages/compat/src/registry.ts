@@ -46,7 +46,7 @@ export const FEATURE_REGISTRY: readonly FeatureDefinition[] = Object.freeze([
   add("css.container-query", "css", ["105", "105", "110", "16"], unsupported, "Styles semantic CSS feature evidence", "MDN CSS size container queries"),
   add("css.nesting", "css", ["120", "120", "117", "17.2"], unsupported, "Styles semantic CSS feature evidence", "MDN CSS nesting"),
   add("css.color-mix", "css", ["111", "111", "113", "16.2"], unsupported, "Styles semantic CSS feature evidence", "MDN color-mix()")
-].sort((a, b) => a.id.localeCompare(b.id)));
+].sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
 const map = new Map(FEATURE_REGISTRY.map(feature => [feature.id, feature]));
 export function getFeature(id: string): FeatureDefinition | undefined { return map.get(id); }
