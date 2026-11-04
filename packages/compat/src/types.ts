@@ -53,8 +53,6 @@ export interface CompatAnalysisRequest {
   readonly sources?: readonly SourceInput[];
   readonly ir?: readonly CompatIRDocument[];
   readonly cssFeatures?: readonly CssFeatureEvidence[];
-  /** The opt-in helper import is required before a scoped ponyfill can be selected. */
-  readonly explicitPonyfills?: readonly ("abort-any" | "abort-timeout")[];
 }
 export interface CompatibilityDiagnostic {
   readonly code: string;
