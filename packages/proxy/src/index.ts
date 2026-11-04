@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { once } from "node:events";
-import { allowedAddress, assertCount, assertMethod, cleanOrigin, compileRoutes, incomingURL, ProxyConfigurationError, ProxyPayloadError, ProxyPolicyError, ProxyTimeoutError, ProxyUpstreamError, requestHeaders, safeCredentialHeaders } from "./security.js";
+import { assertCount, assertMethod, cleanOrigin, compileRoutes, incomingURL, ProxyConfigurationError, ProxyPayloadError, ProxyPolicyError, ProxyTimeoutError, ProxyUpstreamError, requestHeaders, safeCredentialHeaders } from "./security.js";
 import { defaultResolver, dispatch } from "./transport.js";
 import type { ProxyConfig, ProxyIncoming, ProxyOutgoing, ProxyPrincipal, ProxyRouter, RateLimitDecision, RateLimitInput, RateLimitStore, ValidatedRequestContext } from "./types.js";
 export type { ProxyConfig, ProxyIncoming, ProxyOutgoing, ProxyBody, ProxyPrincipal, ProxyRouter, ProxyRoute, ProxyUpstream, ProxyAccess, ProxyRateLimit, RateLimitStore, RateLimitDecision, RateLimitInput, ProxyDiagnostic, AuthenticationContext, Authenticator, Authorizer, AuthorizationContext, AddressResolver, LookupAddress, ProxyHooks, RequestValidator, ValidatedRequestContext } from "./types.js";
