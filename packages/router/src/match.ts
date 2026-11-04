@@ -109,7 +109,7 @@ export function matchRoutes(table: RouteTable, pathname: string): readonly Route
           localParams[token.name] = params[token.name]!;
         }
       });
-      result.push({ route: ancestor, params: localParams, pathname: prefix });
+      result.push({ route: ancestor, params: Object.freeze(localParams), pathname: prefix });
     }
     return result;
   }
