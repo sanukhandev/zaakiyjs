@@ -1,29 +1,19 @@
 {
   "name": "@zaakiyjs/signals",
   "version": "0.0.0",
-  "description": "ZaakiyJS signals — M0 type contracts only; not implemented",
+  "description": "Fine-grained zoneless reactive signals and deterministic scheduler for ZaakiyJS",
   "type": "module",
   "sideEffects": false,
-  "files": [
-    "dist",
-    "README.md",
-    "CHANGELOG.md"
-  ],
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
+  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
   "types": "./dist/index.d.ts",
   "main": "./dist/index.js",
   "scripts": {
     "lint": "eslint src test",
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "build": "tsc --project tsconfig.build.json",
-    "test": "vitest run test"
+    "test": "vitest run test",
+    "benchmark": "node tests/reactivity.bench.mjs"
   },
-  "publishConfig": {
-    "access": "public"
-  }
+  "publishConfig": { "access": "public" }
 }
