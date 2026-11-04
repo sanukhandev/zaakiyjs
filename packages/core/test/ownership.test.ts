@@ -3,7 +3,7 @@ import type { EffectHandle } from "@zaakiyjs/signals";
 import {
   activateOwner, createContext, createOwner, deactivateOwner, disposeOwner,
   executeComponent, getOwner, initializeOwnedComponent, mountOwner,
-  MissingProviderError, onCleanup, onMount, ownDisposable, provide, requireContext,
+  MissingProviderError, onCleanup, onMount, ownDisposable, ownEffect, provide, requireContext,
   runWithOwner, suspendOwner, transferOwner, useContext
 } from "../src/index.js";
 import type { ViewNode } from "../src/index.js";
@@ -253,6 +253,29 @@ describe("component and resource integration", () => {
     disposeOwner(root);
     disposeOwner(root);
     expect(handle.dispose).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects effect factories without a live owner and disposes after unmount", () => {
+    const create = vi.fn(() => ({ dispose: vi.fn() }));
+    expect(() => ownEffect(create)).toThrow(/requires runWithOwner/);
+    expect(create).not.toHaveBeenCalled();
+    const owner = createOwner();
+    const owned = runWithOwner(owner, () => ownEffect(create));
+    expect(create).toHaveBeenCalledOnce();
+    disposeOwner(owner);
+    expect(owned.dispose).toHaveBeenCalledOnce();
+    expect(() => runWithOwner(owner, () => ownEffect(create))).toThrow(/disposed/);
+    expect(create).toHaveBeenCalledOnce();
+  });
+
+  it("disposes an effect that invalidates its owner during initial creation", () => {
+    const owner = createOwner();
+    const dispose = vi.fn();
+    expect(() => runWithOwner(owner, () => ownEffect(() => {
+      disposeOwner(owner);
+      return { dispose };
+    }))).toThrow(/disposed/);
+    expect(dispose).toHaveBeenCalledOnce();
   });
 
   it("does not leak a resource when adoption is attempted outside an owner", () => {
