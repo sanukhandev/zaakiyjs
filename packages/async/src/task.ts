@@ -156,7 +156,7 @@ export function createTask<TInput, TResult>(options: TaskOptions<TInput, TResult
   function run(input: TInput, runOptions: TaskRunOptions = {}): Promise<TResult> {
     if (closed || owner?.disposed) return Promise.reject(new DisposedError());
     if (policy === "reject" && active.size > 0) return Promise.reject(new BusyError());
-    if (policy === "queue" && active.size > 0 && queue.length >= maxQueue) {
+    if (policy === "queue" && (active.size > 0 || queue.length > 0) && queue.length >= maxQueue) {
       return Promise.reject(new BusyError("QUEUE_FULL"));
     }
     const id = ++sequence;
@@ -167,30 +167,43 @@ export function createTask<TInput, TResult>(options: TaskOptions<TInput, TResult
     if (policy === "queue") {
       return new Promise<TResult>((resolve, reject) => {
         const item: Queued<TInput, TResult> = { id, input, signal: runOptions.signal, resolve, reject };
-        const signal = runOptions.signal;
-        if (signal) {
-          const onAbort = (): void => {
-            const index = queue.indexOf(item);
-            if (index < 0) return; // Already started; active composition owns cancellation.
-            queue.splice(index, 1);
-            item.removeAbort?.();
-            if (!closed && id === newest) {
-              status.value = "cancelled";
-              error.value = null;
-            }
-            publishCounts();
-            reject(new CancellationError("caller", signal.reason));
-          };
-          signal.addEventListener("abort", onAbort, { once: true });
-          item.removeAbort = () => signal.removeEventListener("abort", onAbort);
-          if (signal.aborted) {
-            item.removeAbort();
-            reject(new CancellationError("caller", signal.reason));
-            if (id === newest) status.value = "cancelled";
+        // Observe *both* task-level and per-run caller signals while queued.
+        // Waiting in FIFO must never outlive an already-cancelled navigation/owner.
+        const sources = [options.signal, runOptions.signal]
+          .filter((source): source is AbortSignal => source !== undefined);
+        const alreadyAborted = sources.find(source => source.aborted);
+        if (alreadyAborted) {
+          if (id === newest) status.value = "cancelled";
+          reject(new CancellationError("caller", alreadyAborted.reason));
+          publishCounts();
+          return;
+        }
+        const removeListeners: Array<() => void> = [];
+        item.removeAbort = () => {
+          for (const remove of removeListeners.splice(0)) remove();
+        };
+        const abortQueued = (source: AbortSignal): void => {
+          const index = queue.indexOf(item);
+          if (index < 0) return; // Running work owns its own composed signal.
+          queue.splice(index, 1);
+          item.removeAbort?.();
+          if (!closed && id === newest) {
+            status.value = "cancelled";
+            error.value = null;
+          }
+          publishCounts();
+          reject(new CancellationError("caller", source.reason));
+        };
+        queue.push(item);
+        for (const source of sources) {
+          const onAbort = (): void => abortQueued(source);
+          source.addEventListener("abort", onAbort, { once: true });
+          removeListeners.push(() => source.removeEventListener("abort", onAbort));
+          if (source.aborted) {
+            onAbort();
             return;
           }
         }
-        queue.push(item);
         publishCounts();
         pump();
       });
@@ -199,10 +212,18 @@ export function createTask<TInput, TResult>(options: TaskOptions<TInput, TResult
   }
   function dispose(): void {
     if (closed) return;
+    const hadWork = active.size > 0 || queue.length > 0;
     closed = true;
     detachOwner();
     cancelAll("owner");
-    // Do not publish state after disposal.
+    // Final synchronous teardown is permitted; no later Promise may publish.
+    pendingCount.value = 0;
+    queuedCount.value = 0;
+    pending.value = false;
+    if (hadWork) {
+      error.value = null;
+      status.value = "cancelled";
+    }
   }
   const task: Task<TResult, TInput> = {
     result: readonly(result),

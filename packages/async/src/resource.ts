@@ -200,6 +200,7 @@ export function createResource<TData, TKey = void>(options: ResourceOptions<TDat
   }
   function dispose(): void {
     if (closed) return;
+    const wasPending = pending.peek();
     closed = true;
     detachOwner();
     generation++;
@@ -207,7 +208,14 @@ export function createResource<TData, TKey = void>(options: ResourceOptions<TDat
     active = null;
     tracker?.dispose();
     tracker = null;
-    // Do not mutate reactive state after the owning scope is gone.
+    // Final synchronous teardown clears misleading pending indicators.
+    // Late Promise completions must not write any signal after this point.
+    pending.value = false;
+    refreshing.value = false;
+    if (wasPending) {
+      error.value = null;
+      status.value = "cancelled";
+    }
   }
   function invalidate(): void {
     if (closed) throw new DisposedError();

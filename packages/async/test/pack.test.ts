@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 
 describe("external ESM package consumer", () => {
@@ -20,6 +21,16 @@ describe("external ESM package consumer", () => {
       const packed = join(extract, "package");
       expect(existsSync(join(packed, "dist", "index.js"))).toBe(true);
       expect(existsSync(join(packed, "dist", "index.d.ts"))).toBe(true);
+      const emitted = readdirSync(join(packed, "dist"))
+        .filter(name => name.endsWith(".js")).sort()
+        .map(name => readFileSync(join(packed, "dist", name)));
+      const rawBytes = emitted.reduce((sum, code) => sum + code.byteLength, 0);
+      const combinedGzipBytes = gzipSync(Buffer.concat(emitted)).byteLength;
+      const archiveBytes = statSync(join(temp, archive!)).size;
+      expect(rawBytes).toBeGreaterThan(0);
+      expect(archiveBytes).toBeGreaterThan(0);
+      // Combined emitted modules are not equivalent to a tree-shaken consumer bundle.
+      console.info(`@zaakiyjs/async package size: ${rawBytes} B emitted ESM, ${combinedGzipBytes} B combined gzip, ${archiveBytes} B npm archive`);
       // Node resolves symlinks to real paths; dependencies must be resolvable
       // from the extracted tarball rather than only from the consumer directory.
       const packedScope = join(packed, "node_modules", "@zaakiyjs");

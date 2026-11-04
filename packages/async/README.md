@@ -50,7 +50,7 @@ Tasks execute **only** on `run(input, { signal? })`. Signals: `result`, `lastSuc
 Concurrency:
 - `latest` (default) aborts earlier work and drops stale results.
 - `parallel` runs simultaneously, with aggregate active counts.
-- `queue` is FIFO serial, bounded by `maxQueue` (default 64 waiting, excluding the active operation). Overflow raises `BusyError("QUEUE_FULL")`; queued caller cancellation removes its entry.
+- `queue` is FIFO serial, bounded by `maxQueue` (default 64 waiting, excluding the active operation). Overflow raises `BusyError("QUEUE_FULL")`; both shared and per-invocation caller cancellation remove queued entries before execution.
 - `reject` rejects overlap with `BusyError("BUSY")`.
 
 Mutation retry requires **both** an explicit retry configuration and `idempotent: true`. This flag is only the caller's claim; actual side effects need server-side idempotency.
@@ -63,7 +63,7 @@ Native AbortController composes manual, owner, caller, superseded and timeout ca
 
 ## Cache isolation and lifecycle
 
-No default global cache exists. `createResourceCache()` creates a new bounded LRU per Core owner root, with hard cacheTimeMs (default five minutes), configurable staleTimeMs and bounded in-flight producers. Cached resources **must** supply a stable typed `cacheKey`; include tenant/user authorization identity when identities may change within a single root. An owner-scoped cache rejects access from other application/SSR roots. A standalone cache requires an explicit private identity:
+No default global cache exists. `createResourceCache()` creates a new bounded LRU per Core owner root, with hard cacheTimeMs (default five minutes), configurable staleTimeMs and bounded in-flight producers. Cached resources **must** supply a stable typed `cacheKey`; include tenant/user authorization identity when identities may change within a single root. An owner-scoped cache rejects access from other application/SSR roots. The cache's lifetime is tied to the **root** even if its factory ran inside a short-lived child: disposing that child must not cancel sibling cache users. A standalone cache requires an explicit private identity:
 ```ts
 const scope = {};
 const cache = createResourceCache({ owner: null, scope });
@@ -71,6 +71,6 @@ const resource = createResource({ load: async () => 1, cache, cacheScope: scope,
 ```
 In-flight deduplication is enabled by default when a cache is supplied. Each consumer owns a lease; cancelling one does not abort a shared producer while other consumers remain. The last consumer release aborts it. Explicit cache invalidation also aborts matching in-flight producers.
 
-Resources, tasks and caches capture their synchronous owner and register cleanup at creation. Pass `owner` explicitly when creating outside `runWithOwner`; ownership never propagates implicitly through await. Core's deactivated/suspended KeepAlive states are **not** disposal and do not automatically pause work. HTTP, Router, Forms and Store integrate through repository abstractions and AbortSignal parameters—no imports or cycles.
+Resources and tasks capture their synchronous owner and register cleanup via disposable Core child owners, avoiding unbounded cleanup registrations in long-lived scopes. Caches register cleanup against their application/request **root**. Pass `owner` explicitly when creating outside `runWithOwner`; ownership never propagates implicitly through await. Core's deactivated/suspended KeepAlive states are **not** disposal and do not automatically pause work. HTTP, Router, Forms and Store integrate through repository abstractions and AbortSignal parameters—no imports or cycles.
 
-Run package lint/typecheck/build/Vitest tests plus pack/ESM smoke tests before publication. A new npm package requires scope-ownership verification and independent release approval. Network cancellation protects UI state, not physical rollback of server mutations.
+Run package lint/typecheck/build/Vitest tests plus pack/ESM smoke tests before publication. The pack smoke reports emitted ESM bytes, combined gzip bytes and npm archive bytes; these are not equivalent to a tree-shaken consumer bundle. A new npm package requires scope-ownership verification and independent release approval. Network cancellation protects UI state, not physical rollback of server mutations.
