@@ -186,9 +186,9 @@ function toExpression(code: string, original: ts.Node, source: ts.SourceFile): t
   if (!declaration?.initializer || ((holder as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics?.length ?? 0) > 0) {
     throw new Error("Compiler internal error: generated TypeScript expression is invalid.");
   }
-  const output = declaration.initializer;
-  ts.setOriginalNode(output, original);
-  ts.setTextRange(output, { pos: original.getStart(source), end: original.getEnd() });
+  // Deep-clone as synthetic nodes: parsed nodes carry offsets into a different file.
+  // Reusing those positions makes TS's printer splice incorrect original TSX text.
+  const output = ts.getSynthesizedDeepClone(declaration.initializer) as ts.Expression;
   ts.setSourceMapRange(output, { pos: original.getStart(source), end: original.getEnd() });
   return output;
 }
