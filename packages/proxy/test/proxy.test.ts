@@ -190,6 +190,35 @@ describe("actual pinned DNS transport and forwarding", () => {
       expect(await drain(response)).toEqual(bytes);
     }
   });
+  it("uses valid chunked framing for streamed DELETE and OPTIONS bodies", async () => {
+    const port = await listen(async (req, res) => {
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of req) chunks.push(chunk);
+      const payload = Buffer.concat(chunks).toString("utf8");
+      res.writeHead(payload === "binary-body" ? 200 : 400, { "content-type": "application/json" });
+      res.end(JSON.stringify({
+        method: req.method,
+        payload,
+        transferEncoding: req.headers["transfer-encoding"],
+        contentLength: req.headers["content-length"] ?? null
+      }));
+    });
+    const proxy = createProxyRouter(config(port, {
+      routes: [{ id: "stream-methods", path: "/api/items/*", upstream: "main",
+        methods: ["DELETE", "OPTIONS"], access: "public" }]
+    }));
+    for (const method of ["DELETE", "OPTIONS"]) {
+      const bytes = Buffer.from("binary-body");
+      const response = await proxy.handle(request(method, "/api/items/123", {
+        "content-type": "application/octet-stream",
+        "content-length": String(bytes.byteLength)
+      }, (async function* () { yield bytes; })()));
+      expect(response.status, method).toBe(200);
+      expect(JSON.parse((await drain(response)).toString())).toEqual({
+        method, payload: "binary-body", transferEncoding: "chunked", contentLength: null
+      });
+    }
+  });
   it("strips Connection-nominated headers and rejects malformed query escapes", async () => {
     const port = await listen((req, res) => {
       expect(req.headers["x-sneaky"]).toBeUndefined();
