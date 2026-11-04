@@ -250,7 +250,8 @@ describe("scope-local typed context", () => {
       expect(feature.disposed).toBe(true);
       expect(app.disposed).toBe(true);
       expect(component.parent).toBe(feature);
-      requireContext(component, token).release();
+      expect(getOwner()).toBe(component);
+      requireContext(getOwner()!, token).release();
       expect(() => provide(app, token, { release: () => {} })).toThrow(/disposed/);
     }));
     runWithOwner(feature, () => onCleanup(() => {
@@ -268,6 +269,55 @@ describe("scope-local typed context", () => {
       expect(getOwnerProviders(owner).size).toBe(0);
       expect(() => requireContext(owner, token)).toThrow(/disposed/);
     }
+  });
+
+  it("runs cleanup under its own lexical owner rather than an unrelated caller", () => {
+    const token = createContext<{ id: string }>("RequestIdentity");
+    const a = createOwner();
+    const b = createOwner();
+    provide(a, token, { id: "A" });
+    provide(b, token, { id: "B" });
+    const cleanup = vi.fn(() => {
+      expect(getOwner()).toBe(a);
+      expect(requireContext(getOwner()!, token).id).toBe("A");
+      expect(a.disposed).toBe(true);
+      expect(() => onCleanup(() => {})).toThrow(/disposed/);
+      expect(() => onMount(() => {})).toThrow(/disposed/);
+      expect(() => createOwner(getOwner())).toThrow(/disposed/);
+      expect(() => provide(getOwner()!, token, { id: "wrong" })).toThrow(/disposed/);
+    });
+    const factory = vi.fn(() => ({ dispose: vi.fn() }));
+    runWithOwner(a, () => onCleanup(() => {
+      cleanup();
+      expect(() => ownEffect(factory)).toThrow(/disposed/);
+    }));
+    runWithOwner(b, () => {
+      expect(getOwner()).toBe(b);
+      disposeOwner(a);
+      expect(getOwner()).toBe(b);
+    });
+    expect(getOwner()).toBeNull();
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(factory).not.toHaveBeenCalled();
+    expect(requireContext(b, token).id).toBe("B");
+    disposeOwner(b);
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  it("restores an unrelated caller owner after throwing cleanup", () => {
+    const a = createOwner();
+    const b = createOwner();
+    runWithOwner(a, () => onCleanup(() => {
+      expect(getOwner()).toBe(a);
+      throw new Error("teardown failure");
+    }));
+    runWithOwner(b, () => {
+      expect(() => disposeOwner(a)).toThrow("teardown failure");
+      expect(getOwner()).toBe(b);
+      runWithOwner(b, () => onCleanup(() => {}));
+    });
+    expect(getOwner()).toBeNull();
+    disposeOwner(b);
   });
 
   it("continues provider-aware cleanup after failures and handles reentrant disposal", () => {
