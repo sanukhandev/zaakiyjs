@@ -12,7 +12,7 @@ Native Fetch-based typed HTTP transport for Node.js 22+ and modern browsers. Thi
 
 The shorthand methods return parsed data; requestDetailed returns data, status, headers and URL metadata. Generic type arguments do NOT validate runtime responses. Supply requestSchema or responseSchema with an object providing parse(value) for runtime validation, including Zod-compatible implementations.
 
-Body support: JSON, text, FormData, URLSearchParams, Blob, ArrayBuffer and ReadableStream. Parsing: JSON, text, empty 204/205, blob, arrayBuffer and explicitly requested stream. Default parsed-response byte limit: 10 MiB; raw streams bypass that limit and require caller-managed consumption/cancellation. A JSON empty body produces null.
+Body support: JSON, text, FormData, URLSearchParams, Blob, ArrayBuffer and ReadableStream. Client-level default headers are merged case-insensitively with per-request overrides; native Node ReadableStream uploads use duplex: half. Parsing: JSON, text, empty 204/205, blob, arrayBuffer and explicitly requested stream. Default parsed-response byte limit: 10 MiB; raw streams bypass that limit and require caller-managed consumption/cancellation. A JSON empty body produces null.
 
 ## Interceptors
 

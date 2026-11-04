@@ -144,6 +144,21 @@ describe("HTTP security and lifecycle regressions", () => {
     client.dispose();
   });
 
+  it("merges default and per-request headers with case-insensitive override", async () => {
+    const observed: Headers[] = [];
+    const client = createHttpClient({
+      baseURL, headers: { "X-Tenant": "default", "Accept": "application/json" },
+      fetch: async (_url, init) => {
+        observed.push(new Headers(init?.headers));
+        return new Response(null, { status: 204 });
+      }
+    });
+    await client.get("/tenant", { headers: { "x-tenant": "override" } });
+    expect(observed[0]?.get("x-tenant")).toBe("override");
+    expect(observed[0]?.get("accept")).toBe("application/json");
+    client.dispose();
+  });
+
   it("uses real native Node Fetch against a loopback server", async () => {
     const server = createServer((req, res) => {
       if (req.url === "/v1/health" && req.method === "GET") {

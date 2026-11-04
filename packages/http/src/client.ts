@@ -105,7 +105,8 @@ export function createHttpClient(options: ClientOptions): HttpClient {
       const signal = operation.signal;
       assertActive(signal);
       const url = resolveUrl(request.url, base, allowed, request.query);
-      const headers = new Headers(request.headers);
+      const headers = new Headers(options.headers);
+      new Headers(request.headers).forEach((value, name) => headers.set(name, value));
       if (request.idempotencyKey) headers.set("idempotency-key", request.idempotencyKey);
       const body = request.body === undefined ? undefined :
         await validate(request.requestSchema, request.body, "REQUEST_VALIDATION", signal);
@@ -147,13 +148,20 @@ export function createHttpClient(options: ClientOptions): HttpClient {
             if (!bearer.trim() || /[\r\n]/.test(bearer)) throw configError("Invalid bearer token");
             attemptHeaders.set("authorization", "Bearer " + bearer);
           }
-          const response = shortCircuit ?? await awaitActive(Promise.resolve().then(() => transport(ctx.url, {
+          const init: RequestInit = {
             method: ctx.method, headers: attemptHeaders, body: ctx.body, credentials: ctx.credentials,
             redirect: ctx.redirect, signal
-          })), signal);
+          };
+          // Node's native Fetch requires duplex: half for ReadableStream uploads.
+          if (ctx.body instanceof ReadableStream) Object.assign(init, { duplex: "half" });
+          const response = shortCircuit ?? await awaitActive(
+            Promise.resolve().then(() => transport(ctx.url, init)), signal
+          );
           assertActive(signal);
           if (!(response instanceof Response)) throw new HttpError("UNSUPPORTED", "Transport returned a non-Response value");
           if (!response.ok) {
+            // Close failed response bodies before refresh/retry to avoid retaining sockets.
+            void response.body?.cancel().catch(() => {});
             if (response.status === 401 && !refreshed && options.auth?.refreshToken &&
                 request.auth !== false && ctx.url.origin === baseOrigin &&
                 refreshAllowed(ctx.method, request.idempotencyKey) && replayable(ctx.body)) {

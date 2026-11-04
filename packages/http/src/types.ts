@@ -28,6 +28,7 @@ export interface ClientOptions {
   readonly fetch?: typeof fetch;
   readonly timeoutMs?: number;
   readonly credentials?: RequestCredentials;
+  readonly headers?: HeadersInit;
   /** Additional origins; off-origin requests never receive automatic credentials/auth headers. */
   readonly allowedOrigins?: readonly string[];
   readonly auth?: AuthAdapter;
