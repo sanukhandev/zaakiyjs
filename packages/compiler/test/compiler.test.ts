@@ -635,7 +635,7 @@ describe("typed Show/For compiler intrinsics", () => {
     ].join("\n")});
     expect(nested.diagnostics.filter(d => d.severity === "error")).toEqual([]);
     expect(nested.js).toHaveLength(1);
-    expect((nested.js[0]?.code.match(/__zBindKeyedRegion\\(/g) ?? []).length).toBe(2);
+    expect((nested.js[0]?.code.match(/__zBindKeyedRegion\(/g) ?? []).length).toBe(2);
   });
 
   it("keeps generated assets deterministic and rejects invalid key types", () => {
