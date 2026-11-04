@@ -63,9 +63,15 @@ export function analyzeCompatibility(request: CompatAnalysisRequest): Compatibil
 
   const byFeature = new Map<string, FeatureRequirement[]>();
   for (const item of requirements) {
-    const items = byFeature.get(item.id) ?? [];
-    items.push(item);
-    byFeature.set(item.id, items);
+    // Never echo arbitrary IR feature values into manifests: malformed data may contain secrets.
+    const id = /^[a-z][a-z0-9.-]{0,79}$/.test(item.id) ? item.id : "invalid-feature-id";
+    if (id !== item.id) {
+      diagnostics.push(diagnostic("ZK2303", "error",
+        "Invalid compatibility feature ID supplied by a source adapter.", undefined, item.reference));
+    }
+    const items = byFeature.get(id) ?? [];
+    items.push({ ...item, id });
+    byFeature.set(id, items);
   }
   const plans: FeaturePlan[] = [];
   const transformById = new Map<string, StrategySelection>();
@@ -177,7 +183,8 @@ export function validateManifest(value: unknown): value is CompatibilityManifest
       !Array.isArray(item.limitations) || typeof item.estimatedExtraBytes !== "number" ||
       typeof item.hash !== "string") return false;
   const { hash, ...unsigned } = item;
-  return digest(unsigned as Omit<CompatibilityManifest, "hash">) === hash;
+  try { return digest(unsigned as Omit<CompatibilityManifest, "hash">) === hash; }
+  catch { return false; }
 }
 export interface StylesTargetAdapter {
   readonly targets: { readonly chrome?: number; readonly firefox?: number; readonly safari?: number };
