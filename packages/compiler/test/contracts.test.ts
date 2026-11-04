@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { foundationStatus } from "../src/index";
 
-describe("@zaakiyjs/compiler M0 contract", () => {
-  it("clearly reports that framework behavior is unimplemented", () => {
-    expect(foundationStatus).toEqual({ package: "@zaakiyjs/compiler", implemented: false });
+describe("@zaakiyjs/compiler versioned public contract", () => {
+  it("reports that the safe compiler vertical slice is present", () => {
+    expect(foundationStatus).toEqual({ package: "@zaakiyjs/compiler", implemented: true });
   });
 });
