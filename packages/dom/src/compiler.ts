@@ -190,7 +190,12 @@ function bind(owner: OwnerScope, run: () => void): BindingHandle {
 }
 
 export function bindText(owner: OwnerScope, node: Text, read: () => unknown): BindingHandle {
-  return bind(owner, () => setText(node, String(read() ?? "")));
+  return bind(owner, () => {
+    const value = read();
+    // Match compiler lowering for JSX children: booleans and nullish values
+    // produce no visible text, while 0 and empty strings retain their meaning.
+    setText(node, value == null || typeof value === "boolean" ? "" : String(value));
+  });
 }
 
 export function bindProperty(

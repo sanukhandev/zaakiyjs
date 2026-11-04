@@ -8,7 +8,7 @@ Native DOM target and owner-scoped browser runtime for compiler-generated Zaakiy
 - `@zaakiyjs/dom/compiler`: frozen v1 primitives `createElement`, `createText`, `setText`, `setProperty`, `setAttribute`, `bindText`, `bindProperty`, and `listen`.
 - Additional browser helpers: `setClass`, `setStyle`, `bindAttribute`, `bindClass`, `bindStyle`, `bindRef`, `listenStable`, and `cloneStatic`.
 
-`bind*` functions connect render-phase signal effects to core owner cleanup. A read tracks only signals accessed by that binding. `setText` updates `Text.data` only when changed. Immutable templates are constructed DOM nodes cloned with `cloneNode(true)`; HTML strings are never parsed.
+`bind*` functions connect render-phase signal effects to core owner cleanup. A read tracks only signals accessed by that binding. `setText` updates `Text.data` only when changed. Reactive boolean or nullish JSX children normalize to empty text, matching the compiler's nonreactive lowering. Immutable templates are constructed DOM nodes cloned with `cloneNode(true)`; HTML strings are never parsed.
 
 ## Hand-authored compiler ABI fixture
 
@@ -42,6 +42,13 @@ The example is generated-code style. M0's TSX is still typecheck-only. There is 
 
 ## Integration gate
 
-**Draft / blocked:** M0 core and signals on `main` expose only types. This package requires the agreed owner and signal callable APIs. The repository M0 export-surface contract test will require coordinated retirement. DOM jsdom tests require a frozen lockfile refresh; compiler-produced fixtures and real-browser verification are pending.
+**Draft / blocked:** M0 core and signals on `main` expose only types. This package requires the agreed owner and signal callable APIs. The repository M0 export-surface contract test will require coordinated retirement. The frozen lockfile includes the jsdom test dependency. Native Chromium smoke and package artifact checks run when CI has a Chrome binary; compiler-produced fixtures and cross-browser Playwright coverage remain separate integration gates.
 
 No measured bundle size, memory, or performance claims are made before a reproducible build and CI pass.
+
+## Validation
+
+- `pnpm --filter @zaakiyjs/dom build` and `pnpm --filter @zaakiyjs/dom test` require implemented compatible `core`/`signals` packages.
+- Package tests include `MutationObserver` assertions, ownership cleanup, keyed range identity, URL and style sink defenses, native Chromium smoke, and npm pack/declaration verification.
+- The Chromium smoke bundles a **test harness plus core/signals**; its logged gzip bytes are not the isolated DOM package size. Artifact tests also report raw and per-module gzip bytes for generated DOM JavaScript.
+- The real-browser smoke uses an installed Chromium binary; when none exists, it explicitly reports non-execution. Full Chromium/Firefox/WebKit matrix remains an integration gate.

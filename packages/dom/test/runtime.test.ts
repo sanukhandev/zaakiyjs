@@ -91,6 +91,27 @@ describe("compiler-lowered native DOM runtime", () => {
     observer.disconnect();
   });
 
+
+  it("renders nullish and boolean dynamic children as empty, without dropping numeric zero", () => {
+    const owner = createOwner();
+    const value = signal<unknown>(false);
+    const node = createText("initial");
+    const read = vi.fn(() => value.value);
+    bindText(owner, node, read);
+    expect(node.data).toBe("");
+    value.value = true;
+    flushSync();
+    expect(node.data).toBe("");
+    value.value = 0;
+    flushSync();
+    expect(node.data).toBe("0");
+    value.value = null;
+    flushSync();
+    expect(node.data).toBe("");
+    expect(read).toHaveBeenCalledTimes(4);
+    disposeOwner(owner);
+  });
+
   it("updates native properties, safe attributes, classes, styles and refs", () => {
     const owner = createOwner();
     const input = document.createElement("input");
