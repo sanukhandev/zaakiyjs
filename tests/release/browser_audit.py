@@ -42,9 +42,18 @@ def audit_browser(browser, url: str) -> dict:
       document.addEventListener("securitypolicyviolation", event => {
         window.__cspViolations.push({ directive: event.violatedDirective, blocked: event.blockedURI });
       });
+      window.__trustedScriptBlocked = false;
       const script = document.createElement("script");
-      script.textContent = "window.__cspExecuted = true";
-      document.body.appendChild(script);
+      try {
+        script.textContent = "window.__cspExecuted = true";
+        document.body.appendChild(script);
+      } catch (error) {
+        // Trusted Types enforcement may reject even assigning script content.
+        window.__trustedScriptBlocked = error instanceof TypeError || !!error;
+      }
+      const dataScript = document.createElement("script");
+      dataScript.src = "data:text/javascript,window.__cspExecuted=true";
+      document.body.appendChild(dataScript);
     }""")
     page.wait_for_timeout(150)
     csp_result = page.evaluate("""() => ({
