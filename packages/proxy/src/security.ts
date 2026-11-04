@@ -68,7 +68,7 @@ export function incomingURL(value: string): URL {
   if (!value.startsWith("/") || value.startsWith("//") || value.includes("\\") || value.includes("#") || [...value].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) throw new ProxyPolicyError("Invalid request URL");
   const path = value.split("?", 1)[0] ?? "";
   if (path.includes("//") || /%(?:(?:2e|2f|5c|00|25(?:2e|2f|5c)))/i.test(path)) throw new ProxyPolicyError("Ambiguous path encoding");
-  try { decodeURIComponent(path); } catch { throw new ProxyPolicyError("Malformed path encoding"); }
+  try { decodeURIComponent(path); decodeURIComponent(value.slice(path.length)); } catch { throw new ProxyPolicyError("Malformed URL encoding"); }
   if (path.split("/").includes("..") || path.split("/").includes(".")) throw new ProxyPolicyError("Traversal is not allowed");
   let url: URL;
   try { url = new URL(value, "https://request.invalid"); } catch { throw new ProxyPolicyError("Invalid request URL"); }
@@ -121,12 +121,24 @@ export function compileRoutes(routes: readonly ProxyRoute[], upstreams: Readonly
   }
   return compiled.sort((a, b) => b.score - a.score || b.route.path.length - a.route.path.length);
 }
+function hopByHop(input: Readonly<Record<string, string | string[] | undefined>>): Set<string> {
+  const denied = new Set(forbiddenHop);
+  for (const [name, value] of Object.entries(input)) {
+    if (name.toLowerCase() !== "connection") continue;
+    for (const part of (Array.isArray(value) ? value.join(",") : value ?? "").split(",")) {
+      const token = part.trim().toLowerCase();
+      if (token) denied.add(token);
+    }
+  }
+  return denied;
+}
 export function requestHeaders(input: Readonly<Record<string, string | string[] | undefined>>, custom?: readonly string[]): Record<string, string> {
   const allowed = new Set([...allowedDefaultRequest, ...custom ?? []].map(x => x.toLowerCase()));
+  const denied = hopByHop(input);
   const result: Record<string, string> = Object.create(null) as Record<string, string>;
   for (const [name, value] of Object.entries(input)) {
     const key = name.toLowerCase();
-    if (!allowed.has(key) || forbiddenHop.has(key) || sensitive.has(key) || value === undefined) continue;
+    if (!allowed.has(key) || denied.has(key) || sensitive.has(key) || value === undefined) continue;
     if (typeof value !== "string" || /[\r\n]/.test(value)) continue;
     result[key] = value;
   }
@@ -134,12 +146,13 @@ export function requestHeaders(input: Readonly<Record<string, string | string[] 
 }
 export function responseHeaders(input: Readonly<Record<string, string | string[] | undefined>>, custom?: readonly string[]): Record<string, string> {
   const allowed = new Set([...allowedDefaultResponse, ...custom ?? []].map(x => x.toLowerCase()));
+  const denied = hopByHop(input);
   const result: Record<string, string> = Object.create(null) as Record<string, string>;
   result["cache-control"] = "no-store";
   result["x-content-type-options"] = "nosniff";
   for (const [name, value] of Object.entries(input)) {
     const key = name.toLowerCase();
-    if (!allowed.has(key) || forbiddenHop.has(key) || sensitive.has(key) || value === undefined) continue;
+    if (!allowed.has(key) || denied.has(key) || sensitive.has(key) || value === undefined) continue;
     if (typeof value !== "string" || /[\r\n]/.test(value)) continue;
     result[key] = value;
   }
