@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const expected = new Set(["signals", "core", "dom", "compiler", "styles", "vite-plugin", "cli"]);
-const allowed = new Set([...expected, "compat", "store", "async", "router", "forms", "http"]);
+const allowed = new Set([...expected, "compat", "store", "async", "router", "forms", "http", "proxy"]);
 const scriptNames = ["lint", "typecheck", "build", "test"];
 const manifestByName = new Map();
 let errors = 0;
@@ -23,7 +23,12 @@ for (const group of ["packages", "apps", "examples"]) {
     if (group !== "packages") continue;
     if (!allowed.has(entry)) fail(`Unexpected source package: ${dir}`);
     if (pkg.name !== `@zaakiyjs/${entry}`) fail(`Name/path mismatch: ${manifestPath}`);
-    if (pkg.type !== "module" || !pkg.types || !pkg.exports?.["."]?.types || !pkg.exports?.["."]?.import) fail(`Missing ESM exports/types: ${manifestPath}`);
+    const entrypoint = pkg.exports?.["."];
+    const serverOnly = entry === "proxy";
+    const validEntrypoint = serverOnly
+      ? entrypoint?.node?.types && entrypoint?.node?.import && !entrypoint.import && !entrypoint.default && !entrypoint.browser
+      : entrypoint?.types && entrypoint?.import;
+    if (pkg.type !== "module" || !pkg.types || !validEntrypoint) fail(`Missing or unsafe ESM exports/types: ${manifestPath}`);
     if (!pkg.version || !pkg.publishConfig || pkg.publishConfig.access !== "public") fail(`Missing independent version or publication metadata: ${manifestPath}`);
     manifestByName.set(pkg.name, pkg);
   }
@@ -31,12 +36,14 @@ for (const group of ["packages", "apps", "examples"]) {
 for (const name of expected) if (!manifestByName.has(`@zaakiyjs/${name}`)) fail(`Missing required M0 package: ${name}`);
 const browserPackages = new Set(["@zaakiyjs/signals", "@zaakiyjs/core", "@zaakiyjs/dom", "@zaakiyjs/store", "@zaakiyjs/async", "@zaakiyjs/router", "@zaakiyjs/forms", "@zaakiyjs/http"]);
 const buildOnly = new Set(["@zaakiyjs/compiler", "@zaakiyjs/styles", "@zaakiyjs/vite-plugin", "@zaakiyjs/cli", "@zaakiyjs/compat"]);
+const serverOnly = new Set(["@zaakiyjs/proxy"]);
 const depsOf = (name) => Object.keys(manifestByName.get(name)?.dependencies ?? {}).filter((dep) => dep.startsWith("@zaakiyjs/"));
 for (const [name, pkg] of manifestByName) {
   for (const dep of depsOf(name)) {
     if (!manifestByName.has(dep)) fail(`Unknown internal dependency ${name} -> ${dep}`);
     if (!pkg.dependencies[dep].startsWith("workspace:")) fail(`Internal dependency must use workspace protocol: ${name} -> ${dep}`);
     if (browserPackages.has(name) && buildOnly.has(dep)) fail(`Browser package cannot import build-only ${dep}`);
+    if (browserPackages.has(name) && serverOnly.has(dep)) fail(`Browser package cannot import server-only ${dep}`);
   }
 }
 if (depsOf("@zaakiyjs/signals").length) fail("signals must not depend on any other workspace package");

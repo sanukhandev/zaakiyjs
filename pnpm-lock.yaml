@@ -138,6 +138,12 @@ importers:
         specifier: ^26.1.0
         version: 26.1.0
 
+  packages/proxy:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.15.30
+
   packages/forms:
     dependencies:
       '@zaakiyjs/core':
