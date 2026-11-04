@@ -577,7 +577,7 @@ describe("typed Show/For compiler intrinsics", () => {
     const bad = [
       prelude,
       'const items = [{id: 1}];',
-      'function App(){return <main><Show when={true}><p>a</p><p>b</p></Show>',
+      'function App(){return <main><Show when={true}>invalid text</Show>',
       '<For each={items} by={row => row.id}>{row => <p>{row.id}</p>}</For>',
       '<For each={items} by={row => row.id}>{row => <p>{row.id}</p>}<p>extra</p></For>',
       '</main>;}'
@@ -617,7 +617,7 @@ describe("typed Show/For compiler intrinsics", () => {
   });
 
 
-  it("diagnoses root-level and nested control-flow ABI constraints", () => {
+  it("diagnoses root control-flow and accepts properly scoped nested loops", () => {
     const root = compile({fileName, source: [
       'import {Show} from "@zaakiyjs/core";',
       'function App(){return <Show when={true}><p>bare root</p></Show>;}'
@@ -633,9 +633,9 @@ describe("typed Show/For compiler intrinsics", () => {
       '{child => <span>{child.id}</span>}</For></li>}',
       '</For></ul>;}'
     ].join("\n")});
-    expect(nested.js).toEqual([]);
-    expect(nested.diagnostics.some(d => d.code === "ZC2202")).toBe(true);
-    expect(nested.diagnostics.some(d => d.code === "ZC9001")).toBe(false);
+    expect(nested.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(nested.js).toHaveLength(1);
+    expect((nested.js[0]?.code.match(/__zBindKeyedRegion\\(/g) ?? []).length).toBe(2);
   });
 
   it("keeps generated assets deterministic and rejects invalid key types", () => {
