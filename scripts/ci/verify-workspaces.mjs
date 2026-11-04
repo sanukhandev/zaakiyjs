@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const expected = new Set(["signals", "core", "dom", "compiler", "styles", "vite-plugin", "cli"]);
-const optionalP1 = new Set(["store", "forms", "router", "compat", "async"]);
+const allowed = new Set([...expected, "compat", "store", "forms"]);
 const scriptNames = ["lint", "typecheck", "build", "test"];
 const manifestByName = new Map();
 let errors = 0;
@@ -21,7 +21,7 @@ for (const group of ["packages", "apps", "examples"]) {
       if (!pkg.scripts?.[script]?.trim()) fail(`Missing operational ${script} script: ${manifestPath}`);
     }
     if (group !== "packages") continue;
-    if (!expected.has(entry) && !optionalP1.has(entry)) fail(`Unexpected source package: ${dir}`);
+    if (!allowed.has(entry)) fail(`Unexpected source package: ${dir}`);
     if (pkg.name !== `@zaakiyjs/${entry}`) fail(`Name/path mismatch: ${manifestPath}`);
     if (pkg.type !== "module" || !pkg.types || !pkg.exports?.["."]?.types || !pkg.exports?.["."]?.import) fail(`Missing ESM exports/types: ${manifestPath}`);
     if (!pkg.version || !pkg.publishConfig || pkg.publishConfig.access !== "public") fail(`Missing independent version or publication metadata: ${manifestPath}`);
@@ -29,8 +29,8 @@ for (const group of ["packages", "apps", "examples"]) {
   }
 }
 for (const name of expected) if (!manifestByName.has(`@zaakiyjs/${name}`)) fail(`Missing required M0 package: ${name}`);
-const browserPackages = new Set(["@zaakiyjs/signals", "@zaakiyjs/core", "@zaakiyjs/dom"]);
-const buildOnly = new Set(["@zaakiyjs/compiler", "@zaakiyjs/styles", "@zaakiyjs/vite-plugin", "@zaakiyjs/cli"]);
+const browserPackages = new Set(["@zaakiyjs/signals", "@zaakiyjs/core", "@zaakiyjs/dom", "@zaakiyjs/store", "@zaakiyjs/forms"]);
+const buildOnly = new Set(["@zaakiyjs/compiler", "@zaakiyjs/styles", "@zaakiyjs/vite-plugin", "@zaakiyjs/cli", "@zaakiyjs/compat"]);
 const depsOf = (name) => Object.keys(manifestByName.get(name)?.dependencies ?? {}).filter((dep) => dep.startsWith("@zaakiyjs/"));
 for (const [name, pkg] of manifestByName) {
   for (const dep of depsOf(name)) {
@@ -59,4 +59,4 @@ if (!existsSync("pnpm-lock.yaml")) fail("M0 source packages require committed pn
 const changeset = JSON.parse(readFileSync(".changeset/config.json", "utf8"));
 if (changeset.fixed?.length || changeset.linked?.length) fail("Changesets must remain independently versioned");
 if (errors) process.exit(1);
-console.log(`M0 workspace contract valid: ${manifestByName.size} packages, independent versions, no cycles`);
+console.log(`Workspace contract valid: ${manifestByName.size} packages, independent versions, no cycles`);

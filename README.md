@@ -3,7 +3,7 @@
 
 > **AI-assisted. Compiler-first. Signal-driven. Native DOM.**
 >
-> **Project status: Initial seven-package compiler/runtime/toolchain vertical slices implemented and CI-verified in the source monorepo; not yet published to npm.** Real TSX Counter scaffolding, compilation, native DOM updates, and browser smoke tests pass; full API/browser/release coverage and performance budgets remain targets. No claim is made that ZaakiyJS is the first AI frontend framework.
+> **Project status: Seven foundation packages are implemented in the source monorepo; not published to npm.** Real generated TSX Counter and the restricted native-element `<Show>`/`<For>` control-flow subset now pass 24 Playwright acceptance cases across Chromium, Firefox and WebKit. Broader TSX grammar, API coverage, browser-version compatibility targets, long-running heap benchmarks and npm release gates remain unproven.
 
 ZaakiyJS is a proposed, independent **TypeScript/TSX frontend framework** inspired by React, Angular and Vue, designed to compile declarative components into precise native DOM updates. It combines a fine-grained reactive runtime, SOLID/MVVM application architecture, brand-driven CSS, integrated networking/async primitives, hybrid SEO rendering and optional **reviewed Gemini optimization**.
 
@@ -265,7 +265,7 @@ The first implementation slice should be **one typed TSX counter** proving signa
 - [Testing and quality gates](docs/development/testing-and-quality.md)
 - [Independent npm release policy](docs/releasing/independent-npm.md)
 
-**Current status:** seven foundation packages have source implementations and merged CI gates. The workspace generated-app smoke compiles and increments a Counter in Chromium. npm publication, compatibility across Chromium/Firefox/WebKit, typed full `<Show>`/`<For>` coverage, broader SSR/networking ecosystem and performance/release claims remain unproven or deferred.
+**Current status:** Seven foundation packages are merged. The generated Counter runs in Chromium and the restricted native-element `<Show>`/`<For>` subset passes **24/24** real Playwright acceptance scenarios in Chromium/Firefox/WebKit (native DOM mutation identity, focus/selection, ownership cleanup, duplicate-key atomicity and text injection safety). Broader browser target-version declarations, arbitrary TSX grammar, SSR/networking ecosystem, memory/performance benchmarks and independent npm publication remain open. See [M1 browser matrix](tests/browser/README.md) and [ADR 0005](docs/adr/0005-tsx-control-flow-intrinsics.md).
 
 ---
 
