@@ -2,12 +2,11 @@ import type { OwnerScope, ContextToken } from "@zaakiyjs/core";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
 
 /** Parameter names are inferred from required colon-prefixed path segments. */
+type SegmentParam<S extends string> = S extends `:${infer Name}` ? Name : never;
 type ParamKeys<S extends string> =
-  S extends `${string}:${infer Tail}`
-    ? Tail extends `${infer Name}/${infer Rest}`
-      ? Name | ParamKeys<Rest>
-      : Tail
-    : never;
+  S extends `${infer Head}/${infer Tail}`
+    ? SegmentParam<Head> | ParamKeys<Tail>
+    : SegmentParam<S>;
 export type RouteParams<Path extends string> =
   [ParamKeys<Path>] extends [never] ? Record<string, never> :
   { readonly [K in ParamKeys<Path>]: string };
@@ -88,7 +87,7 @@ export function defineRoute<const P extends string>(
 }
 export type RouteTarget<P extends string = string> = {
   readonly route: DefinedRoute<P>;
-  readonly params: RouteParams<P>;
+  readonly params: RouteParams<NoInfer<P>>;
   readonly search?: URLSearchParams | string | Readonly<Record<string, string>>;
   readonly hash?: string;
 };
