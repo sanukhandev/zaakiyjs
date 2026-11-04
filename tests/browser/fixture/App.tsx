@@ -2,6 +2,7 @@ import { For, Show, onCleanup } from "@zaakiyjs/core";
 import { flushSync, signal } from "@zaakiyjs/signals";
 
 type Row = { readonly id: string; readonly label: string };
+type Group = { readonly id: string; readonly name: string; readonly children: readonly Row[] };
 
 export const fixture = {
   counter: signal(0),
@@ -11,6 +12,10 @@ export const fixture = {
   rows: signal<readonly Row[]>([
     { id: "a", label: "Alpha" },
     { id: "b", label: "Beta" }
+  ]),
+  groups: signal<readonly Group[]>([
+    { id: "g1", name: "One", children: [{ id: "c1", label: "First" }] },
+    { id: "g2", name: "Two", children: [{ id: "c2", label: "Second" }] }
   ]),
   duplicateError: signal(""),
   lifecycle: { setups: 0, disposals: 0 }
@@ -61,6 +66,16 @@ export function App() {
           fixture.duplicateError.value = "rejected";
         }
       }}>Duplicate</button>
+      <button id="group-rename" type="button" onClick={() => {
+        fixture.groups.value = fixture.groups.value.map(group => group.id === "g1"
+          ? { ...group, name: "One2", children: [{ id: "c1", label: "First2" }] } : group);
+      }}>Rename nested</button>
+      <button id="group-reorder" type="button" onClick={() => {
+        fixture.groups.value = [...fixture.groups.value].reverse();
+      }}>Reorder nested</button>
+      <button id="group-remove" type="button" onClick={() => {
+        fixture.groups.value = fixture.groups.value.filter(group => group.id !== "g1");
+      }}>Remove nested</button>
       <output id="duplicate-error">{fixture.duplicateError.value}</output>
       <output id="selected">{fixture.selected.value}</output>
 
@@ -73,6 +88,23 @@ export function App() {
           </li>}
         </For>
       </ol>
+      <section id="advanced">
+        <Show when={fixture.visible.value} fallback={<><i id="fallback-a">A</i><i id="fallback-b">B</i></>}>
+          <p id="advanced-a">One</p><p id="advanced-b">Two</p>
+        </Show>
+        <div id="groups">
+          <For each={fixture.groups.value} by={group => group.id}>
+            {group => <>
+              <h2>{group.name}</h2>
+              <ul><For each={group.children} by={child => child.id}>
+                {child => <li><strong>{group.name}:{child.label}</strong>
+                  <button type="button" onClick={() => { fixture.selected.value = child.label; }}>Choose</button>
+                </li>}
+              </For></ul>
+            </>}
+          </For>
+        </div>
+      </section>
     </main>
   );
 }
