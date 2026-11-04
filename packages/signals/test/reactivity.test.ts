@@ -236,6 +236,36 @@ describe("signals", () => {
     expect(() => forbidden.value).toThrow(/must not write signals/);
     expect(input.value).toBe(0);
   });
+  it("physically detaches subscriber references across derived chains", () => {
+    const source = signal(1);
+    const inner = computed(() => source.value * 2);
+    const outer = computed(() => inner.value + 1);
+    const inbound = source as unknown as { readonly observers: ReadonlySet<unknown> };
+    const stop = effect(() => { void outer.value; });
+    expect(inbound.observers.size).toBe(1);
+    stop.dispose();
+    expect(inbound.observers.size).toBe(0);
+    expect(outer.value).toBe(3);
+    expect(inbound.observers.size).toBe(0);
+  });
+  it("unwinds batching after thrown callbacks", () => {
+    const source = signal(0);
+    const values: number[] = [];
+    const stop = effect(() => { values.push(source.value); });
+    expect(() => batch(() => { source.value = 5; throw new Error("interrupted"); })).toThrow("interrupted");
+    flushSync();
+    expect(values).toEqual([0, 5]);
+    stop.dispose();
+  });
+  it("preserves flushSync callback values", () => {
+    const source = signal(0);
+    const values: number[] = [];
+    const stop = effect(() => { values.push(source.value); });
+    const result = flushSync(() => { source.value = 2; return "completed" as const; });
+    expect(result).toBe("completed");
+    expect(values).toEqual([0, 2]);
+    stop.dispose();
+  });
   it("randomized graph agrees with a simple pure reference model", () => {
     let seed = 0x12345678;
     const next = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0);
