@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "jsx": "preserve",
+    "jsxImportSource": "@zaakiyjs/core"
+  },
+  "include": [
+    "test/tsx-type-compat.tsx"
+  ]
+}

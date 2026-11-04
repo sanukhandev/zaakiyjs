@@ -52,3 +52,7 @@ Production bundle size and memory-leak benchmarks require dedicated reproducible
 - Package tests include `MutationObserver` assertions, ownership cleanup, keyed range identity, URL and style sink defenses, native Chromium smoke, and npm pack/declaration verification.
 - The Chromium smoke bundles a **test harness plus core/signals**; its logged gzip bytes are not the isolated DOM package size. Artifact tests also report raw and per-module gzip bytes for generated DOM JavaScript.
 - The real-browser smoke uses an installed Chromium binary; when none exists, Vitest explicitly marks it skipped. Full Chromium/Firefox/WebKit matrix remains an integration gate.
+
+### TypeScript source compatibility
+
+`pnpm --filter @zaakiyjs/dom typecheck` additionally runs `tsconfig.type-tests.json`, verifying that `mount(() => <App />, container)` is accepted at the **source type** level while the compiler replaces JSX with native DOM before execution. No runtime JSX interpreter is provided.
