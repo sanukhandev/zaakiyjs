@@ -6,6 +6,7 @@ import { onCleanup, runWithOwner } from "@zaakiyjs/core";
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { BindingHandle, Namespace } from "./index.js";
+import type { DomRegion, KeyedView } from "./regions.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const MATH_NS = "http://www.w3.org/1998/Math/MathML";
@@ -31,6 +32,17 @@ export interface CompilerDomAbiV1 {
   bindText(owner: OwnerScope, node: Text, read: () => unknown): BindingHandle;
   bindProperty(owner: OwnerScope, node: Element, name: string, read: () => unknown): BindingHandle;
   listen(owner: OwnerScope, node: EventTarget, eventName: string, handler: EventListener, options?: AddEventListenerOptions): BindingHandle;
+  createRegion(parent: Node, before?: Node | null): DomRegion;
+  bindConditionalRegion(
+    owner: OwnerScope, region: DomRegion, when: () => boolean,
+    createTrue: (child: OwnerScope) => Node,
+    createFalse?: (child: OwnerScope) => Node
+  ): BindingHandle;
+  bindKeyedRegion<Key extends PropertyKey, Item>(
+    owner: OwnerScope, region: DomRegion, read: () => readonly Item[],
+    keyOf: (item: Item) => Key,
+    create: (item: Item, child: OwnerScope) => KeyedView<Item>
+  ): BindingHandle;
 }
 
 function assertWritableName(name: string): void {
@@ -313,3 +325,7 @@ export function listenStable(
 export function cloneStatic<T extends Node>(template: T): T {
   return template.cloneNode(true) as T;
 }
+
+/** Stable compiler-generated range/keyed ABI v1; no Node/compiler imports. */
+export { createRegion, bindConditionalRegion, bindKeyedRegion } from "./regions.js";
+export type { DomRegion, KeyedView } from "./regions.js";

@@ -76,13 +76,16 @@ export function bindConditionalRegion(
   owner: OwnerScope,
   region: DomRegion,
   when: () => boolean,
-  create: (child: OwnerScope) => Node
+  create: (child: OwnerScope) => Node,
+  createOtherwise?: (child: OwnerScope) => Node
 ): BindingHandle {
   let current: OwnerScope | null = null;
+  let currentBranch: boolean | null = null;
   const clear = (): void => {
     if (current) {
       const outgoing = current;
       current = null;
+      currentBranch = null;
       try {
         disposeOwner(outgoing);
       } finally {
@@ -94,20 +97,21 @@ export function bindConditionalRegion(
   };
   return ownEffect(owner, () => {
     const active = Boolean(when());
-    if (active === (current !== null)) return;
-    if (!active) {
-      clear();
-      return;
-    }
+    if (current !== null && currentBranch === active) return;
+    clear();
+    const factory = active ? create : createOtherwise;
+    if (!factory) return; // false branch without an explicit else is empty
     const child = createOwner(owner);
     try {
       // Child component setup must not subscribe the conditional predicate.
-      const node = untrack(() => initializeOwnedComponent(child, () => create(child)));
+      const node = untrack(() => initializeOwnedComponent(child, () => factory(child)));
       region.parent.insertBefore(node, region.end);
       current = child;
+      currentBranch = active;
       mountChild(owner, child);
     } catch (error) {
       current = null;
+      currentBranch = null;
       let cleanupError: unknown;
       try { disposeOwner(child); } catch (caught) { cleanupError = caught; }
       removeBetween(region.start, region.end);
@@ -240,6 +244,15 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
       }
       if (next.has(key)) throw new Error("Duplicate key in ZaakiyJS keyed region: " + String(key));
       next.set(key, item);
+    }
+
+    // A stable key must not silently retain stale DOM when the object behind
+    // that key is replaced. Validate before mutating the existing region.
+    for (const [key, item] of next) {
+      const previous = records.get(key);
+      if (previous && !Object.is(previous.item, item) && !previous.view.update) {
+        throw new Error("Changed keyed item requires a view.update handler for key: " + String(key));
+      }
     }
 
     const focused = captureFocus(region.parent);
