@@ -47,8 +47,8 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
         if (node.expression.reactive && node.target !== "property") {
           error("ZC2203", "Reactive class, style and attributes need a distinct safe DOM binding ABI.", node.span);
         }
-        if (node.target === "style" && !/^"/.test(node.expression.source)) {
-          error("ZC2204", "Style object/string lowering requires an explicit safe style contract.", node.span);
+        if (node.target === "style") {
+          error("ZC2204", "Inline style JSX requires a safe per-property style ABI; DOM v1 rejects style attributes.", node.span);
         }
         break;
       case "EventBinding":
