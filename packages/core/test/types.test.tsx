@@ -50,3 +50,11 @@ const badPredicate = <Show when="yes"><p>x</p></Show>;
 // @ts-expect-error For keys must be primitive PropertyKey values
 const badKey = <For each={rows} by={row => ({id: row.id})}>{row => <li>{row.title}</li>}</For>;
 void show; void keyed; void badPredicate; void badKey;
+
+const multiRootShow: JSX.Element = <Show when={true}>
+  <p>One</p><p>Two</p>
+</Show>;
+const fragmentFor: JSX.Element = <For each={rows} by={row => row.id}>
+  {row => <><li>{row.title}</li><li>{row.id}</li></>}
+</For>;
+void multiRootShow; void fragmentFor;
