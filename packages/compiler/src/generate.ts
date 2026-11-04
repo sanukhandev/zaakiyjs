@@ -278,7 +278,7 @@ export function typeDiagnostics(request: CompileRequest, analysis: Analysis): Co
       ts.createSourceFile(path, request.source, language, true, ts.ScriptKind.TSX) :
       originalGet(path, language, onError, shouldCreate);
   const program = ts.createProgram([request.fileName], options, host);
-  return ts.getPreEmitDiagnostics(program)
+  const errors: CompilerDiagnostic[] = ts.getPreEmitDiagnostics(program)
     .filter(d => d.file && ts.sys.resolvePath(d.file.fileName) === targetName)
     .map(d => {
       const start = d.start ?? 0;
@@ -289,4 +289,42 @@ export function typeDiagnostics(request: CompileRequest, analysis: Analysis): Co
         span: sourceSpan(analysis.sourceFile, start, start + (d.length ?? 0))
       };
     });
+
+  const file = program.getSourceFile(request.fileName);
+  if (!file) return errors;
+  const checker = program.getTypeChecker();
+  const textual = ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike |
+    ts.TypeFlags.BigIntLike | ts.TypeFlags.Null | ts.TypeFlags.Undefined |
+    ts.TypeFlags.VoidLike | ts.TypeFlags.Never;
+  const canRenderText = (type: ts.Type): boolean => {
+    if (type.isUnion()) return type.types.every(canRenderText);
+    if (type.flags & textual) return true;
+    if (type.flags & ts.TypeFlags.TypeParameter) {
+      const constraint = checker.getBaseConstraintOfType(type);
+      return constraint ? canRenderText(constraint) : false;
+    }
+    return false;
+  };
+  const hasMarkup = (node: ts.Node): boolean => {
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node)) return true;
+    return ts.forEachChild(node, child => hasMarkup(child) || undefined) ?? false;
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isJsxExpression(node) && node.expression &&
+        (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent)) &&
+        !hasMarkup(node.expression)) {
+      const type = checker.getTypeAtLocation(node.expression);
+      if (!canRenderText(type)) {
+        errors.push({
+          code: "ZC2110", severity: "error",
+          message: "JSX dynamic text must resolve to string, number, bigint, boolean, null or undefined. Use explicit supported DOM nodes instead of coercing arrays, objects or ViewNodes.",
+          span: sourceSpan(analysis.sourceFile,
+            node.expression.getStart(file), node.expression.getEnd())
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return errors;
 }
