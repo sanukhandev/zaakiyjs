@@ -67,7 +67,7 @@ export function copyValue<T>(value: T): T {
     const prototype: unknown = Object.getPrototypeOf(input);
     if (Array.isArray(input) || prototype === Object.prototype || prototype === null) {
       const result: Record<string, unknown> | unknown[] =
-        Array.isArray(input) ? new Array<unknown>(input.length) : Object.create(prototype) as Record<string, unknown>;
+        Array.isArray(input) ? new Array<unknown>(input.length) : Object.create(prototype as object | null) as Record<string, unknown>;
       seen.set(input, result);
       for (const key of Object.keys(input)) {
         // defineProperty handles own __proto__ keys without changing the prototype.
