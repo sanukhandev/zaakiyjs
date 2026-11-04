@@ -124,7 +124,10 @@ export function analyze(request: CompileRequest): Analysis {
       // can be accepted, and executable/opaque URL schemes must never be emitted.
       const staticString = value.source.startsWith('"') && value.source.endsWith('"');
       const literal = staticString ? String(JSON.parse(value.source)) : null;
-      if (literal === null || /^[\s\u0000-\u001f]*(?:javascript|data|vbscript):/i.test(literal)) {
+      const normalized = literal === null ? "" : [...literal]
+        .filter(char => char.charCodeAt(0) > 31).join("").trimStart().toLowerCase();
+      if (literal === null || ["javascript:", "data:", "vbscript:"]
+        .some(scheme => normalized.startsWith(scheme))) {
         report("ZC1005", "Unsafe or unverified JSX URL. Only inspectable safe string literals are supported.", node);
       }
     }
