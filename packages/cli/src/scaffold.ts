@@ -1,4 +1,5 @@
 import {createRequire} from "node:module";
+import {createHash} from "node:crypto";
 import {readFile, lstat} from "node:fs/promises";
 import {dirname, join, resolve} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -9,6 +10,19 @@ export type Preset = "minimal" | "standard" | "enterprise";
 export type Versions = Readonly<Record<"core" | "dom" | "signals" | "styles" | "vite-plugin", string>>;
 const requiredFiles = ["package.json.tmpl", "tsconfig.json", "vite.config.ts", "zaakiy.config.ts",
   "index.html", "src/App.tsx", "src/main.tsx", "src/base.css", "tests/scaffold.test.mjs", "gitignore.tmpl", "README.md.tmpl"] as const;
+const templateBlobHashes: Readonly<Record<string, string>> = {
+  "package.json.tmpl": "3eca175929ee83218ae28495c95b2d65587f9c24",
+  "tsconfig.json": "aa954827ae95e597ebc6e4ea0753e2994be3cb92",
+  "vite.config.ts": "0e7a21d01597b11497c1aad4c0b01e1e5e001423",
+  "zaakiy.config.ts": "23aa46f725bbb7b3704a07ec83addb481d01bfe7",
+  "index.html": "49eabdc95ff2eb50bc7af6a984d19123156cec79",
+  "src/App.tsx": "7ba763a052647a451971764310db17ea4a02b5bb",
+  "src/main.tsx": "8d6a8c319eaa2bec8cb4718755b4898650ae0381",
+  "src/base.css": "ed7e0e7e27b66f5e27b0419683f0741442d42543",
+  "tests/scaffold.test.mjs": "76d5525ecda4dc37dc37a0ac068e40b72d4e8d57",
+  "gitignore.tmpl": "7da9c936635b4372e739c683f47194da4334e8a5",
+  "README.md.tmpl": "7df8fcbad13f32830994d11756b93d212462c060"
+};
 const packageNames = ["core", "dom", "signals", "styles", "vite-plugin"] as const;
 const packageRoot = fileURLToPath(new URL("../templates/minimal/", import.meta.url));
 const requireModule = createRequire(import.meta.url);
@@ -90,6 +104,8 @@ export async function scaffoldPlan(name: string, preset: Preset, manager: string
     const info = await lstat(fullPath).catch(() => { throw new CliError("INVALID_TEMPLATE", "Missing template file " + file); });
     if (!info.isFile() || info.isSymbolicLink() || info.size > 100_000) throw new CliError("INVALID_TEMPLATE", "Unsafe template file " + file);
     const content = await readFile(fullPath, "utf8");
+    const sha = createHash("sha1").update("blob " + Buffer.byteLength(content, "utf8") + "\0").update(content).digest("hex");
+    if (sha !== templateBlobHashes[file]) throw new CliError("INVALID_TEMPLATE", "Template integrity check failed: " + file);
     const path = file === "gitignore.tmpl" ? ".gitignore" : file.endsWith(".tmpl") ? file.slice(0, -5) : file;
     files.push({path: safeRelativePath(path), content: replaceTokens(content, name, preset, manager, versions)});
   }
