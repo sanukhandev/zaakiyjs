@@ -1,5 +1,5 @@
 import {afterEach, describe, expect, it} from "vitest";
-import {mkdtemp, mkdir, readFile, rm, stat, writeFile} from "node:fs/promises";
+import {mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join, dirname} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -181,6 +181,23 @@ describe("doctor and process delegation", () => {
     expect(paths).toContain("templates/minimal/gitignore.tmpl");
     const message = execFileSync(process.execPath, [join(root, "dist", "bin.js"), "--help"], {encoding: "utf8"});
     expect(message).toContain("zaakiy start --project");
+  });
+  it.skipIf(process.platform === "win32")("runs the packed CLI from an isolated fixture and strips workspace dependency protocols", async () => {
+    const root = dirname(dirname(fileURLToPath(import.meta.url)));
+    const unpacked = await temp();
+    execFileSync("pnpm", ["pack", "--pack-destination", unpacked], {cwd: root, encoding: "utf8"});
+    const archive = (await readdir(unpacked)).find(file => file.endsWith(".tgz"));
+    expect(archive).toBeDefined();
+    execFileSync("tar", ["-xzf", join(unpacked, archive ?? ""), "-C", unpacked]);
+    const manifest = JSON.parse(await readFile(join(unpacked, "package", "package.json"), "utf8")) as {
+      bin: Record<string, string>; dependencies: Record<string, string>;
+    };
+    expect(manifest.bin.zaakiy).toBe("./dist/bin.js");
+    for (const version of Object.values(manifest.dependencies)) expect(version).not.toContain("workspace:");
+    const output = execFileSync(process.execPath, [join(unpacked, "package", "dist", "bin.js"), "--version"], {
+      cwd: unpacked, encoding: "utf8"
+    });
+    expect(output.trim()).toMatch(/^\d+\.\d+\.\d+$/);
   });
   it("forwards a subprocess nonzero exit code", async () => {
     const root = await temp();
