@@ -190,7 +190,8 @@ function toExpression(code: string, original: ts.Node, source: ts.SourceFile,
   // Deep-clone as synthetic nodes: parsed nodes carry offsets into a different file.
   // Reusing those positions makes TS's printer splice incorrect original TSX text.
   const clone = (node: ts.Node): ts.Node => {
-    const copy = ts.factory.cloneNode(node);
+    // Copy the TS AST data into a synthetic node without relying on private clone APIs.
+    const copy: ts.Node = { ...node };
     ts.setTextRange(copy, { pos: -1, end: -1 });
     return ts.visitEachChild(copy, clone, context);
   };
