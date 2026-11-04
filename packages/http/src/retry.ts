@@ -43,13 +43,14 @@ export async function waitRetry(
   attempt: number, policy: RetryConfig, signal: AbortSignal, started: number, retryAfter: string | null
 ): Promise<boolean> {
   let ms = Math.min(policy.maxDelayMs, policy.baseDelayMs * 2 ** (attempt - 1));
+  // Jitter affects exponential backoff, never the server's Retry-After minimum.
+  if (policy.jitter) ms *= Math.random();
   if (retryAfter) {
     const seconds = Number(retryAfter);
     const date = Date.parse(retryAfter);
     if (Number.isFinite(seconds) && seconds >= 0) ms = Math.max(ms, seconds * 1000);
     else if (Number.isFinite(date)) ms = Math.max(ms, date - Date.now());
   }
-  if (policy.jitter) ms *= Math.random();
   if (Date.now() - started + ms > policy.maxElapsedMs) return false;
   await abortDelay(ms, signal);
   return true;

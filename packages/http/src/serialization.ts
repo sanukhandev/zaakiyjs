@@ -30,7 +30,11 @@ function modeFrom(response: Response, requested: ResponseType): ResponseType {
 }
 async function readLimited(response: Response, max: number, signal: AbortSignal): Promise<Uint8Array> {
   const contentLength = response.headers.get("content-length");
-  if (contentLength !== null && Number(contentLength) > max) throw new HttpError("UNSUPPORTED", "Response exceeds configured byte limit");
+  if (contentLength !== null && Number(contentLength) > max) {
+    // Release network resources even when the header alone rejects the response.
+    void response.body?.cancel().catch(() => {});
+    throw new HttpError("UNSUPPORTED", "Response exceeds configured byte limit");
+  }
   if (!response.body) {
     const bytes = new Uint8Array(await awaitActive(response.arrayBuffer(), signal));
     if (bytes.byteLength > max) throw new HttpError("UNSUPPORTED", "Response exceeds configured byte limit");

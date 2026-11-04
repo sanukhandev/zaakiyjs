@@ -180,10 +180,21 @@ export function createHttpClient(options: ClientOptions): HttpClient {
                 request.auth !== false && ctx.url.origin === baseOrigin &&
                 refreshAllowed(ctx.method, request.idempotencyKey) && replayable(ctx.body)) {
               refreshed = true;
-              const currentToken = await awaitActive(
-                Promise.resolve().then(() => options.auth!.getToken({ signal })), signal
-              );
-              bearer = currentToken && currentToken !== bearer ? currentToken : await refresh(options.auth, signal);
+              try {
+                const currentToken = await awaitActive(
+                  Promise.resolve().then(() => options.auth!.getToken({ signal })), signal
+                );
+                bearer = currentToken && currentToken !== bearer ? currentToken : await refresh(options.auth, signal);
+              } catch (cause) {
+                if (signal.aborted) throw abortError(signal);
+                // A refresh failure followed a 401: do not misclassify it as a
+                // recoverable/retryable NETWORK failure.
+                if (cause instanceof HttpError &&
+                    (cause.code === "TIMEOUT" || cause.code === "CANCELLED" || cause.code === "DISPOSED")) {
+                  throw cause;
+                }
+                throw new HttpError("HTTP_STATUS", "HTTP authentication failed with status 401", 401, { cause });
+              }
               if (bearer) {
                 attempt--; // one bounded auth refresh, not counted as a retry attempt.
                 continue;

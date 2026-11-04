@@ -67,6 +67,37 @@ describe("HTTP security and lifecycle regressions", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("keeps authorization failures nonrecoverable when refreshing credentials rejects", async () => {
+    for (const failAt of ["getToken", "refreshToken"] as const) {
+      const cause = new Error("expired refresh credentials");
+      const fetch = vi.fn(async () => new Response(null, { status: 401 }));
+      const recover = vi.fn(() => ({
+        recovered: true as const,
+        value: { data: { authorized: true }, status: 200, headers: new Headers(), url: baseURL }
+      }));
+      let tokenReads = 0;
+      const client = createHttpClient({
+        baseURL,
+        auth: {
+          getToken: () => {
+            tokenReads++;
+            if (failAt === "getToken" && tokenReads > 1) throw cause;
+            return "expired";
+          },
+          refreshToken: async () => { if (failAt === "refreshToken") throw cause; return "new-token"; }
+        },
+        fetch
+      });
+      client.interceptors.error.use(recover);
+      await expect(client.get("/protected", {
+        retry: { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0, retryNetworkErrors: true }
+      })).rejects.toMatchObject({ code: "HTTP_STATUS", status: 401, cause });
+      expect(fetch).toHaveBeenCalledTimes(1);
+      expect(recover).toHaveBeenCalledOnce();
+      client.dispose();
+    }
+  });
+
   it("propagates interceptor exceptions rather than swallowing them", async () => {
     const client = createHttpClient({ baseURL, fetch: async () => new Response(null, { status: 500 }) });
     client.interceptors.error.use(() => { throw new Error("diagnostic-hook-failed"); });
@@ -193,6 +224,39 @@ describe("HTTP security and lifecycle regressions", () => {
     expect(transport).toHaveBeenCalledTimes(1);
     client.dispose();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("does not jitter below a server Retry-After floor", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    let attempts = 0;
+    const fetch = vi.fn(async () => {
+      attempts++;
+      return attempts === 1 ? new Response(null, { status: 429, headers: { "retry-after": "2" } }) :
+        new Response("ok", { headers: { "content-type": "text/plain" } });
+    });
+    const client = createHttpClient({ baseURL, fetch });
+    const pending = client.get<string>("/rate-limited", {
+      retry: { maxAttempts: 2, baseDelayMs: 100, jitter: true, maxElapsedMs: 3000 }
+    });
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(pending).resolves.toBe("ok");
+    expect(fetch).toHaveBeenCalledTimes(2);
+    client.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("cancels oversized responses when Content-Length alone exceeds limit", async () => {
+    const cancelled = vi.fn();
+    const body = new ReadableStream<Uint8Array>({ cancel() { cancelled(); } });
+    const client = createHttpClient({ baseURL, fetch: async () =>
+      new Response(body, { headers: { "content-length": "8192" } })
+    });
+    await expect(client.get("/oversized", { maxResponseBytes: 1024 })).rejects.toMatchObject({ code: "UNSUPPORTED" });
+    expect(cancelled).toHaveBeenCalledOnce();
+    client.dispose();
   });
 
   it("honors retry elapsed deadline and prevents Retry-After override storms", async () => {
