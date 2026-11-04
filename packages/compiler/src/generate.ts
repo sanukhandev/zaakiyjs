@@ -32,7 +32,7 @@ interface AbiAliases {
   readonly listen: string;
   readonly getOwner: string;
   readonly createOwner: string;
-  readonly runWithOwner: string;
+  readonly initializeOwnedComponent: string;
 }
 
 function allocateRuntimeAliases(source: ts.SourceFile): {
@@ -62,7 +62,7 @@ function allocateRuntimeAliases(source: ts.SourceFile): {
       listen: free("__zListen"),
       getOwner: free("__zGetOwner"),
       createOwner: free("__zCreateOwner"),
-      runWithOwner: free("__zRunWithOwner")
+      initializeOwnedComponent: free("__zInitializeOwnedComponent")
     },
     reserved
   };
@@ -190,7 +190,7 @@ class Builder {
       case "DynamicText": {
         name = this.variable("text");
         if (node.expression.reactive) {
-          this.push("const " + name + " = __zCreateText(\"\");");
+          this.push("const " + name + " = " + this.abi.createText + "(\"\");");
           this.push(this.abi.bindText + "(" + this.owner + ", " + name + ", () => (" +
             node.expression.source + "));", node.expression.span);
         } else {
@@ -207,7 +207,7 @@ class Builder {
         const props = node.props.map(prop =>
           jsLiteral(prop.name) + ": (" + prop.expression.source + ")").join(", ");
         this.push("const " + scope + " = " + this.abi.createOwner + "(" + this.owner + ");");
-        this.push("const " + name + " = " + this.abi.runWithOwner + "(" + scope + ", () => " +
+        this.push("const " + name + " = " + this.abi.initializeOwnedComponent + "(" + scope + ", () => " +
           node.component + "({" + props + "}));");
         break;
       }
@@ -310,7 +310,7 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
     ]);
     const core = runtimeImport("@zaakiyjs/core", [
       ["getOwner", aliases.getOwner], ["createOwner", aliases.createOwner],
-      ["runWithOwner", aliases.runWithOwner]
+      ["initializeOwnedComponent", aliases.initializeOwnedComponent]
     ]);
     const statements = [...visited.statements];
     let afterDependencies = 0;

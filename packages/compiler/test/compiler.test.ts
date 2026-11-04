@@ -92,7 +92,7 @@ function execute(source: string, entry: string, globals: Record<string, unknown>
     },
     __zGetOwner() { return {}; },
     __zCreateOwner(parent: unknown) { return { parent }; },
-    __zRunWithOwner(_owner: unknown, create: () => FakeNode) { return create(); },
+    __zInitializeOwnedComponent(_owner: unknown, create: () => FakeNode) { return create(); },
   };
   const noImports = asset.code.split("\n")
     .filter(line => !line.trimStart().startsWith("import "))
@@ -131,6 +131,18 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
     expect(result.js[0]?.code).toContain("createText as __zCreateText_");
     expect(result.js[0]?.code).not.toMatch(/createText as __zCreateText[,}]/);
     expect(allText(execute(source, "App").root)).toBe("own");
+  });
+
+  it("uses hygienic helper aliases for reactive text even with user-level shadowing", () => {
+    const source = [
+      signalDecl,
+      'function App(){const __zCreateText = "shadow"; const count = signal(1);',
+      'return <span>{count.value}</span>;}'
+    ].join("\\n");
+    const result = compile({ fileName, source });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.js[0]?.code).toMatch(/createText as __zCreateText_\\d+/);
+    expect(allText(execute(source, "App").root)).toBe("1");
   });
 
   it("keeps user side-effect import order ahead of compiler runtime helpers", () => {
@@ -195,7 +207,8 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
     expect(elements.map(e => e.tag)).toEqual(["main", "span"]);
     const result = compile({ fileName, source });
     expect(result.js[0]?.code).toContain("__zCreateOwner");
-    expect(result.js[0]?.code).toContain("__zRunWithOwner");
+    expect(result.js[0]?.code).toContain("__zInitializeOwnedComponent");
+    expect(result.js[0]?.code).toContain("initializeOwnedComponent as");
   });
 
   it("lowers static conditionals but rejects dynamic owner-lifetime regions", () => {
