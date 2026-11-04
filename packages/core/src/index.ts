@@ -14,4 +14,6 @@ export {
 } from "./context.js";
 export type { ContextToken } from "./context.js";
 export { executeComponent } from "./component.js";
+export { Show, For } from "./control-flow.js";
+export type { ShowProps, ForProps } from "./control-flow.js";
 export type { Component, ComponentFactory, ViewNode } from "./component.js";

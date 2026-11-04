@@ -107,6 +107,22 @@ export function analyze(request: CompileRequest): Analysis {
   };
   findSignals(source);
 
+  // Only imports from the reserved core entrypoint opt in to compiler intrinsics.
+  // An unrelated user component named Show or For is never silently hijacked.
+  const intrinsics = new Map<string, "Show" | "For">();
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) ||
+        statement.moduleSpecifier.text !== "@zaakiyjs/core") continue;
+    const clause = statement.importClause;
+    if (!clause || clause.isTypeOnly || !clause.namedBindings ||
+        !ts.isNamedImports(clause.namedBindings)) continue;
+    for (const specifier of clause.namedBindings.elements) {
+      if (specifier.isTypeOnly) continue;
+      const imported = specifier.propertyName?.text ?? specifier.name.text;
+      if (imported === "Show" || imported === "For") intrinsics.set(specifier.name.text, imported);
+    }
+  }
+
   const expression = (node: ts.Expression): IRExpression => ({
     source: node.getText(source),
     span: spanOf(source, node),
@@ -241,6 +257,111 @@ export function analyze(request: CompileRequest): Analysis {
     const opening = ts.isJsxElement(node) ? node.openingElement : node;
     const tag = opening.tagName.getText(source);
     const span = spanOf(source, node);
+
+    const intrinsic = intrinsics.get(tag);
+    if (intrinsic) {
+      const attrs = opening.attributes.properties;
+      const expected = intrinsic === "Show" ? ["when", "fallback"] : ["each", "by"];
+      const names = new Set<string>();
+      for (const attr of attrs) {
+        if (!ts.isJsxAttribute(attr)) {
+          report("ZC2401", "Compiler control-flow tags do not accept spread props.", attr);
+          continue;
+        }
+        const name = attr.name.getText(source);
+        if (!expected.includes(name) || names.has(name)) {
+          report("ZC2401", "Unexpected or duplicate " + intrinsic + " prop: " + name, attr);
+        }
+        names.add(name);
+      }
+      const getAttribute = (name: string): ts.JsxAttribute | undefined =>
+        attrs.find((part): part is ts.JsxAttribute =>
+          ts.isJsxAttribute(part) && part.name.getText(source) === name);
+      const getValue = (name: string, required: boolean): ts.Expression | undefined => {
+        const attr = getAttribute(name);
+        if (!attr) {
+          if (required) report("ZC2402", intrinsic + " requires {" + name + "} expression.", opening);
+          return undefined;
+        }
+        if (!attr.initializer || !ts.isJsxExpression(attr.initializer) ||
+            !attr.initializer.expression) {
+          report("ZC2402", intrinsic + " prop " + name + " must be a JSX expression.", attr);
+          return undefined;
+        }
+        return attr.initializer.expression;
+      };
+      const unwrapped = (input: ts.Expression): ts.Expression => {
+        let current = input;
+        while (ts.isParenthesizedExpression(current)) current = current.expression;
+        return current;
+      };
+      const asDom = (input: ts.Expression | undefined): IRNode | undefined => {
+        if (!input) return undefined;
+        const candidate = unwrapped(input);
+        return isJsx(candidate) ? element(candidate, parentNamespace) : undefined;
+      };
+      const children = ts.isJsxElement(node)
+        ? node.children.filter(child => !(ts.isJsxText(child) && !child.text.trim()))
+        : [];
+      if (intrinsic === "Show") {
+        const when = getValue("when", true);
+        const fallback = getValue("fallback", false);
+        const direct = children[0];
+        if (children.length !== 1 || !direct || !isJsx(direct)) {
+          report("ZC2403", "Show requires exactly one native JSX child element.", node);
+        }
+        const rendered = direct && isJsx(direct) ? element(direct, parentNamespace) : undefined;
+        if (rendered && rendered.kind !== "StaticElement") {
+          report("ZC2403", "Show v1 requires one native element root; wrap nested control flow in an element.", direct);
+        }
+        const alternate = asDom(fallback);
+        if (fallback && !alternate &&
+            unwrapped(fallback).kind !== ts.SyntaxKind.NullKeyword) {
+          report("ZC2403", "Show fallback must be a single JSX element or null.", fallback);
+        }
+        if (alternate && alternate.kind !== "StaticElement") {
+          report("ZC2403", "Show fallback v1 requires a native JSX element root.", fallback!);
+        }
+        return {
+          kind: "ConditionalBlock", id: idOf("ConditionalBlock", span), span,
+          condition: when ? expression(when) : { source: "false", span, purity: "pure", reactive: false },
+          whenTrue: rendered && rendered.kind === "StaticElement" ? [rendered] : [],
+          whenFalse: alternate && alternate.kind === "StaticElement" ? [alternate] : []
+        };
+      }
+
+      const collection = getValue("each", true);
+      const by = getValue("by", true);
+      const direct = children[0];
+      const fn = direct && ts.isJsxExpression(direct) && direct.expression
+        ? unwrapped(direct.expression) : undefined;
+      const callback = fn && ts.isArrowFunction(fn) ? fn : undefined;
+      const itemParameter = callback?.parameters.length === 1 &&
+        ts.isIdentifier(callback.parameters[0]!.name)
+        ? callback.parameters[0]!.name.text : undefined;
+      const root = callback ? asDom(callback.body) : undefined;
+      if (children.length !== 1 || !itemParameter || !root || root.kind !== "StaticElement") {
+        report("ZC2404", "For requires one child render callback (item => <nativeElement />).", node);
+      }
+      if (by && (containsJsx(by) || ts.isSpreadElement(by))) {
+        report("ZC2405", "For key selector must be a typed function without JSX.", by);
+      }
+      // Evaluate the supplied key selector with the bound item. Names in the
+      // selector callback do not need to match the render callback parameter.
+      // The DOM region validates primitives/duplicates before mutating the tree.
+      const keySource = by && itemParameter
+        ? "((" + by.getText(source) + ")(" + itemParameter + "))"
+        : "undefined";
+      return {
+        kind: "KeyedLoop", id: idOf("KeyedLoop", span), span,
+        collection: collection ? expression(collection)
+          : { source: "[]", span, purity: "pure", reactive: false },
+        key: { source: keySource, span: by ? spanOf(source, by) : span, purity: "unknown", reactive: false },
+        itemParameter,
+        body: root && root.kind === "StaticElement" ? [root] : []
+      };
+    }
+
     const isComponent = /^[A-Z]/.test(tag);
     if (!/^[a-zA-Z][\w:.-]*$/.test(tag)) report("ZC1001", "Unsupported JSX tag name: " + tag, opening);
     const namespace = tag === "svg" ? "svg" : parentNamespace;
