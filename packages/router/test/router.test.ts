@@ -119,6 +119,53 @@ describe("navigation transactions", () => {
     } finally { f.dispose(); }
   });
 
+  it("settles superseded navigation even when the loader never resolves", async () => {
+    const never = new Promise<string>(() => undefined);
+    const f = fixture([home, { id: "blocked", path: "/blocked",
+      loader: () => never,
+      adapter: { render: () => ({ node: document.createElement("div") }) }
+    }, { id: "next", path: "/next" }]);
+    try {
+      await f.router.start();
+      const first = f.router.navigate("/blocked");
+      await vi.waitFor(() => expect(f.router.signals.pending.value).toBe("/blocked"));
+      expect((await f.router.navigate("/next")).status).toBe("committed");
+      // Abort finishes the navigation promise without awaiting never.
+      expect((await first).status).toBe("cancelled");
+      expect(f.router.signals.url.value).toBe("/next");
+    } finally { f.dispose(); }
+  });
+
+  it("keeps an existing page mounted during hash-only navigation", async () => {
+    let mounts = 0;
+    const f = fixture([{ id: "home", path: "/home", adapter: {
+      setup: () => { mounts++; },
+      render: () => ({ node: document.createElement("input") })
+    } }]);
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    f.router.attachOutlet(host);
+    try {
+      await f.router.start();
+      const original = host.querySelector("input");
+      expect(mounts).toBe(1);
+      await f.router.navigate("/home#heading");
+      expect(host.querySelector("input")).toBe(original);
+      expect(mounts).toBe(1);
+      expect(f.router.signals.hash.value).toBe("#heading");
+    } finally { f.dispose(); host.remove(); }
+  });
+
+  it("errors explicitly on unmatched paths without a wildcard", async () => {
+    const f = fixture([home]);
+    try {
+      await f.router.start();
+      await expect(f.router.navigate("/nonexistent")).rejects.toThrow("No route matched");
+      expect(f.router.signals.url.value).toBe("/home");
+      expect(f.router.signals.status.value).toBe("error");
+    } finally { f.dispose(); }
+  });
+
   it("deduplicates concurrent lazy imports and propagates loader failures", async () => {
     const module = deferred<{ loader: () => string }>();
     const lazy = vi.fn(() => module.promise);
