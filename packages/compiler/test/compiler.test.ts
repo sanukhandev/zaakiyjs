@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
-import { compile, parseToIR, validateIR } from "../src/index.js";
+import { compile, optimizeIR, parseToIR, validateIR } from "../src/index.js";
 
 const fileName = "packages/compiler/test/fixture.tsx";
 const signalDecl = "declare function signal<T>(value: T): { value: T };";
@@ -160,6 +160,31 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
     ].join("\n") });
     expect(dynamic.js).toHaveLength(0);
     expect(dynamic.diagnostics.some(d => d.code === "ZC2201")).toBe(true);
+  });
+
+  it("prunes unreachable literal branches in optimized IR without changing their source identity", () => {
+    const src = "function App(){ return <main>{false ? <span>dead</span> : <span>live</span>}</main>; }";
+    const raw = parseToIR({ fileName, source: src }).document;
+    const ir = optimizeIR(raw);
+    const before = raw.nodes[0];
+    const after = ir.nodes[0];
+    expect(after?.id).toBe(before?.id);
+    expect(after?.kind).toBe("StaticElement");
+    if (after?.kind === "StaticElement") {
+      const conditional = after.children.find(n => n.kind === "ConditionalBlock");
+      expect(conditional?.kind).toBe("ConditionalBlock");
+      if (conditional?.kind === "ConditionalBlock") {
+        expect(conditional.whenTrue).toHaveLength(0);
+        expect(conditional.whenFalse).toHaveLength(1);
+      }
+    }
+  });
+
+  it("rejects undeclared browser target profiles rather than promising unverified transforms", () => {
+    const result = compile({ fileName, source: "function App(){return <div>ok</div>;}",
+      targetBrowsers: ["chrome 90"] });
+    expect(result.js).toEqual([]);
+    expect(result.diagnostics.some(d => d.code === "ZC2301")).toBe(true);
   });
 
   it("recognizes keyed maps in v1 IR and fails closed until the keyed-loop ABI is frozen", () => {
