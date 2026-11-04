@@ -210,14 +210,19 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
   }
 
   const transformer: ts.TransformerFactory<ts.SourceFile> = context => file => {
+    let loweredJsx = false;
     const visit = (node: ts.Node): ts.Node => {
       if (isJsx(node)) {
         const ir = roots.get(node.getStart(analysis.sourceFile));
-        if (ir) return toExpression(new Builder().build(ir), node, analysis.sourceFile, context);
+        if (ir) {
+          loweredJsx = true;
+          return toExpression(new Builder().build(ir), node, analysis.sourceFile, context);
+        }
       }
       return ts.visitEachChild(node, visit, context);
     };
     const visited = ts.visitEachChild(file, visit, context);
+    if (!loweredJsx) return visited;
     const dom = runtimeImport("@zaakiyjs/dom/compiler", [
       ["createElement", "__zCreateElement"], ["createText", "__zCreateText"],
       ["setProperty", "__zSetProperty"], ["setAttribute", "__zSetAttribute"],
