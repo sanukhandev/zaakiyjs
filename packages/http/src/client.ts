@@ -74,20 +74,23 @@ export function createHttpClient(options: ClientOptions): HttpClient {
   const active = new Set<ReturnType<typeof createOperation>>();
   let disposed = false;
   let refreshPromise: Promise<string | undefined> | undefined;
-  let refreshController: AbortController | undefined;
+  let refreshOperation: ReturnType<typeof createOperation> | undefined;
 
   async function refresh(adapter: AuthAdapter, signal: AbortSignal): Promise<string | undefined> {
     if (!adapter.refreshToken) return undefined;
     if (!refreshPromise) {
-      refreshController = new AbortController();
-      // Refresh is shared between callers. A caller abort must not abort all other callers.
-      const controller = refreshController;
-      const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 10000);
+      // A shared refresh has its own timeout/cancellation lifetime independent of callers.
+      // Each caller can stop waiting without aborting the refresh needed by other callers.
+      const operation = createOperation(undefined, options.timeoutMs ?? 10000);
+      refreshOperation = operation;
       refreshPromise = awaitActive(
-        Promise.resolve().then(() => adapter.refreshToken!({ signal: controller.signal })),
-        controller.signal
-      )
-        .finally(() => { clearTimeout(timer); if (refreshController === controller) refreshController = undefined; refreshPromise = undefined; });
+        Promise.resolve().then(() => adapter.refreshToken!({ signal: operation.signal })),
+        operation.signal
+      ).finally(() => {
+        operation.dispose();
+        if (refreshOperation === operation) refreshOperation = undefined;
+        refreshPromise = undefined;
+      });
     }
     return awaitActive(refreshPromise, signal);
   }
@@ -203,7 +206,9 @@ export function createHttpClient(options: ClientOptions): HttpClient {
         for (const handler of errors.handlers()) {
           assertActive(signal);
           const recovery = await awaitActive(Promise.resolve().then(() => handler(failure)), signal);
-          if (recovery && recovery.recovered && (failure.code === "NETWORK" || failure.code === "HTTP_STATUS")) {
+          if (recovery && recovery.recovered &&
+              (failure.code === "NETWORK" ||
+               (failure.code === "HTTP_STATUS" && failure.status !== 401 && failure.status !== 403))) {
             httpResponse = recovery.value;
             break;
           }
@@ -245,7 +250,7 @@ export function createHttpClient(options: ClientOptions): HttpClient {
       disposed = true;
       for (const operation of active) operation.abort(new HttpError("DISPOSED", "HTTP client has been disposed"));
       active.clear();
-      refreshController?.abort();
+      refreshOperation?.abort(new HttpError("DISPOSED", "HTTP client has been disposed"));
       requests.clear(); responses.clear(); errors.clear();
     }
   };

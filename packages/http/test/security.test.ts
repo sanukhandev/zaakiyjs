@@ -41,6 +41,32 @@ describe("HTTP security and lifecycle regressions", () => {
     client.dispose();
   });
 
+  it("fails closed on 401/403 even when an error interceptor proposes recovery", async () => {
+    for (const status of [401, 403]) {
+      const client = createHttpClient({ baseURL, fetch: async () => new Response(null, { status }) });
+      client.interceptors.error.use(() => ({
+        recovered: true, value: { data: { authorized: true }, status: 200, headers: new Headers(), url: baseURL }
+      }));
+      await expect(client.get("/protected")).rejects.toMatchObject({ code: "HTTP_STATUS", status });
+      client.dispose();
+    }
+  });
+
+  it("classifies token refresh expiration as TIMEOUT even when request timeout is longer", async () => {
+    vi.useFakeTimers();
+    const client = createHttpClient({
+      baseURL, timeoutMs: 20,
+      auth: { getToken: () => "expired", refreshToken: () => new Promise<string>(() => {}) },
+      fetch: async () => new Response(null, { status: 401 })
+    });
+    const pending = client.get("/refresh", { timeoutMs: 500 });
+    const result = expect(pending).rejects.toMatchObject({ code: "TIMEOUT" });
+    await vi.advanceTimersByTimeAsync(20);
+    await result;
+    client.dispose();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("propagates interceptor exceptions rather than swallowing them", async () => {
     const client = createHttpClient({ baseURL, fetch: async () => new Response(null, { status: 500 }) });
     client.interceptors.error.use(() => { throw new Error("diagnostic-hook-failed"); });
