@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>ZaakiyJS compat AbortSignal smoke</title></head>
+<body><output id="result" role="status">running</output>
+<script type="module">
+  import { composeAbortSignals, scopedTimeoutSignal } from "../../dist/abort.js";
+  const result = document.getElementById("result");
+  try {
+    const one = new AbortController();
+    const two = new AbortController();
+    const joined = composeAbortSignals([one.signal, two.signal]);
+    one.abort("browser-cancelled");
+    if (!joined.signal.aborted || joined.signal.reason !== "browser-cancelled") {
+      throw new Error("Abort reason or propagation failed");
+    }
+    joined.dispose();
+    joined.dispose();
+    const timed = scopedTimeoutSignal(5);
+    await new Promise(resolve => setTimeout(resolve, 30));
+    if (!timed.signal.aborted || timed.signal.reason?.name !== "TimeoutError") {
+      throw new Error("Timeout signal failed");
+    }
+    timed.dispose();
+    const owner = scopedTimeoutSignal(10);
+    owner.dispose();
+    await new Promise(resolve => setTimeout(resolve, 30));
+    if (owner.signal.aborted) throw new Error("Disposed timer fired");
+    result.textContent = "PASS";
+    result.dataset.status = "pass";
+  } catch (error) {
+    result.textContent = String(error);
+    result.dataset.status = "fail";
+    throw error;
+  }
+</script>
+</body>
+</html>
