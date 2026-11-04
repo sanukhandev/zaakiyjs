@@ -24,7 +24,7 @@ export interface FeatureReference {
   readonly column?: number;
   readonly offset?: number;
 }
-export interface FeatureRequirement { readonly id: string; readonly reference: FeatureReference }
+export interface FeatureRequirement { readonly id: string; readonly reference: FeatureReference; readonly usage?: "direct" | "scoped-helper" }
 /** Accept the public JSON-compatible compiler IR shape without importing its runtime. */
 export interface CompatIRNode {
   readonly kind: string;
