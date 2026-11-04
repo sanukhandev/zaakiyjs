@@ -1,4 +1,5 @@
 import { mount } from "@zaakiyjs/dom";
+import { flushSync } from "@zaakiyjs/signals";
 import { App, fixture } from "./App";
 import "virtual:zaakiy-styles.css";
 import "./base.css";
@@ -16,6 +17,7 @@ const testWindow = window as unknown as {
     getSelected: () => string;
     getCounter: () => number;
     mutateDisposedSignals: () => void;
+    cycleMount: (iterations: number) => void;
   };
 };
 testWindow.__zaakiyAcceptance = {
@@ -24,6 +26,27 @@ testWindow.__zaakiyAcceptance = {
   lifecycle: fixture.lifecycle,
   getSelected: () => fixture.selected.value,
   getCounter: () => fixture.counter.value,
+  cycleMount: (iterations: number) => {
+    if (!Number.isInteger(iterations) || iterations < 0 || iterations > 2000) {
+      throw new RangeError("Invalid bounded stress iteration count");
+    }
+    for (let i = 0; i < iterations; i++) {
+      const host = document.createElement("div");
+      document.body.append(host);
+      try {
+        const nested = mount(() => <App />, host);
+        try {
+          fixture.counter.value += 1;
+          fixture.groups.value = [...fixture.groups.value];
+          flushSync();
+        } finally {
+          nested.dispose();
+        }
+      } finally {
+        host.remove();
+      }
+    }
+  },
   mutateDisposedSignals: () => {
     fixture.counter.value++;
     fixture.visible.value = !fixture.visible.value;
