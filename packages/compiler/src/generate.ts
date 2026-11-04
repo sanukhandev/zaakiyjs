@@ -4,6 +4,7 @@ import type {
 } from "./index.js";
 import type { Analysis } from "./analysis.js";
 import { sourceSpan } from "./analysis.js";
+import { rewriteKeyedItemRead } from "./keyed.js";
 
 function runtimeImport(moduleName: string, names: readonly (readonly [string, string])[]): ts.ImportDeclaration {
   return ts.factory.createImportDeclaration(
@@ -32,6 +33,8 @@ interface AbiAliases {
   readonly listen: string;
   readonly createRegion: string;
   readonly bindConditionalRegion: string;
+  readonly bindKeyedRegion: string;
+  readonly signal: string;
   readonly getOwner: string;
   readonly createOwner: string;
   readonly initializeOwnedComponent: string;
@@ -64,6 +67,8 @@ function allocateRuntimeAliases(source: ts.SourceFile): {
       listen: free("__zListen"),
       createRegion: free("__zCreateRegion"),
       bindConditionalRegion: free("__zBindConditionalRegion"),
+      bindKeyedRegion: free("__zBindKeyedRegion"),
+      signal: free("__zSignal"),
       getOwner: free("__zGetOwner"),
       createOwner: free("__zCreateOwner"),
       initializeOwnedComponent: free("__zInitializeOwnedComponent")
@@ -91,7 +96,10 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
         node.whenFalse.forEach(visit);
         break;
       case "KeyedLoop":
-        error("ZC2202", "Keyed loops cannot compile safely: the v1 DOM keyed-loop ABI is not frozen.", node.span);
+        if (!node.itemParameter || node.body.length !== 1 || node.body[0]?.kind !== "StaticElement") {
+          error("ZC2202", "Keyed list v1 requires one named map item and exactly one native element root.", node.span);
+        }
+        node.body.forEach(visit);
         break;
       case "PropertyBinding":
         if (node.expression.reactive && node.target !== "property") {
@@ -124,6 +132,8 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
   return errors;
 }
 
+interface ItemContext { readonly parameter: string; readonly cell: string }
+
 class Builder {
   private serial = 0;
   private readonly lines: string[] = [];
@@ -132,7 +142,8 @@ class Builder {
   private readonly owner: string;
 
   constructor(private readonly abi: AbiAliases, reserved: ReadonlySet<string>,
-              private readonly rootSpan: SourceSpan, injectedOwner?: string) {
+              private readonly rootSpan: SourceSpan, injectedOwner?: string,
+              private readonly itemContext?: ItemContext) {
     this.names = new Set(reserved);
     this.owner = injectedOwner ?? this.variable("owner");
   }
@@ -149,9 +160,21 @@ class Builder {
     this.spans.push(span);
   }
 
+  private resolveExpression(source: string, reactive: boolean): {
+    readonly source: string; readonly reactive: boolean
+  } {
+    if (!this.itemContext) return { source, reactive };
+    const mapped = rewriteKeyedItemRead(source, this.itemContext.parameter, this.itemContext.cell);
+    return { source: mapped.source, reactive: reactive || mapped.readsItem };
+  }
+
   private attribute(el: string, node: PropertyBinding): void {
-    const expr = "(" + node.expression.source + ")";
-    if (node.expression.reactive) {
+    const resolved = this.resolveExpression(node.expression.source, node.expression.reactive);
+    const expr = "(" + resolved.source + ")";
+    if (resolved.reactive) {
+      if (node.target !== "property") {
+        throw new Error("ZC2203: reactive keyed class/attribute requires a specialized safe DOM binding");
+      }
       this.push(this.abi.bindProperty + "(" + this.owner + ", " + el + ", " +
         jsLiteral(node.name) + ", () => " + expr + ");", node.expression.span);
       return;
@@ -169,7 +192,7 @@ class Builder {
   /** Produce an owner-scoped branch factory without leaking its statement spans
    * into the outer JSX IIFE's statement/source-map alignment. */
   private branch(nodes: readonly IRNode[], childOwner: string): string {
-    const scoped = new Builder(this.abi, this.names, this.rootSpan, childOwner);
+    const scoped = new Builder(this.abi, this.names, this.rootSpan, childOwner, this.itemContext);
     const root = nodes[0] ? scoped.child(nodes[0]) : undefined;
     return "{\n" + scoped.lines.join("\n") + "\nreturn " +
       (root ?? (this.abi.createText + '("")')) + ";\n}";
@@ -186,7 +209,8 @@ class Builder {
           if (part.kind === "PropertyBinding") this.attribute(name, part);
           else if (part.kind === "EventBinding") {
             const handler = this.variable("handler");
-            this.push("const " + handler + " = (" + part.expression.source + ") as EventListener;");
+            const handlerExpression = this.resolveExpression(part.expression.source, false);
+            this.push("const " + handler + " = (" + handlerExpression.source + ") as EventListener;");
             this.push(this.abi.listen + "(" + this.owner + ", " + name + ", " +
               jsLiteral(part.name) + ", " + handler + ");");
           } else if (part.kind !== "StyleToken" && part.kind !== "CompatFeature") {
@@ -201,13 +225,14 @@ class Builder {
         break;
       case "DynamicText": {
         name = this.variable("text");
-        if (node.expression.reactive) {
+        const resolved = this.resolveExpression(node.expression.source, node.expression.reactive);
+        if (resolved.reactive) {
           this.push("const " + name + " = " + this.abi.createText + "(\"\");");
           this.push(this.abi.bindText + "(" + this.owner + ", " + name + ", () => (" +
-            node.expression.source + "));", node.expression.span);
+            resolved.source + "));", node.expression.span);
         } else {
           const value = this.variable("value");
-          this.push("const " + value + " = (" + node.expression.source + ");");
+          this.push("const " + value + " = (" + resolved.source + ");");
           this.push("const " + name + " = " + this.abi.createText + "(" + value +
             " == null || typeof " + value + " === \"boolean\" ? \"\" : String(" + value + "));");
         }
@@ -216,8 +241,13 @@ class Builder {
       case "ComponentCall": {
         const scope = this.variable("scope");
         name = this.variable("component");
-        const props = node.props.map(prop =>
-          jsLiteral(prop.name) + ": (" + prop.expression.source + ")").join(", ");
+        const props = node.props.map(prop => {
+          const mapped = this.resolveExpression(prop.expression.source, prop.expression.reactive);
+          if (this.itemContext && mapped.reactive) {
+            throw new Error("ZC2206: keyed component props require a stable signal-aware prop contract");
+          }
+          return jsLiteral(prop.name) + ": (" + mapped.source + ")";
+        }).join(", ");
         this.push("const " + scope + " = " + this.abi.createOwner + "(" + this.owner + ");");
         this.push("const " + name + " = " + this.abi.initializeOwnedComponent + "(" + scope + ", () => " +
           node.component + "({" + props + "}));");
@@ -238,15 +268,40 @@ class Builder {
         const trueFactory = "(" + trueOwner + ") => " + this.branch(node.whenTrue, trueOwner);
         const falseFactory = node.whenFalse.length
           ? ", (" + falseOwner + ") => " + this.branch(node.whenFalse, falseOwner) : "";
+        const predicate = this.resolveExpression(node.condition.source, node.condition.reactive);
         this.push(this.abi.bindConditionalRegion + "(" + this.owner + ", " + region +
-          ", () => Boolean(" + node.condition.source + "), " + trueFactory + falseFactory + ");", node.span);
+          ", () => Boolean(" + predicate.source + "), " + trueFactory + falseFactory + ");", node.span);
+        return undefined;
+      }
+      case "KeyedLoop": {
+        if (!parent || !node.itemParameter || node.body.length !== 1 || !node.body[0]) {
+          throw new Error("ZC2202: invalid keyed list host or item template");
+        }
+        if (this.itemContext) throw new Error("ZC2202: nested keyed loops require an explicit owner/item contract");
+        const region = this.variable("keyed_region");
+        const childOwner = this.variable("item_owner");
+        const itemCell = this.variable("item_cell");
+        const nextItem = this.variable("next_item");
+        const scoped = new Builder(this.abi, this.names, this.rootSpan, childOwner, {
+          parameter: node.itemParameter, cell: itemCell
+        });
+        const root = scoped.child(node.body[0]);
+        if (!root) throw new Error("ZC2202: keyed item must generate one native DOM root");
+        const read = "() => (" + node.collection.source + ")";
+        const key = "(" + node.itemParameter + ") => (" + node.key.source + ")";
+        const factory = "(" + node.itemParameter + ", " + childOwner + ") => {\\n" +
+          "const " + itemCell + " = " + this.abi.signal + "(" + node.itemParameter + ");\\n" +
+          scoped.lines.join("\\n") + "\\nreturn { node: " + root + ", update: (" +
+          nextItem + ") => { " + itemCell + ".value = " + nextItem + "; } };\\n}";
+        this.push("const " + region + " = " + this.abi.createRegion + "(" + parent + ");", node.span);
+        this.push(this.abi.bindKeyedRegion + "(" + this.owner + ", " + region + ", " +
+          read + ", " + key + ", " + factory + ");", node.span);
         return undefined;
       }
       case "PropertyBinding":
       case "EventBinding":
       case "StyleToken":
       case "CompatFeature":
-      case "KeyedLoop":
         return undefined;
     }
     if (name && parent) this.push(parent + ".appendChild(" + name + ");");
@@ -332,8 +387,17 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
       ["setProperty", aliases.setProperty], ["setAttribute", aliases.setAttribute],
       ["bindText", aliases.bindText], ["bindProperty", aliases.bindProperty],
       ["listen", aliases.listen], ["createRegion", aliases.createRegion],
-      ["bindConditionalRegion", aliases.bindConditionalRegion]
+      ["bindConditionalRegion", aliases.bindConditionalRegion],
+      ["bindKeyedRegion", aliases.bindKeyedRegion]
     ]);
+    const needsKeyed = (nodes: readonly IRNode[]): boolean => nodes.some(node => {
+      if (node.kind === "KeyedLoop") return true;
+      if (node.kind === "StaticElement") return needsKeyed(node.children);
+      if (node.kind === "ConditionalBlock") return needsKeyed(node.whenTrue) || needsKeyed(node.whenFalse);
+      return false;
+    });
+    const signalImport = needsKeyed(optimized.nodes)
+      ? [runtimeImport("@zaakiyjs/signals", [["signal", aliases.signal]])] : [];
     const core = runtimeImport("@zaakiyjs/core", [
       ["getOwner", aliases.getOwner], ["createOwner", aliases.createOwner],
       ["initializeOwnedComponent", aliases.initializeOwnedComponent]
@@ -346,7 +410,7 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
           (ts.isExportDeclaration(item) && item.moduleSpecifier))) afterDependencies = index + 1;
     }
     return ts.factory.updateSourceFile(visited, [
-      ...statements.slice(0, afterDependencies), dom, core,
+      ...statements.slice(0, afterDependencies), dom, core, ...signalImport,
       ...statements.slice(afterDependencies)
     ]);
   };

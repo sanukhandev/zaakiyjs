@@ -57,7 +57,7 @@ export function rewriteKeyedItemRead(
     if (!readsItem) return { source: expression, readsItem: false };
     return {
       source: ts.createPrinter({ removeComments: false }).printNode(
-        ts.EmitHint.Expression, result.transformed[0], file
+        ts.EmitHint.Expression, result.transformed[0]!, file
       ),
       readsItem: true
     };
