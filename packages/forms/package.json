@@ -1,0 +1,19 @@
+{
+  "name": "@zaakiyjs/forms",
+  "version": "0.0.0",
+  "description": "Strongly typed signal-based forms, validation and submission orchestration",
+  "type": "module",
+  "sideEffects": false,
+  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "scripts": {
+    "lint": "eslint src test",
+    "typecheck": "tsc --noEmit --project tsconfig.json && tsc --noEmit --project tsconfig.types.json",
+    "build": "tsc --project tsconfig.build.json",
+    "test": "vitest run test"
+  },
+  "publishConfig": { "access": "public" },
+  "dependencies": { "@zaakiyjs/core": "workspace:^", "@zaakiyjs/signals": "workspace:^" }
+}
