@@ -75,6 +75,29 @@ describe("route config and fail-closed boundary", () => {
       { id: "secure", path: "/api/items", upstream: "main", methods: ["GET"], access: "public" }
     ] }))).toThrow();
   });
+  it("rejects cross-policy intersections between parameterized routes", () => {
+    const base = config(1);
+    const routes = [
+      { id: "public", path: "/api/:id/settings", upstream: "main", methods: ["GET"] as const, access: "public" as const },
+      { id: "protected", path: "/api/admin/:section", upstream: "main", methods: ["GET"] as const,
+        access: "authenticated" as const, authorize: () => false }
+    ];
+    expect(() => createProxyRouter({ ...base, routes, authenticate: () => ({ subject: "trusted" }) }))
+      .toThrow("Ambiguous route overlap");
+    expect(() => createProxyRouter({ ...base, routes: [
+      { ...routes[0]!, path: "/api/user/settings" },
+      { ...routes[1]!, path: "/api/admin/teams" }
+    ], authenticate: () => ({ subject: "trusted" }) })).not.toThrow();
+  });
+  it("rejects multi-layer encoded traversal and encoded-percent path aliases", async () => {
+    const proxy = createProxyRouter(config(1));
+    for (const path of ["/api/items/%25%32%65%25%32%65/admin", "/api/items/%252e%252e/admin",
+      "/api/items/%25%32%66/etc", "/api/items/%25", "/api/items/%25%35%63"]) {
+      const response = await proxy.handle(request("GET", path));
+      expect(response.status, path).toBe(400);
+      await drain(response);
+    }
+  });
   it("rejects unregistered paths, wrong methods and URL authority attacks", async () => {
     const proxy = createProxyRouter(config(1));
     expect((await proxy.handle(request("GET", "/missing"))).status).toBe(404);
