@@ -250,6 +250,9 @@ export function getOrCreateRootStore<T extends { readonly owner: OwnerScope }>(
   }
   const store = runWithOwner(root, () => create(root));
   if (store.owner !== root) throw new Error("Root store must belong to application root");
+  if ("disposed" in store && store.disposed === true) {
+    throw new Error("Root store factory returned an already disposed store");
+  }
   provide(root, token, store);
   return store;
 }
