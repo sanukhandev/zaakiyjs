@@ -117,6 +117,38 @@ describe("actual pinned DNS transport and forwarding", () => {
       expect(await drain(response)).toEqual(bytes);
     }
   });
+  it("strips Connection-nominated headers and rejects malformed query escapes", async () => {
+    const port = await listen((req, res) => {
+      expect(req.headers["x-sneaky"]).toBeUndefined();
+      res.writeHead(200, { "content-type": "text/plain", connection: "x-hidden", "x-hidden": "secret" });
+      res.end("safe");
+    });
+    const proxy = createProxyRouter(config(port, { routes: [{
+      id: "custom", path: "/api/items/*", upstream: "main", methods: ["GET"], access: "public",
+      requestHeaders: ["x-sneaky"], responseHeaders: ["x-hidden"]
+    }] }));
+    const invalid = await proxy.handle(request("GET", "/api/items/1?bad=%GG"));
+    expect(invalid.status).toBe(400); await drain(invalid);
+    const valid = await proxy.handle(request("GET", "/api/items/1", { connection: "x-sneaky", "x-sneaky": "secret" }));
+    expect(valid.status).toBe(200);
+    expect(valid.headers["x-hidden"]).toBeUndefined();
+    expect((await drain(valid)).toString()).toBe("safe");
+  });
+  it("rejects oversized streamed bodies even if upstream replies before reading", async () => {
+    const port = await listen((_req, res) => { res.writeHead(200); res.end("early success"); });
+    const proxy = createProxyRouter(config(port, { routes: [{
+      id: "stream", path: "/api/items/*", upstream: "main", methods: ["POST"], access: "public",
+      maxRequestBytes: 4
+    }] }));
+    const body = (async function* () {
+      yield Buffer.from("a");
+      await new Promise(done => setTimeout(done, 10));
+      yield Buffer.from("too-large");
+    })();
+    const response = await proxy.handle(request("POST", "/api/items/upload", {}, body));
+    expect(response.status).toBe(413);
+    await drain(response);
+  });
   it("enforces request and response byte caps", async () => {
     const port = await listen((_req, res) => { res.writeHead(200, { "content-length": "1024" }); res.end(Buffer.alloc(1024)); });
     const limited = createProxyRouter(config(port, { upstreams: { main: { origin: "http://127.0.0.1:" + port, allowedPrivateAddresses: ["127.0.0.1"], allowInsecureHttp: true, maxResponseBytes: 16 } } }));
