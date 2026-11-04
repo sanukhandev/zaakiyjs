@@ -213,8 +213,9 @@ class Builder {
   /** Produce an owner-scoped multi-root branch factory. */
   private branch(nodes: readonly IRNode[], childOwner: string): string {
     const scoped = new Builder(this.abi, this.names, this.rootSpan, childOwner, this.itemContexts);
-    const root = nodes.length === 1 && nodes[0]
-      ? scoped.child(nodes[0])
+    const direct = nodes.length === 1 ? nodes[0] : undefined;
+    const root = direct && direct.kind !== "ConditionalBlock" && direct.kind !== "KeyedLoop"
+      ? scoped.child(direct)
       : scoped.fragment(nodes);
     return "{\n" + scoped.lines.join("\n") + "\nreturn " +
       (root ?? (this.abi.createText + '("")')) + ";\n}";
@@ -306,8 +307,9 @@ class Builder {
         const scoped = new Builder(this.abi, this.names, this.rootSpan, childOwner, [
           ...this.itemContexts, { parameter: node.itemParameter, cell: itemCell }
         ]);
-        const root = node.body.length === 1 && node.body[0]
-          ? scoped.child(node.body[0])
+        const direct = node.body.length === 1 ? node.body[0] : undefined;
+        const root = direct && direct.kind !== "ConditionalBlock" && direct.kind !== "KeyedLoop"
+          ? scoped.child(direct)
           : scoped.fragment(node.body);
         if (!root) throw new Error("ZC2202: keyed item requires DOM nodes or a JSX fragment");
         const readSource = this.resolveExpression(node.collection.source, node.collection.reactive);
