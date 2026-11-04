@@ -244,7 +244,7 @@ export class Router {
     if (!entry || entry.route !== target.route) throw new RouteConfigurationError("Route is not registered: " + target.route.id);
     const path = buildRoutePath(entry, target.params);
     const search = target.search instanceof URLSearchParams ? target.search.toString()
-      : typeof target.search === "string" ? target.search.replace(/^\?/, "")
+      : typeof target.search === "string" ? new URLSearchParams(target.search.replace(/^\?/, "")).toString()
       : target.search ? new URLSearchParams(target.search).toString() : "";
     const hash = target.hash ? "#" + encodeURIComponent(target.hash.replace(/^#/, "")) : "";
     return (this.base === "/" ? "" : this.base) + path + (search ? "?" + search : "") + hash;
