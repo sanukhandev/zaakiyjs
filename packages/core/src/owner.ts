@@ -24,6 +24,8 @@ class Scope implements OwnerScope {
   componentInitialized = false;
   /** Provider reads remain valid while teardown callbacks execute. */
   private cleanupInProgress = false;
+  /** A descendant may request ancestor disposal while its own cleanup is running. */
+  private disposeRequested = false;
 
   constructor(parent: Scope | null) {
     this.parent = parent;
@@ -31,7 +33,7 @@ class Scope implements OwnerScope {
   }
 
   get disposed(): boolean {
-    return this.state === "disposed";
+    return this.disposeRequested || this.state === "disposed";
   }
 
   addCleanup(cleanup: Cleanup): void {
@@ -53,7 +55,9 @@ class Scope implements OwnerScope {
 
   /** Read-only context access is permitted during cleanup, not after it. */
   ensureReadable(): void {
-    if (this.disposed && !this.cleanupInProgress) {
+    // Pending ancestor disposal must keep providers readable until descendant
+    // teardown completes, even though new registrations are already blocked.
+    if (this.state === "disposed" && !this.cleanupInProgress) {
       throw new Error("Owner has been disposed");
     }
   }
@@ -114,8 +118,28 @@ class Scope implements OwnerScope {
     parent.children.add(this);
   }
 
+  /** True if a descendant is executing cleanup and still needs our providers. */
+  private hasActiveDescendantCleanup(): boolean {
+    for (const child of this.children) {
+      if (child.cleanupInProgress || child.hasActiveDescendantCleanup()) return true;
+    }
+    return false;
+  }
+
+  /** Complete an ancestor's deferred teardown after the last child finishes. */
+  private finishDeferredDisposal(): void {
+    if (this.disposeRequested && this.state !== "disposed" && !this.hasActiveDescendantCleanup()) {
+      this.dispose();
+    }
+  }
+
   dispose(): void {
-    if (this.disposed) return;
+    if (this.state === "disposed") return;
+    this.disposeRequested = true;
+    // A child-first disposal can synchronously request its ancestor's teardown.
+    // Deferring parent cleanup prevents clearing providers before all child
+    // cleanup callbacks finish. All new registrations are already rejected.
+    if (this.hasActiveDescendantCleanup()) return;
     // Reject all new registrations immediately, but permit existing providers
     // to be read while owner and descendant cleanup callbacks run.
     this.state = "disposed";
@@ -141,9 +165,13 @@ class Scope implements OwnerScope {
       this.mountCallbacks.length = 0;
       this.cleanups.length = 0;
       this.providers.clear();
-      this.parent?.children.delete(this);
+      const parent = this.parent;
+      parent?.children.delete(this);
       this.parent = null; // Retained disposed scopes must not retain their app.
       this.cleanupInProgress = false;
+      // Resume an ancestor whose disposal was requested inside this child's
+      // cleanup. Keep the original error aggregation contract intact.
+      try { parent?.finishDeferredDisposal(); } catch (error) { errors.push(error); }
     }
     if (errors.length === 1) throw errors[0];
     if (errors.length > 1) throw new AggregateError(errors, "Owner disposal failed");

@@ -343,6 +343,75 @@ describe("scope-local typed context", () => {
     expect(() => disposeOwner(app)).not.toThrow();
   });
 
+
+  it("defers ancestor cleanup when child-first teardown reenters the parent", () => {
+    const order: string[] = [];
+    const app = createOwner();
+    const child = createOwner(app);
+    const sibling = createOwner(app);
+    const token = createContext<{ release(): void }>("Resource");
+    provide(app, token, { release: () => order.push("provider-release") });
+
+    runWithOwner(app, () => onCleanup(() => order.push("app-cleanup")));
+    runWithOwner(sibling, () => onCleanup(() => order.push("sibling-cleanup")));
+    runWithOwner(child, () => {
+      // Reverse registration order: request ancestor disposal first, then use
+      // its provider from a later child cleanup.
+      onCleanup(() => {
+        expect(requireContext(child, token)).toBeDefined();
+        requireContext(child, token).release();
+        order.push("child-final");
+      });
+      onCleanup(() => {
+        order.push("child-request");
+        disposeOwner(app);
+        expect(app.disposed).toBe(true);
+        expect(() => createOwner(app)).toThrow(/disposed/);
+        // Pending ancestor teardown must not revoke inherited providers.
+        expect(requireContext(child, token)).toBeDefined();
+      });
+    });
+
+    disposeOwner(child);
+    expect(order).toEqual([
+      "child-request", "provider-release", "child-final",
+      "sibling-cleanup", "app-cleanup"
+    ]);
+    expect(app.disposed).toBe(true);
+    expect(sibling.disposed).toBe(true);
+    expect(child.parent).toBeNull();
+    expect(getOwnerProviders(app).size).toBe(0);
+    expect(() => requireContext(app, token)).toThrow(/disposed/);
+    expect(() => disposeOwner(app)).not.toThrow();
+  });
+
+  it("defers disposal across multiple descendant levels", () => {
+    const order: string[] = [];
+    const app = createOwner();
+    const route = createOwner(app);
+    const component = createOwner(route);
+    const token = createContext<{ readonly value: string }>("AppToken");
+    provide(app, token, { value: "alive-through-cleanup" });
+    runWithOwner(app, () => onCleanup(() => order.push("app")));
+    runWithOwner(route, () => onCleanup(() => order.push("route")));
+    runWithOwner(component, () => {
+      onCleanup(() => {
+        expect(requireContext(component, token).value).toBe("alive-through-cleanup");
+        order.push("component-last");
+      });
+      onCleanup(() => {
+        disposeOwner(app);
+        expect(app.disposed).toBe(true);
+        expect(route.disposed).toBe(false);
+        order.push("component-first");
+      });
+    });
+    disposeOwner(component);
+    expect(order).toEqual(["component-first", "component-last", "route", "app"]);
+    expect(app.disposed).toBe(true);
+    expect(route.disposed).toBe(true);
+  });
+
   it("returns undefined or typed missing-provider error", () => {
     const root = createOwner();
     expect(useContext(root, RepositoryToken)).toBeUndefined();
