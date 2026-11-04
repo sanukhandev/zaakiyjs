@@ -94,6 +94,35 @@ function abortReason(signal: AbortSignal): CancellationReason {
       reason === "owner-disposed" || reason === "router-disposed") return reason;
   return "explicit";
 }
+/**
+ * Settle an in-flight navigation immediately when aborted, even when a user
+ * loader or dynamic-import promise ignores AbortSignal. Promise callbacks are
+ * explicitly scoped; this does not patch or propagate lexical owner context.
+ */
+function abortable<T>(work: PromiseLike<T> | T, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(new NavigationCancelledError(abortReason(signal)));
+  return new Promise<T>((resolve, reject) => {
+    const release = (): void => signal.removeEventListener("abort", onAbort);
+    const onAbort = (): void => {
+      release();
+      reject(new NavigationCancelledError(abortReason(signal)));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    Promise.resolve(work).then(
+      value => {
+        release();
+        if (signal.aborted) reject(new NavigationCancelledError(abortReason(signal)));
+        else resolve(value);
+      },
+      error => {
+        release();
+        if (signal.aborted) reject(new NavigationCancelledError(abortReason(signal)));
+        else reject(error);
+      }
+    );
+    if (signal.aborted) onAbort();
+  });
+}
 function requireCurrent(tx: Transaction, current: Transaction | null, owner: OwnerScope): void {
   if (tx.controller.signal.aborted || tx !== current || owner.disposed) {
     throw new NavigationCancelledError(
@@ -378,7 +407,8 @@ export class Router {
             if (entry.owner.disposed) throw new NavigationCancelledError("owner-disposed");
             const guard = entry.route.guard;
             if (!guard) continue;
-            const verdict = decisionOf(await guard(contextFor(entry, from, to, tx.controller.signal)));
+            const ctx = contextFor(entry, from, to, tx.controller.signal);
+            const verdict = decisionOf(await abortable(guard(ctx), ctx.signal));
             requireCurrent(tx, this.current, this.options.owner);
             if (verdict.kind === "deny") throw new NavigationDeniedError("Guard denied route: " + entry.route.id);
             if (verdict.kind === "redirect") { redirect = verdict.to; break; }
@@ -387,13 +417,15 @@ export class Router {
             for (let i = common; i < next.length; i++) {
               const entry = next[i]!;
               const compiled = this.table.byId.get(entry.route.id)!;
-              const module = await this.moduleFor(compiled);
+              const module = await abortable(this.moduleFor(compiled),
+                AbortSignal.any([tx.controller.signal, entry.abort.signal]));
               requireCurrent(tx, this.current, this.options.owner);
               if (entry.owner.disposed) throw new NavigationCancelledError("owner-disposed");
               (entry as { module?: RouteModule }).module = module;
               const loader = module?.loader ?? entry.route.loader;
               if (loader) {
-                (entry as { data: unknown }).data = await loader(contextFor(entry, from, to, tx.controller.signal));
+                const ctx = contextFor(entry, from, to, tx.controller.signal);
+                (entry as { data: unknown }).data = await abortable(loader(ctx), ctx.signal);
                 requireCurrent(tx, this.current, this.options.owner);
                 if (entry.owner.disposed) throw new NavigationCancelledError("owner-disposed");
               }
