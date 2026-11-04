@@ -2,6 +2,8 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const expected = new Set(["signals", "core", "dom", "compiler", "styles", "vite-plugin", "cli"]);
+// Validation-only: allow new package without changing M0's seven required root links.
+const permitted = new Set([...expected, "async"]);
 const scriptNames = ["lint", "typecheck", "build", "test"];
 const manifestByName = new Map();
 let errors = 0;
@@ -20,7 +22,7 @@ for (const group of ["packages", "apps", "examples"]) {
       if (!pkg.scripts?.[script]?.trim()) fail(`Missing operational ${script} script: ${manifestPath}`);
     }
     if (group !== "packages") continue;
-    if (!expected.has(entry)) fail(`Unexpected M0 source package: ${dir}`);
+    if (!permitted.has(entry)) fail(`Unexpected M0 source package: ${dir}`);
     if (pkg.name !== `@zaakiyjs/${entry}`) fail(`Name/path mismatch: ${manifestPath}`);
     if (pkg.type !== "module" || !pkg.types || !pkg.exports?.["."]?.types || !pkg.exports?.["."]?.import) fail(`Missing ESM exports/types: ${manifestPath}`);
     if (!pkg.version || !pkg.publishConfig || pkg.publishConfig.access !== "public") fail(`Missing independent version or publication metadata: ${manifestPath}`);
