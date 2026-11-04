@@ -39,11 +39,22 @@ function isLegacyFocusVisible(request: StyleCompilerRequest): boolean {
     (t.firefox !== undefined && t.firefox < 85) ||
     (t.chrome !== undefined && t.chrome < 86)));
 }
-function cssSelectors(token: string, state: string | undefined, dark: boolean, mode: string, legacyFocus: boolean): string[] {
+const ignoreExplicitLight = ':where(:not([data-zaakiy-mode="light"]):not([data-zaakiy-mode="light"] *))';
+function classSelector(token: string, state: string | undefined, legacyFocus: boolean): string {
   const stateSelector = state === "focus-visible" && legacyFocus ? ":focus" : state ? `:${state}` : "";
-  const base = `.${escapeClassName(token)}${stateSelector}`;
-  if (!dark || mode === "dark") return [base];
-  return [`:where([data-zaakiy-mode="dark"],.dark) ${base}`];
+  return `.${escapeClassName(token)}${stateSelector}`;
+}
+function cssSelectors(token: string, state: string | undefined, dark: boolean, mode: string, legacyFocus: boolean): string[] {
+  const base = classSelector(token, state, legacyFocus);
+  if (!dark) return [base];
+  // Explicit light scopes suppress outer dark states. A nested light->dark
+  // reactivation is reserved until a fully specified nearest-scope contract.
+  if (mode === "dark") return [`${base}${ignoreExplicitLight}`];
+  return [`:where([data-zaakiy-mode="dark"],.dark) ${base}${ignoreExplicitLight}`];
+}
+function systemDarkSelector(token: string, state: string | undefined, legacyFocus: boolean): string {
+  const base = classSelector(token, state, legacyFocus);
+  return `:root:not([data-zaakiy-mode="light"]):not([data-zaakiy-mode="dark"]):not(.dark) ${base}${ignoreExplicitLight}`;
 }
 function withinBreakpoint(rule: string, minWidth?: string): string {
   return minWidth ? `@media (min-width:${minWidth}){${rule}}` : rule;
@@ -68,7 +79,7 @@ export function compileStyles(request: StyleCompilerRequest): StyleCompilerResul
       diagnostics.push({ code: "ZSTY_INVALID_BROWSER_TARGET", message: `Invalid browser target ${name}=${version}`, severity: "error" });
     }
   }
-  const empty = { css: "", diagnostics, tokenIds: {} as Record<string, string> };
+  const empty = { css: "", diagnostics, tokenIds: Object.create(null) as Record<string, string> };
   if (diagnostics.some(d => d.severity === "error")) return empty;
   const tokenMap = new Map<string, ExtractedStyleToken>();
   for (const item of request.tokens) {
@@ -97,8 +108,9 @@ export function compileStyles(request: StyleCompilerRequest): StyleCompilerResul
   if (!layersSupported) diagnostics.push({ code: "ZSTY_COMPAT_LAYER_FLATTENED", message: "Target browsers do not all support CSS Cascade Layers; generated standalone layers were flattened", severity: "warning" });
   const rules: string[] = [];
   const compiledRuleLengths = new Map<string, number>();
-  const ids: Record<string, string> = {};
+  const ids: Record<string, string> = Object.create(null) as Record<string, string>;
   const reduced: string[] = [];
+  const reducedSystem: string[] = [];
   let usedAnimation = false;
   for (const token of unique) {
     const parsed = parsedTokens.get(token);
@@ -116,19 +128,26 @@ export function compileStyles(request: StyleCompilerRequest): StyleCompilerResul
     const rule = withinBreakpoint(`${selectors.join(",")}{${body}}`, parsed.minWidth);
     rules.push(rule);
     compiledRuleLengths.set(token, new TextEncoder().encode(rule).length);
-    // In system mode, dark: classes must also activate for the OS preference,
-    // without requiring a browser-side script to toggle .dark.
-    if (parsed.dark && (request.config.mode ?? "system") === "system") {
-      const mediaRule = `@media (prefers-color-scheme:dark){:root:not([data-zaakiy-mode="light"]):not([data-zaakiy-mode="dark"]):not(.dark) .${escapeClassName(token)}${parsed.state === "focus-visible" && legacyFocus ? ":focus" : parsed.state ? `:${parsed.state}` : ""}{${body}}}`;
+    // Every activation route must share the same reduced-motion behavior.
+    // The system route also checks for an intervening explicit light scope.
+    const systemDark = parsed.dark && (request.config.mode ?? "system") === "system";
+    const osSelector = systemDark ? systemDarkSelector(token, parsed.state, legacyFocus) : undefined;
+    if (osSelector) {
+      const mediaRule = `@media (prefers-color-scheme:dark){${osSelector}{${body}}}`;
       const optionalResponsive = withinBreakpoint(mediaRule, parsed.minWidth);
       rules.push(optionalResponsive);
       compiledRuleLengths.set(token, (compiledRuleLengths.get(token) ?? 0) + new TextEncoder().encode(optionalResponsive).length);
     }
     if (parsed.reduceMotion) {
-      const override = `${selectors.join(",")}{transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}`;
-      const r = withinBreakpoint(override, parsed.minWidth);
+      const overrideBody = "transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important";
+      const r = withinBreakpoint(`${selectors.join(",")}{${overrideBody}}`, parsed.minWidth);
       reduced.push(r);
       compiledRuleLengths.set(token, (compiledRuleLengths.get(token) ?? 0) + new TextEncoder().encode(r).length);
+      if (osSelector) {
+        const osOverride = withinBreakpoint(`@media (prefers-color-scheme:dark) and (prefers-reduced-motion:reduce){${osSelector}{${overrideBody}}}`, parsed.minWidth);
+        reducedSystem.push(osOverride);
+        compiledRuleLengths.set(token, (compiledRuleLengths.get(token) ?? 0) + new TextEncoder().encode(osOverride).length);
+      }
     }
     if (token.endsWith("animate-fade-in")) usedAnimation = true;
   }
@@ -136,7 +155,7 @@ export function compileStyles(request: StyleCompilerRequest): StyleCompilerResul
   // receive a parser pass so malformed nested CSS cannot escape into output.
   const base = brandCss(request.config);
   const animation = usedAnimation ? "@keyframes z-fade-in{from{opacity:0}to{opacity:1}}" : "";
-  const cssSource = `@layer zaakiy.tokens,zaakiy.utilities;@layer zaakiy.tokens{${base}}@layer zaakiy.utilities{${rules.join("")}${animation}}${reduced.length ? `@media (prefers-reduced-motion:reduce){${reduced.join("")}}` : ""}`;
+  const cssSource = `@layer zaakiy.tokens,zaakiy.utilities;@layer zaakiy.tokens{${base}}@layer zaakiy.utilities{${rules.join("")}${animation}}${reduced.length ? `@media (prefers-reduced-motion:reduce){${reduced.join("")}}` : ""}${reducedSystem.join("")}`;
   let css = "";
   try {
     const root = postcss.parse(cssSource, { from: undefined });

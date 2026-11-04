@@ -93,7 +93,9 @@ export function parseUtilityToken(token: string, config: StyleConfig): ParsedUti
     return undefined;
   }
   const brand = resolveBrand(config.brand);
-  const classes = staticUtilities[base];
+  // Class tokens are untrusted: a plain object also has inherited names such as
+  // constructor, toString and __proto__. Only own entries are valid utilities.
+  const classes = Object.prototype.hasOwnProperty.call(staticUtilities, base) ? staticUtilities[base] : undefined;
   let declarations = classes;
   if (!declarations) {
     const spacing = /^(gap-x|gap-y|gap|px|py|pt|pb|pl|pr|p|mx|my|mt|mb|ml|mr|m|inset|top|right|bottom|left)-([a-zA-Z0-9-]+)$/u.exec(base);

@@ -129,7 +129,7 @@ describe("Zaakiy CSS compiler", () => {
     expect(css).toContain('@media (prefers-color-scheme:dark){:root:not([data-zaakiy-mode="light"]):not([data-zaakiy-mode="dark"]):not(.dark) .dark\\:bg-primary');
     expect(css).toContain('[data-zaakiy-mode="light"]{--z-color-primary:#123456}');
     const pinned = compileStyles({config:{...config,mode:"dark"},tokens:source("dark:bg-primary"),minify:true}).css;
-    expect(pinned).toContain('.dark\\:bg-primary{background-color:var(--z-color-primary)}');
+    expect(pinned).toContain('.dark\\:bg-primary:where(:not([data-zaakiy-mode="light"]):not([data-zaakiy-mode="light"] *)){background-color:var(--z-color-primary)}');
     expect(pinned).not.toContain('prefers-color-scheme:dark');
   });
   it("flattens unsupported CSS Cascade Layers for legacy browser targets", () => {
@@ -154,6 +154,28 @@ describe("Zaakiy CSS compiler", () => {
     expect(extraction.diagnostics.map(d => d.code)).toEqual(["ZSTY_DYNAMIC_CLASS", "ZSTY_DYNAMIC_CLASS"]);
     const joined = compileStyles({config, tokens:[{ token: "flex bad-utility", file: "source.tsx", offset: 10 }], minify:true});
     expect(joined.diagnostics.find(d => d.token === "bad-utility")).toMatchObject({ file: "source.tsx", offset: 15 });
+  });
+
+  it("rejects inherited Object.prototype names without crashing or emitting CSS", () => {
+    const invalid = ["constructor", "toString", "__proto__", "hasOwnProperty", "valueOf", "isPrototypeOf"];
+    for (const token of invalid) {
+      const result = compileStyles({ config, tokens: source(token), minify: true });
+      expect(result.diagnostics).toMatchObject([{
+        code: "ZSTY_UNKNOWN_UTILITY", token, severity: "warning"
+      }]);
+      expect(result.tokenIds[token]).toBeUndefined();
+    }
+  });
+  it("reduces OS-dark animations and protects explicitly light descendants", () => {
+    const css = compile("dark:animate-fade-in", "dark:transition").css;
+    expect(css).toContain('@media (prefers-color-scheme:dark) and (prefers-reduced-motion:reduce)');
+    expect(css).toContain('animation-duration:.01ms!important');
+    expect(css).toContain(':not([data-zaakiy-mode="light"] *)');
+    const fixedDark = compileStyles({
+      config: { ...config, mode: "dark" }, tokens: source("dark:animate-fade-in"), minify: true
+    });
+    expect(fixedDark.css).toContain(':not([data-zaakiy-mode="light"] *)');
+    expect(fixedDark.css).not.toContain("prefers-color-scheme:dark");
   });
   it("rejects invalid appearance modes from untyped config input", () => {
     const badConfig = { ...config, mode: "invalid" as StyleConfig["mode"] };
