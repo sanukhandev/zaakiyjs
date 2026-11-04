@@ -1,9 +1,9 @@
 import { getOwner, onCleanup, runWithOwner } from '@zaakiyjs/core';
 import { batch, computed, signal } from '@zaakiyjs/signals';
-import type { ReadonlySignal, WritableSignal } from '@zaakiyjs/signals';
+import type { WritableSignal } from '@zaakiyjs/signals';
 import { copyValue, hasPath, overlaps, pathInArray, readPath, sameValue, splitPath, writePath } from './path.js';
 import type {
-  ArrayElement, ArrayHandle, FieldGroup, FieldHandle, FieldOptions, FieldPath,
+  ArrayHandle, FieldGroup, FieldHandle, FieldOptions, FieldPath,
   FieldValidationContext, FormController, FormOptions, PathValue,
   SubmissionFailure, SubmitResult, ValidationIssue, ValidationOutput,
   ValidationResult, ValidationStatus, ValidationTrigger
@@ -11,7 +11,6 @@ import type {
 
 type Validator<T> = (value: unknown, context: FieldValidationContext<T>) => ValidationOutput | Promise<ValidationOutput>;
 type CheckStatus = Exclude<ValidationStatus, 'idle'>;
-type ValidatorOutcome = { readonly status: CheckStatus; readonly issues: readonly ValidationIssue[] };
 
 interface FieldRecord<T extends object> {
   readonly id: string;
