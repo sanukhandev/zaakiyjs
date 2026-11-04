@@ -42,11 +42,11 @@ function canonicalVersion(version: string): string {
   return parts.join(".");
 }
 function oneTarget(text: string): BrowserTarget {
-  const match = /^(chrome|edge|firefox|safari)\s+(?:>=\s*)?(\d+(?:\.\d+){0,2})(?:\s*\.\.\s*(\d+(?:\.\d+){0,2}))?$/.exec(text.trim().toLowerCase());
+  const match = /^(chrome|edge|firefox|safari)\s+(>=\s*)?(\d+(?:\.\d+){0,2})(?:\s*\.\.\s*(\d+(?:\.\d+){0,2}))?$/.exec(text.trim().toLowerCase());
   if (!match) throw new TypeError("Invalid or ambiguous browser target: " + text);
   const browser = match[1] as BrowserFamily;
-  const minimum = canonicalVersion(match[2]!);
-  const maximum = match[3] ? canonicalVersion(match[3]) : undefined;
+  const minimum = canonicalVersion(match[3]!);
+  const maximum = match[4] ? canonicalVersion(match[4]) : match[2] ? undefined : minimum;
   if (maximum && compareVersions(minimum, maximum) > 0) throw new TypeError("Reversed browser range: " + text);
   const bounds = knownBounds[browser];
   if (compareVersions(minimum, bounds.min) < 0 || compareVersions(minimum, bounds.max) > 0 ||
