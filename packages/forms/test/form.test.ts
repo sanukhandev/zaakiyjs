@@ -327,12 +327,12 @@ describe('@zaakiyjs/forms', () => {
 
   it('does not attach old server validation errors after the user edits submitted values', async () => {
     const remote = deferred<never>();
-    const form = createForm({ initialValues: defaults(), onSubmit: () => remote.promise });
+    const onSubmit = vi.fn(() => remote.promise);
+    const form = createForm({ initialValues: defaults(), onSubmit });
     const email = form.field('email');
     form.setValue('email', 'old@example.com');
     const submission = form.submit();
-    await vi.waitFor(() => expect(form.submitting.value).toBe(true));
-    await Promise.resolve(); await Promise.resolve();
+    await vi.waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
     form.setValue('email', 'new@example.com');
     remote.reject(new SubmissionValidationError([{ code: 'taken', source: 'server', path: 'email', message: 'Old email taken' }]));
     expect((await submission).status).toBe('invalid');
@@ -456,16 +456,17 @@ describe('@zaakiyjs/forms', () => {
     const owner = createOwner();
     const job = deferred<string>();
     let cancelled = false;
+    let handlerStarted = false;
     let form!: ReturnType<typeof createForm<Values, string>>;
     runWithOwner(owner, () => {
       form = createForm({ initialValues: defaults(), onSubmit: (_values, { signal }) => {
         signal.addEventListener('abort', () => { cancelled = true; });
+        handlerStarted = true;
         return job.promise;
       } });
     });
     const pending = form.submit();
-    await vi.waitFor(() => expect(form.submitting.value).toBe(true));
-    await Promise.resolve(); await Promise.resolve();
+    await vi.waitFor(() => expect(handlerStarted).toBe(true));
     disposeOwner(owner);
     expect(await pending).toEqual({ status: 'aborted' });
     expect(cancelled).toBe(true);

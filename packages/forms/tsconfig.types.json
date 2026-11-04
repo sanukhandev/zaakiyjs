@@ -1,1 +1,1 @@
-{ "extends": "../../tsconfig.base.json", "compilerOptions": { "noEmit": true }, "include": ["src/**/*.ts", "test/types.test.ts"] }
+{ "extends": "../../tsconfig.base.json", "compilerOptions": { "noEmit": true }, "include": ["src/**/*.ts", "test/types.compile.ts"] }
