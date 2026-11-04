@@ -36,8 +36,8 @@ describe("@zaakiyjs/store", () => {
     expect(store.state).toBe(store.state);
     expect(Object.isFrozen(store.state.profile.value)).toBe(true);
     expect(Object.isFrozen(store.state.profile.value.tags)).toBe(true);
-    expect(() => Reflect.set(store.state, "count", 123)).toThrow();
-    expect(() => Reflect.set(store.state.profile.value, "name", "injected")).toThrow();
+    expect(Reflect.set(store.state, "count", 123)).toBe(false);
+    expect(Reflect.set(store.state.profile.value, "name", "injected")).toBe(false);
     store.actions.increment(2);
     expect(store.state.count.value).toBe(2);
     disposeOwner(owner);
