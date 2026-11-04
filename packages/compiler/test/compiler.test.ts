@@ -657,3 +657,63 @@ describe("typed Show/For compiler intrinsics", () => {
     expect(invalid.diagnostics.some(d => d.severity === "error")).toBe(true);
   });
 });
+
+describe("nested keyed and fragment-backed region lowering", () => {
+  const imports = 'import {Show, For} from "@zaakiyjs/core";';
+  it("compiles multi-root Show branches and fragment-based keyed views to IR v1", () => {
+    const source = [
+      imports,
+      'const visible = true; const rows = [{id: "a", label: "A"}];',
+      'function App(){return <main>',
+      '<Show when={visible} fallback={<><p>off</p><small>fallback</small></>}>',
+      '<p>one</p><p>two</p></Show>',
+      '<For each={rows} by={item => item.id}>',
+      '{item => <><strong>{item.label}</strong><em>{item.id}</em></>}',
+      '</For></main>;}'
+    ].join("\n");
+    const parsed = parseToIR({fileName, source});
+    const ir = parsed.document.nodes[0];
+    expect(ir?.kind).toBe("StaticElement");
+    if (ir?.kind === "StaticElement") {
+      const conditional = ir.children.find(n => n.kind === "ConditionalBlock");
+      expect(conditional?.kind).toBe("ConditionalBlock");
+      if (conditional?.kind === "ConditionalBlock") {
+        expect(conditional.whenTrue).toHaveLength(2);
+        expect(conditional.whenFalse).toHaveLength(2);
+      }
+      const loop = ir.children.find(n => n.kind === "KeyedLoop");
+      expect(loop?.kind).toBe("KeyedLoop");
+      if (loop?.kind === "KeyedLoop") expect(loop.body).toHaveLength(2);
+    }
+    const output = compile({fileName, source});
+    expect(output.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(output.js).toHaveLength(1);
+    expect(output.js[0]?.code).toContain("document.createDocumentFragment()");
+    expect(output.irVersion).toBe(1);
+    expect(output.manifest?.domAbiVersion).toBe(1);
+  });
+  it("compiles nested For loops with parent item signal and immutable same-key replacement", () => {
+    const source = [
+      imports, 'import {signal} from "@zaakiyjs/signals";',
+      'const groups = signal([{id: "g", name: "One", children: [{id:"c",name:"Child"}]}]);',
+      'function App(){return <main><For each={groups.value} by={group => group.id}>',
+      '{group => <section><h2>{group.name}</h2>',
+      '<For each={group.children} by={child => child.id}>',
+      '{child => <span>{group.name}:{child.name}</span>}</For></section>}',
+      '</For></main>;}'
+    ].join("\n");
+    const output = compile({fileName, source});
+    expect(output.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(output.js).toHaveLength(1);
+    const code = output.js[0]?.code ?? "";
+    expect((code.match(/bindKeyedRegion as/g) ?? []).length).toBe(1);
+    expect((code.match(/__zBindKeyedRegion\(/g) ?? []).length).toBeGreaterThanOrEqual(2);
+    expect(code).not.toContain("ZC9001");
+    expect(output.irVersion).toBe(1);
+  });
+  it("does not silently compile a root fragment without an agreed mount-source contract", () => {
+    const output = compile({fileName, source:'function App(){return <><p>one</p><p>two</p></>}'});
+    expect(output.js).toEqual([]);
+    expect(output.diagnostics.some(d => d.code === "ZC2101")).toBe(true);
+  });
+});
