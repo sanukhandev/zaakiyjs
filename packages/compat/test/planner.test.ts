@@ -144,6 +144,24 @@ describe("syntax/API/IR/CSS detection and planning", () => {
     expect(adapted.omittedFamilies).toEqual(["edge"]);
     expect(adapted.targets.safari).toBe(15.4);
   });
+  it("fails malformed source and incomplete IR feature nodes", () => {
+    const badSource = analyzeCompatibility({ mode: "strict", targets: modern,
+      sources: source("const bad = ;") });
+    expect(badSource.ok).toBe(false);
+    expect(badSource.manifest.diagnostics.some(d => d.code === "ZK2002")).toBe(true);
+    const badIR = analyzeCompatibility({ mode: "strict", targets: modern,
+      ir: [{ irVersion: 1, sourceFile: "x.tsx", nodes: [{ kind: "CompatFeature" }] }] });
+    expect(badIR.ok).toBe(false);
+    expect(badIR.manifest.diagnostics.some(d => d.code === "ZK2003")).toBe(true);
+  });
+  it("sanitizes malformed IR feature identifiers instead of leaking source data", () => {
+    const secret = "sk-super-private-diagnostic";
+    const r = analyzeCompatibility({ mode: "auto", targets: modern,
+      ir: [{ irVersion: 1, sourceFile: "x.tsx", nodes: [{ kind: "CompatFeature", feature: secret + " secret" }] }] });
+    expect(r.ok).toBe(false);
+    expect(serializeManifest(r.manifest)).not.toContain(secret);
+    expect(r.manifest.diagnostics.some(d => d.code === "ZK2303")).toBe(true);
+  });
   it("rejects eval and Function instead of suggesting global patches", () => {
     const r = analyzeCompatibility({
       mode: "strict", targets: modern, sources: source('eval("1"); new Function("return 1");')
