@@ -29,7 +29,6 @@ import { analyze } from "./analysis.js";
 import { emitJavaScript, loweringDiagnostics, typeDiagnostics } from "./generate.js";
 import { collectStyleTokens, optimizeIR, validateIR, OPTIMIZATION_PASSES } from "./optimize.js";
 export { optimizeIR, validateIR, OPTIMIZATION_PASSES };
-export type { Analysis } from "./analysis.js";
 
 /** Analyze a TSX source and return a stable JSON-serializable IR v1 document. */
 export function parseToIR(request: CompileRequest): { document: IRDocument; diagnostics: readonly CompilerDiagnostic[] } {
@@ -41,10 +40,17 @@ export function parseToIR(request: CompileRequest): { document: IRDocument; diag
 export function compile(request: CompileRequest): CompileResult {
   const parsed = analyze(request);
   const ir = optimizeIR(parsed.document);
+  const compatibilityDiagnostics: CompilerDiagnostic[] = request.targetBrowsers?.length
+    ? [{
+        code: "ZC2301", severity: "error",
+        message: "Explicit browser targets require an approved compatibility profile and transforms. M0/M1 has no frozen browser-target matrix; refusing to promise compatibility."
+      }]
+    : [];
   const diagnostics = [
     ...parsed.diagnostics,
     ...loweringDiagnostics(ir),
-    ...typeDiagnostics(request, parsed)
+    ...typeDiagnostics(request, parsed),
+    ...compatibilityDiagnostics
   ];
   const unique = new Map<string, CompilerDiagnostic>();
   for (const diagnostic of diagnostics) {

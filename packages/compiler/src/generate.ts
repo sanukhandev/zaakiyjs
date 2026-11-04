@@ -22,6 +22,53 @@ function isJsx(node: ts.Node): node is ts.JsxElement | ts.JsxSelfClosingElement 
 
 const jsLiteral = (value: string): string => JSON.stringify(value);
 
+interface AbiAliases {
+  readonly createElement: string;
+  readonly createText: string;
+  readonly setProperty: string;
+  readonly setAttribute: string;
+  readonly bindText: string;
+  readonly bindProperty: string;
+  readonly listen: string;
+  readonly getOwner: string;
+  readonly createOwner: string;
+  readonly initializeOwnedComponent: string;
+}
+
+function allocateRuntimeAliases(source: ts.SourceFile): {
+  readonly aliases: AbiAliases; readonly reserved: ReadonlySet<string>;
+} {
+  const reserved = new Set<string>();
+  const scan = (node: ts.Node): void => {
+    if (ts.isIdentifier(node)) reserved.add(node.text);
+    ts.forEachChild(node, scan);
+  };
+  scan(source);
+  const free = (base: string): string => {
+    let name = base;
+    let suffix = 1;
+    while (reserved.has(name)) name = base + "_" + suffix++;
+    reserved.add(name);
+    return name;
+  };
+  return {
+    aliases: {
+      createElement: free("__zCreateElement"),
+      createText: free("__zCreateText"),
+      setProperty: free("__zSetProperty"),
+      setAttribute: free("__zSetAttribute"),
+      bindText: free("__zBindText"),
+      bindProperty: free("__zBindProperty"),
+      listen: free("__zListen"),
+      getOwner: free("__zGetOwner"),
+      createOwner: free("__zCreateOwner"),
+      initializeOwnedComponent: free("__zInitializeOwnedComponent")
+    },
+    reserved
+  };
+}
+
+
 export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] {
   const errors: CompilerDiagnostic[] = [];
   const error = (code: string, message: string, span: SourceSpan): void => {
@@ -47,8 +94,8 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
         if (node.expression.reactive && node.target !== "property") {
           error("ZC2203", "Reactive class, style and attributes need a distinct safe DOM binding ABI.", node.span);
         }
-        if (node.target === "style" && !/^"/.test(node.expression.source)) {
-          error("ZC2204", "Style object/string lowering requires an explicit safe style contract.", node.span);
+        if (node.target === "style") {
+          error("ZC2204", "Inline style JSX requires a safe per-property style ABI; DOM v1 rejects style attributes.", node.span);
         }
         break;
       case "EventBinding":
@@ -77,26 +124,41 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
 class Builder {
   private serial = 0;
   private readonly lines: string[] = [];
-  private readonly owner = "__z_owner";
+  private readonly spans: SourceSpan[] = [];
+  private readonly names: Set<string>;
+  private readonly owner: string;
+
+  constructor(private readonly abi: AbiAliases, reserved: ReadonlySet<string>,
+              private readonly rootSpan: SourceSpan) {
+    this.names = new Set(reserved);
+    this.owner = this.variable("owner");
+  }
 
   private variable(prefix: string): string {
-    return "__z_" + prefix + "_" + this.serial++;
+    let name: string;
+    do { name = "__z_" + prefix + "_" + this.serial++; }
+    while (this.names.has(name));
+    this.names.add(name);
+    return name;
   }
-  private push(source: string): void { this.lines.push(source); }
+  private push(code: string, span: SourceSpan = this.rootSpan): void {
+    this.lines.push(code);
+    this.spans.push(span);
+  }
 
   private attribute(el: string, node: PropertyBinding): void {
     const expr = "(" + node.expression.source + ")";
     if (node.expression.reactive) {
-      this.push("__zBindProperty(" + this.owner + ", " + el + ", " +
-        jsLiteral(node.name) + ", () => " + expr + ");");
+      this.push(this.abi.bindProperty + "(" + this.owner + ", " + el + ", " +
+        jsLiteral(node.name) + ", () => " + expr + ");", node.expression.span);
       return;
     }
     const val = this.variable("value");
     this.push("const " + val + " = " + expr + ";");
     if (node.target === "property") {
-      this.push("__zSetProperty(" + el + ", " + jsLiteral(node.name) + ", " + val + ");");
+      this.push(this.abi.setProperty + "(" + el + ", " + jsLiteral(node.name) + ", " + val + ");");
     } else {
-      this.push("__zSetAttribute(" + el + ", " + jsLiteral(node.name) + ", " +
+      this.push(this.abi.setAttribute + "(" + el + ", " + jsLiteral(node.name) + ", " +
         val + " == null ? null : String(" + val + "));");
     }
   }
@@ -106,14 +168,14 @@ class Builder {
     switch (node.kind) {
       case "StaticElement": {
         name = this.variable("el");
-        this.push("const " + name + " = __zCreateElement(" +
+        this.push("const " + name + " = " + this.abi.createElement + "(" +
           jsLiteral(node.tag) + ", " + jsLiteral(node.namespace) + ");");
         for (const part of node.children) {
           if (part.kind === "PropertyBinding") this.attribute(name, part);
           else if (part.kind === "EventBinding") {
             const handler = this.variable("handler");
             this.push("const " + handler + " = (" + part.expression.source + ") as EventListener;");
-            this.push("__zListen(" + this.owner + ", " + name + ", " +
+            this.push(this.abi.listen + "(" + this.owner + ", " + name + ", " +
               jsLiteral(part.name) + ", " + handler + ");");
           } else if (part.kind !== "StyleToken" && part.kind !== "CompatFeature") {
             this.child(part, name);
@@ -123,18 +185,18 @@ class Builder {
       }
       case "StaticText":
         name = this.variable("text");
-        this.push("const " + name + " = __zCreateText(" + jsLiteral(node.text) + ");");
+        this.push("const " + name + " = " + this.abi.createText + "(" + jsLiteral(node.text) + ");");
         break;
       case "DynamicText": {
         name = this.variable("text");
         if (node.expression.reactive) {
-          this.push("const " + name + " = __zCreateText(\"\");");
-          this.push("__zBindText(" + this.owner + ", " + name + ", () => (" +
-            node.expression.source + "));");
+          this.push("const " + name + " = " + this.abi.createText + "(\"\");");
+          this.push(this.abi.bindText + "(" + this.owner + ", " + name + ", () => (" +
+            node.expression.source + "));", node.expression.span);
         } else {
           const value = this.variable("value");
           this.push("const " + value + " = (" + node.expression.source + ");");
-          this.push("const " + name + " = __zCreateText(" + value +
+          this.push("const " + name + " = " + this.abi.createText + "(" + value +
             " == null || typeof " + value + " === \"boolean\" ? \"\" : String(" + value + "));");
         }
         break;
@@ -144,8 +206,8 @@ class Builder {
         name = this.variable("component");
         const props = node.props.map(prop =>
           jsLiteral(prop.name) + ": (" + prop.expression.source + ")").join(", ");
-        this.push("const " + scope + " = __zCreateOwner(" + this.owner + ");");
-        this.push("const " + name + " = __zRunWithOwner(" + scope + ", () => " +
+        this.push("const " + scope + " = " + this.abi.createOwner + "(" + this.owner + ");");
+        this.push("const " + name + " = " + this.abi.initializeOwnedComponent + "(" + scope + ", () => " +
           node.component + "({" + props + "}));");
         break;
       }
@@ -166,18 +228,19 @@ class Builder {
     return name;
   }
 
-  public build(node: IRNode): string {
-    this.push("const " + this.owner + " = __zGetOwner();");
+  public build(node: IRNode): { readonly code: string; readonly spans: readonly SourceSpan[] } {
+    this.push("const " + this.owner + " = " + this.abi.getOwner + "();");
     this.push("if (" + this.owner + " == null) throw new Error(\"ZC runtime: JSX must execute inside an owner.\");");
     const root = this.child(node);
-    this.push("return " + (root ?? '__zCreateText("")') + ";");
-    return "(() => {\n" + this.lines.join("\n") + "\n})()";
+    this.push("return " + (root ?? (this.abi.createText + '("")')) + ";");
+    return { code: "(() => {\n" + this.lines.join("\n") + "\n})()", spans: this.spans };
   }
 }
 
-function toExpression(code: string, original: ts.Node, source: ts.SourceFile,
+function toExpression(generated: { readonly code: string; readonly spans: readonly SourceSpan[] },
+                      original: ts.Node, source: ts.SourceFile,
                       context: ts.TransformationContext): ts.Expression {
-  const holder = ts.createSourceFile("__zaakiy_emit.ts", "const __zaakiy_result = " + code + ";",
+  const holder = ts.createSourceFile("__zaakiy_emit.ts", "const __zaakiy_result = " + generated.code + ";",
     ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
   const statement = holder.statements[0];
   if (!statement || !ts.isVariableStatement(statement)) {
@@ -196,6 +259,21 @@ function toExpression(code: string, original: ts.Node, source: ts.SourceFile,
     return ts.visitEachChild(copy, clone, context);
   };
   const output = ts.visitNode(declaration.initializer, clone) as ts.Expression;
+  // Attach source ranges to individual generated statements, not just the
+  // enclosing JSX expression. A user breakpoint on a reactive binding must
+  // lead back to the original TSX binding, not an unmapped synthetic block.
+  const callee = ts.isCallExpression(output) && ts.isParenthesizedExpression(output.expression)
+    ? output.expression.expression : undefined;
+  if (!callee || !ts.isArrowFunction(callee) || !ts.isBlock(callee.body) ||
+      callee.body.statements.length !== generated.spans.length) {
+    throw new Error("Compiler internal error: generated statement/source mapping mismatch.");
+  }
+  callee.body.statements.forEach((statement, index) => {
+    const span = generated.spans[index];
+    if (span) ts.setSourceMapRange(statement, {
+      pos: span.start.offset, end: span.end.offset
+    });
+  });
   ts.setSourceMapRange(output, { pos: original.getStart(source), end: original.getEnd() });
   return output;
 }
@@ -209,26 +287,42 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
     if (node) roots.set(start, node);
   }
 
+  const { aliases, reserved } = allocateRuntimeAliases(analysis.sourceFile);
   const transformer: ts.TransformerFactory<ts.SourceFile> = context => file => {
+    let loweredJsx = false;
     const visit = (node: ts.Node): ts.Node => {
       if (isJsx(node)) {
         const ir = roots.get(node.getStart(analysis.sourceFile));
-        if (ir) return toExpression(new Builder().build(ir), node, analysis.sourceFile, context);
+        if (ir) {
+          loweredJsx = true;
+          return toExpression(new Builder(aliases, reserved, ir.span).build(ir), node, analysis.sourceFile, context);
+        }
       }
       return ts.visitEachChild(node, visit, context);
     };
     const visited = ts.visitEachChild(file, visit, context);
+    if (!loweredJsx) return visited;
     const dom = runtimeImport("@zaakiyjs/dom/compiler", [
-      ["createElement", "__zCreateElement"], ["createText", "__zCreateText"],
-      ["setProperty", "__zSetProperty"], ["setAttribute", "__zSetAttribute"],
-      ["bindText", "__zBindText"], ["bindProperty", "__zBindProperty"],
-      ["listen", "__zListen"]
+      ["createElement", aliases.createElement], ["createText", aliases.createText],
+      ["setProperty", aliases.setProperty], ["setAttribute", aliases.setAttribute],
+      ["bindText", aliases.bindText], ["bindProperty", aliases.bindProperty],
+      ["listen", aliases.listen]
     ]);
     const core = runtimeImport("@zaakiyjs/core", [
-      ["getOwner", "__zGetOwner"], ["createOwner", "__zCreateOwner"],
-      ["runWithOwner", "__zRunWithOwner"]
+      ["getOwner", aliases.getOwner], ["createOwner", aliases.createOwner],
+      ["initializeOwnedComponent", aliases.initializeOwnedComponent]
     ]);
-    return ts.factory.updateSourceFile(visited, [dom, core, ...visited.statements]);
+    const statements = [...visited.statements];
+    let afterDependencies = 0;
+    for (let index = 0; index < statements.length; index++) {
+      const item = statements[index];
+      if (item && (ts.isImportDeclaration(item) || ts.isImportEqualsDeclaration(item) ||
+          (ts.isExportDeclaration(item) && item.moduleSpecifier))) afterDependencies = index + 1;
+    }
+    return ts.factory.updateSourceFile(visited, [
+      ...statements.slice(0, afterDependencies), dom, core,
+      ...statements.slice(afterDependencies)
+    ]);
   };
 
   const fileName = analysis.sourceFile.fileName;
@@ -273,7 +367,7 @@ export function typeDiagnostics(request: CompileRequest, analysis: Analysis): Co
       ts.createSourceFile(path, request.source, language, true, ts.ScriptKind.TSX) :
       originalGet(path, language, onError, shouldCreate);
   const program = ts.createProgram([request.fileName], options, host);
-  return ts.getPreEmitDiagnostics(program)
+  const errors: CompilerDiagnostic[] = ts.getPreEmitDiagnostics(program)
     .filter(d => d.file && ts.sys.resolvePath(d.file.fileName) === targetName)
     .map(d => {
       const start = d.start ?? 0;
@@ -284,4 +378,42 @@ export function typeDiagnostics(request: CompileRequest, analysis: Analysis): Co
         span: sourceSpan(analysis.sourceFile, start, start + (d.length ?? 0))
       };
     });
+
+  const file = program.getSourceFile(request.fileName);
+  if (!file) return errors;
+  const checker = program.getTypeChecker();
+  const textual = ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike |
+    ts.TypeFlags.BigIntLike | ts.TypeFlags.Null | ts.TypeFlags.Undefined |
+    ts.TypeFlags.VoidLike | ts.TypeFlags.Never;
+  const canRenderText = (type: ts.Type): boolean => {
+    if (type.isUnion()) return type.types.every(canRenderText);
+    if (type.flags & textual) return true;
+    if (type.flags & ts.TypeFlags.TypeParameter) {
+      const constraint = checker.getBaseConstraintOfType(type);
+      return constraint ? canRenderText(constraint) : false;
+    }
+    return false;
+  };
+  const hasMarkup = (node: ts.Node): boolean => {
+    if (ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node) || ts.isJsxFragment(node)) return true;
+    return ts.forEachChild(node, child => hasMarkup(child) || undefined) ?? false;
+  };
+  const visit = (node: ts.Node): void => {
+    if (ts.isJsxExpression(node) && node.expression &&
+        (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent)) &&
+        !hasMarkup(node.expression)) {
+      const type = checker.getTypeAtLocation(node.expression);
+      if (!canRenderText(type)) {
+        errors.push({
+          code: "ZC2110", severity: "error",
+          message: "JSX dynamic text must resolve to string, number, bigint, boolean, null or undefined. Use explicit supported DOM nodes instead of coercing arrays, objects or ViewNodes.",
+          span: sourceSpan(analysis.sourceFile,
+            node.expression.getStart(file), node.expression.getEnd())
+        });
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return errors;
 }

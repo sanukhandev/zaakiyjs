@@ -1,4 +1,4 @@
-import { assertLiveOwner, getOwnerProviders } from "./owner.js";
+import { assertLiveOwner, assertReadableOwner, getOwnerProviders } from "./owner.js";
 import type { OwnerScope } from "./owner.js";
 
 export interface ContextToken<T> {
@@ -22,8 +22,10 @@ export function provide<T>(owner: OwnerScope, key: ContextToken<T>, value: T): v
 }
 
 function resolve<T>(owner: OwnerScope, key: ContextToken<T>): { found: true; value: T } | { found: false } {
-  assertLiveOwner(owner);
   for (let scope: OwnerScope | null = owner; scope; scope = scope.parent) {
+    // Existing providers are readable during cleanup, but disposed owners
+    // reject all registrations and no lookup survives finished teardown.
+    assertReadableOwner(scope);
     const providers = getOwnerProviders(scope);
     if (providers.has(key.key)) return { found: true, value: providers.get(key.key) as T };
   }

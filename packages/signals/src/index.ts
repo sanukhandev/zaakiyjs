@@ -22,6 +22,7 @@ type Source = SignalNode<unknown> | ComputedNode<unknown>;
 interface TrackingFrame {
   readonly observer: Observer;
   readonly seen: Set<Source>;
+  readonly computedValues: Map<ComputedNode<unknown>, unknown>;
 }
 
 let activeFrame: TrackingFrame | null = null;
@@ -31,12 +32,14 @@ let microtaskQueued = false;
 let flushing = false;
 const renderQueue = new Set<EffectNode>();
 const userQueue = new Set<EffectNode>();
-const MAX_EXECUTIONS_PER_FLUSH = 10_000;
+const MAX_EXECUTIONS_PER_FLUSH = 1_000_000;
+const MAX_RUNS_PER_EFFECT_PER_FLUSH = 1_000;
+let flushSequence = 0;
 
 function reportUnobservedError(error: unknown): void { throw error; }
 
 function enqueue(effectNode: EffectNode): void {
-  if (effectNode.disposed) return;
+  if (effectNode.disposed || (flushing && effectNode.blockedFlushId === flushSequence)) return;
   (effectNode.phase === "render" ? renderQueue : userQueue).add(effectNode);
   if (batchDepth === 0 && !flushing) requestFlush();
 }
@@ -54,24 +57,37 @@ function drain(): void {
   if (flushing) return;
   flushing = true;
   const errors: unknown[] = [];
+  const flushId = ++flushSequence;
   let executions = 0;
+  let hardLimitExceeded = false;
   try {
     while (renderQueue.size || userQueue.size) {
-      if (++executions > MAX_EXECUTIONS_PER_FLUSH) {
-        errors.push(new Error("ZaakiyJS reactive cycle: exceeded " + MAX_EXECUTIONS_PER_FLUSH + " effect executions in one flush"));
-        break;
-      }
       const queue = renderQueue.size ? renderQueue : userQueue;
       const next = queue.values().next().value;
       if (next === undefined) break;
       queue.delete(next);
-      if (!next.disposed) {
-        try { next.execute(); }
-        catch (error) { errors.push(error); }
+      if (next.disposed) continue;
+      if (++executions > MAX_EXECUTIONS_PER_FLUSH) {
+        errors.push(new Error("ZaakiyJS reactive cycle: exceeded " + MAX_EXECUTIONS_PER_FLUSH + " effect executions in one flush"));
+        hardLimitExceeded = true;
+        break;
       }
+      if (next.lastFlushId === flushId) {
+        if (++next.runsThisFlush > MAX_RUNS_PER_EFFECT_PER_FLUSH) {
+          errors.push(new Error("ZaakiyJS reactive cycle: effect ran over " + MAX_RUNS_PER_EFFECT_PER_FLUSH + " times in one flush"));
+          next.blockedFlushId = flushId;
+          continue;
+        }
+      } else {
+        next.lastFlushId = flushId;
+        next.runsThisFlush = 1;
+      }
+      if (!next.shouldExecute()) continue;
+      try { next.execute(); }
+      catch (error) { errors.push(error); }
     }
   } finally {
-    if (errors.length && (renderQueue.size || userQueue.size)) {
+    if (hardLimitExceeded) {
       renderQueue.clear();
       userQueue.clear();
     }
@@ -83,11 +99,12 @@ function drain(): void {
 
 function observe(source: Source): void {
   const frame = activeFrame;
-  if (frame === null) return;
+  if (frame === null || (frame.observer instanceof EffectNode && frame.observer.disposed)) return;
   const { observer, seen } = frame;
   if (source === observer) throw new Error("ZaakiyJS circular computed dependency");
   if (seen.has(source)) return;
   seen.add(source);
+  // Cold computed dependencies are relinked when the first observer attaches.
   if (!observer.dependencies.has(source) && !(observer instanceof ComputedNode && observer.observers.size === 0)) {
     source.addObserver(observer);
   }
@@ -96,8 +113,9 @@ function observe(source: Source): void {
 function runTracked<T>(observer: Observer, evaluate: () => T): T {
   const before = observer.dependencies;
   const seen = new Set<Source>();
+  const computedValues = new Map<ComputedNode<unknown>, unknown>();
   const previous = activeFrame;
-  activeFrame = { observer, seen };
+  activeFrame = { observer, seen, computedValues };
   let succeeded = false;
   try {
     const result = evaluate();
@@ -105,14 +123,21 @@ function runTracked<T>(observer: Observer, evaluate: () => T): T {
     return result;
   } finally {
     activeFrame = previous;
-    if (succeeded) {
+    if (observer instanceof EffectNode && observer.disposed) {
+      // An effect may dispose itself during execution. Never resurrect subscriptions.
+      for (const source of before) source.removeObserver(observer);
+      for (const source of seen) source.removeObserver(observer);
+      observer.dependencies = new Set();
+    } else if (succeeded) {
       for (const source of before) if (!seen.has(source)) source.removeObserver(observer);
       observer.dependencies = seen;
+      if (observer instanceof EffectNode) observer.rememberComputedValues(computedValues);
       if (observer instanceof ComputedNode) {
         observer.revisions = new Map([...seen].map((source) => [source, source.revision()]));
       }
     } else {
-      for (const source of seen) if (!before.has(source)) source.removeObserver(observer);
+      // On failure keep known and partial dependencies for possible recovery.
+      for (const source of seen) before.add(source);
     }
   }
 }
@@ -145,6 +170,7 @@ class ComputedNode<T> implements ComputedSignal<T> {
   private cached!: T;
   private hasValue = false;
   private dirty = true;
+  private errored = false;
   private computing = false;
   private version = 0;
   constructor(private readonly calculator: () => T) {}
@@ -152,7 +178,10 @@ class ComputedNode<T> implements ComputedSignal<T> {
   get value(): T {
     if (this.computing) throw new Error("ZaakiyJS circular computed dependency");
     observe(this as ComputedNode<unknown>);
-    return this.read();
+    const value = this.read();
+    const frame = activeFrame;
+    if (frame?.observer instanceof EffectNode) frame.computedValues.set(this as ComputedNode<unknown>, value);
+    return value;
   }
   peek(): T { return this.read(); }
   private read(): T {
@@ -166,6 +195,10 @@ class ComputedNode<T> implements ComputedSignal<T> {
         this.cached = result;
         this.hasValue = true;
         this.dirty = false;
+        this.errored = false;
+      } catch (error) {
+        this.errored = true;
+        throw error;
       } finally { computedDepth--; this.computing = false; }
     }
     return this.cached;
@@ -185,7 +218,8 @@ class ComputedNode<T> implements ComputedSignal<T> {
     return this.version;
   }
   invalidate(): void {
-    if (this.dirty) return;
+    // A failed calculator remains dirty; future source writes must still wake consumers.
+    if (this.dirty && !this.errored) return;
     this.dirty = true;
     this.version++;
     for (const observer of [...this.observers]) observer.invalidate();
@@ -194,7 +228,9 @@ class ComputedNode<T> implements ComputedSignal<T> {
     if (this.observers.has(observer)) return;
     if (this.observers.size === 0) {
       this.checkStaleness();
-      if (!this.dirty) for (const source of this.dependencies) source.addObserver(this as ComputedNode<unknown>);
+      // Reconnect known dependencies even if dirty. The next read prunes stale
+      // sources; already-known sources must be subscribed when observed.
+      for (const source of this.dependencies) source.addObserver(this as ComputedNode<unknown>);
     }
     this.observers.add(observer);
   }
@@ -209,6 +245,10 @@ class ComputedNode<T> implements ComputedSignal<T> {
 class EffectNode implements EffectHandle {
   dependencies = new Set<Source>();
   disposed = false;
+  lastFlushId = 0;
+  runsThisFlush = 0;
+  blockedFlushId = 0;
+  private successfulReadValues: Map<ComputedNode<unknown>, unknown> | null = null;
   private running = false;
   private cleanup: (() => void) | undefined;
   readonly phase: EffectPhase;
@@ -216,18 +256,38 @@ class EffectNode implements EffectHandle {
     this.phase = phase;
   }
   invalidate(): void { enqueue(this); }
+  rememberComputedValues(reads: Map<ComputedNode<unknown>, unknown>): void {
+    this.successfulReadValues = reads;
+  }
+  /** Skip effects whose complete dependency set consists of unchanged computed values. */
+  shouldExecute(): boolean {
+    const previous = this.successfulReadValues;
+    if (previous === null || previous.size === 0 || this.dependencies.size === 0) return true;
+    for (const source of this.dependencies) {
+      // Direct signal reads retain their ordinary invalidation semantics.
+      if (!(source instanceof ComputedNode) || !previous.has(source)) return true;
+      try { if (!Object.is(source.peek(), previous.get(source))) return true; }
+      catch { return true; } // Let execute/onError report computed failures.
+    }
+    return false;
+  }
   execute(): void {
     if (this.disposed) return;
     if (this.running) throw new Error("ZaakiyJS effect cannot execute recursively");
     this.running = true;
+    this.successfulReadValues = null;
     const oldCleanup = this.cleanup;
     this.cleanup = undefined;
     try {
-      oldCleanup?.();
+      if (oldCleanup) untrack(oldCleanup);
+      if (this.disposed) return; // Cleanup can dispose its effect before the next body.
       const result = runTracked(this, this.run);
-      this.cleanup = typeof result === "function" ? result : undefined;
+      if (typeof result === "function") {
+        if (this.disposed) untrack(result); // Run a cleanup returned after self-disposal.
+        else this.cleanup = result;
+      }
     } catch (error) {
-      if (this.onError) this.onError(error);
+      if (this.onError) untrack(() => this.onError!(error));
       else throw error;
     } finally { this.running = false; }
   }
@@ -238,9 +298,10 @@ class EffectNode implements EffectHandle {
     userQueue.delete(this);
     for (const source of this.dependencies) source.removeObserver(this);
     this.dependencies.clear();
+    this.successfulReadValues = null;
     const cleanup = this.cleanup;
     this.cleanup = undefined;
-    cleanup?.();
+    if (cleanup) untrack(cleanup);
   }
 }
 
@@ -277,6 +338,7 @@ export function flushSync(): void;
 export function flushSync<T>(run: () => T): T;
 export function flushSync<T>(run?: () => T): T | void {
   if (activeFrame) throw new Error("ZaakiyJS flushSync cannot run inside a tracked computation");
+  if (flushing) throw new Error("ZaakiyJS flushSync cannot reenter an active scheduler flush");
   let value: T | undefined;
   let failed = false;
   let callbackError: unknown;

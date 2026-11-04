@@ -7,6 +7,7 @@ import {
   runWithOwner, suspendOwner, transferOwner, useContext
 } from "../src/index.js";
 import type { ViewNode } from "../src/index.js";
+import { getOwnerProviders } from "../src/owner.js";
 
 describe("owner-scoped lifecycle", () => {
   it("creates independent roots and restores lexical context", () => {
@@ -213,11 +214,224 @@ describe("scope-local typed context", () => {
     disposeOwner(root);
   });
 
+  it("retains inherited providers during child-only cleanup without allowing registrations", () => {
+    const app = createOwner();
+    const child = createOwner(app);
+    const release = vi.fn();
+    const token = createContext<{ release(): void }>("Repository");
+    provide(app, token, { release });
+    runWithOwner(child, () => onCleanup(() => {
+      expect(child.disposed).toBe(true);
+      expect(child.parent).toBe(app);
+      expect(requireContext(child, token).release).toBe(release);
+      expect(() => provide(child, token, { release })).toThrow(/disposed/);
+      expect(() => createOwner(child)).toThrow(/disposed/);
+      expect(() => runWithOwner(child, () => onCleanup(() => {}))).toThrow(/disposed/);
+      requireContext(child, token).release();
+    }));
+    disposeOwner(child);
+    expect(release).toHaveBeenCalledOnce();
+    expect(child.parent).toBeNull();
+    expect(() => requireContext(child, token)).toThrow(/disposed/);
+    expect(requireContext(app, token).release).toBe(release);
+    disposeOwner(app);
+  });
+
+  it("retains ancestor and shadowed providers through complete application teardown", () => {
+    const order: string[] = [];
+    const app = createOwner();
+    const feature = createOwner(app);
+    const component = createOwner(feature);
+    const token = createContext<{ release(): void }>("ScopedResource");
+    provide(app, token, { release: () => order.push("app-resource") });
+    provide(feature, token, { release: () => order.push("feature-resource") });
+    runWithOwner(component, () => onCleanup(() => {
+      expect(component.disposed).toBe(true);
+      expect(feature.disposed).toBe(true);
+      expect(app.disposed).toBe(true);
+      expect(component.parent).toBe(feature);
+      expect(getOwner()).toBe(component);
+      requireContext(getOwner()!, token).release();
+      expect(() => provide(app, token, { release: () => {} })).toThrow(/disposed/);
+    }));
+    runWithOwner(feature, () => onCleanup(() => {
+      requireContext(feature, token).release();
+    }));
+    runWithOwner(app, () => onCleanup(() => {
+      requireContext(app, token).release();
+    }));
+    disposeOwner(app);
+    expect(order).toEqual(["feature-resource", "feature-resource", "app-resource"]);
+    expect(app.parent).toBeNull();
+    expect(feature.parent).toBeNull();
+    expect(component.parent).toBeNull();
+    for (const owner of [app, feature, component]) {
+      expect(getOwnerProviders(owner).size).toBe(0);
+      expect(() => requireContext(owner, token)).toThrow(/disposed/);
+    }
+  });
+
+  it("runs cleanup under its own lexical owner rather than an unrelated caller", () => {
+    const token = createContext<{ id: string }>("RequestIdentity");
+    const a = createOwner();
+    const b = createOwner();
+    provide(a, token, { id: "A" });
+    provide(b, token, { id: "B" });
+    const cleanup = vi.fn(() => {
+      expect(getOwner()).toBe(a);
+      expect(requireContext(getOwner()!, token).id).toBe("A");
+      expect(a.disposed).toBe(true);
+      expect(() => onCleanup(() => {})).toThrow(/disposed/);
+      expect(() => onMount(() => {})).toThrow(/disposed/);
+      expect(() => createOwner(getOwner())).toThrow(/disposed/);
+      expect(() => provide(getOwner()!, token, { id: "wrong" })).toThrow(/disposed/);
+    });
+    const factory = vi.fn(() => ({ dispose: vi.fn() }));
+    runWithOwner(a, () => onCleanup(() => {
+      cleanup();
+      expect(() => ownEffect(factory)).toThrow(/disposed/);
+    }));
+    runWithOwner(b, () => {
+      expect(getOwner()).toBe(b);
+      disposeOwner(a);
+      expect(getOwner()).toBe(b);
+    });
+    expect(getOwner()).toBeNull();
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(factory).not.toHaveBeenCalled();
+    expect(requireContext(b, token).id).toBe("B");
+    disposeOwner(b);
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  it("restores an unrelated caller owner after throwing cleanup", () => {
+    const a = createOwner();
+    const b = createOwner();
+    runWithOwner(a, () => onCleanup(() => {
+      expect(getOwner()).toBe(a);
+      throw new Error("teardown failure");
+    }));
+    runWithOwner(b, () => {
+      expect(() => disposeOwner(a)).toThrow("teardown failure");
+      expect(getOwner()).toBe(b);
+      runWithOwner(b, () => onCleanup(() => {}));
+    });
+    expect(getOwner()).toBeNull();
+    disposeOwner(b);
+  });
+
+  it("continues provider-aware cleanup after failures and handles reentrant disposal", () => {
+    const app = createOwner();
+    const child = createOwner(app);
+    const token = createContext<{ release(): void }>("RecoveryResource");
+    const release = vi.fn();
+    provide(app, token, { release });
+    runWithOwner(child, () => {
+      onCleanup(() => {
+        disposeOwner(child);
+        disposeOwner(app);
+        requireContext(child, token).release();
+      });
+      onCleanup(() => { throw new Error("failed cleanup"); });
+    });
+    expect(() => disposeOwner(app)).toThrow("failed cleanup");
+    expect(release).toHaveBeenCalledOnce();
+    expect(child.parent).toBeNull();
+    expect(child.disposed).toBe(true);
+    expect(app.disposed).toBe(true);
+    expect(getOwnerProviders(app).size).toBe(0);
+    expect(() => disposeOwner(app)).not.toThrow();
+  });
+
+
+  it("defers ancestor cleanup when child-first teardown reenters the parent", () => {
+    const order: string[] = [];
+    const app = createOwner();
+    const child = createOwner(app);
+    const sibling = createOwner(app);
+    const token = createContext<{ release(): void }>("Resource");
+    provide(app, token, { release: () => order.push("provider-release") });
+
+    runWithOwner(app, () => onCleanup(() => order.push("app-cleanup")));
+    runWithOwner(sibling, () => onCleanup(() => order.push("sibling-cleanup")));
+    runWithOwner(child, () => {
+      // Reverse registration order: request ancestor disposal first, then use
+      // its provider from a later child cleanup.
+      onCleanup(() => {
+        expect(requireContext(child, token)).toBeDefined();
+        requireContext(child, token).release();
+        order.push("child-final");
+      });
+      onCleanup(() => {
+        order.push("child-request");
+        disposeOwner(app);
+        expect(app.disposed).toBe(true);
+        expect(() => createOwner(app)).toThrow(/disposed/);
+        // Pending ancestor teardown must not revoke inherited providers.
+        expect(requireContext(child, token)).toBeDefined();
+      });
+    });
+
+    disposeOwner(child);
+    expect(order).toEqual([
+      "child-request", "provider-release", "child-final",
+      "sibling-cleanup", "app-cleanup"
+    ]);
+    expect(app.disposed).toBe(true);
+    expect(sibling.disposed).toBe(true);
+    expect(child.parent).toBeNull();
+    expect(getOwnerProviders(app).size).toBe(0);
+    expect(() => requireContext(app, token)).toThrow(/disposed/);
+    expect(() => disposeOwner(app)).not.toThrow();
+  });
+
+  it("defers disposal across multiple descendant levels", () => {
+    const order: string[] = [];
+    const app = createOwner();
+    const route = createOwner(app);
+    const component = createOwner(route);
+    const token = createContext<{ readonly value: string }>("AppToken");
+    provide(app, token, { value: "alive-through-cleanup" });
+    runWithOwner(app, () => onCleanup(() => order.push("app")));
+    runWithOwner(route, () => onCleanup(() => order.push("route")));
+    runWithOwner(component, () => {
+      onCleanup(() => {
+        expect(requireContext(component, token).value).toBe("alive-through-cleanup");
+        order.push("component-last");
+      });
+      onCleanup(() => {
+        disposeOwner(app);
+        expect(app.disposed).toBe(true);
+        expect(route.disposed).toBe(false);
+        order.push("component-first");
+      });
+    });
+    disposeOwner(component);
+    expect(order).toEqual(["component-first", "component-last", "route", "app"]);
+    expect(app.disposed).toBe(true);
+    expect(route.disposed).toBe(true);
+  });
+
   it("returns undefined or typed missing-provider error", () => {
     const root = createOwner();
     expect(useContext(root, RepositoryToken)).toBeUndefined();
     expect(() => requireContext(root, RepositoryToken)).toThrow(MissingProviderError);
     disposeOwner(root);
+  });
+
+  it("releases provider references even when disposed owners remain reachable", () => {
+    const root = createOwner();
+    const child = createOwner(root);
+    const token = createContext<{ readonly value: string }>("ScopedService");
+    const service = { value: "instance" };
+    provide(root, token, service);
+    const stored = getOwnerProviders(root);
+    expect(stored.size).toBe(1);
+    expect(requireContext(child, token)).toBe(service);
+    disposeOwner(root);
+    expect(stored.size).toBe(0);
+    expect(child.parent).toBeNull();
+    expect(() => requireContext(child, token)).toThrow(/disposed/);
   });
 
   it("isolates applications and simulated SSR requests", () => {
