@@ -175,9 +175,15 @@ function optimizeNode(node: IRNode): IRNode {
     }
     case "StaticElement":
       return { ...node, children: node.children.map(optimizeNode) } satisfies StaticElement;
-    case "ConditionalBlock":
-      return { ...node, whenTrue: node.whenTrue.map(optimizeNode),
-        whenFalse: node.whenFalse.map(optimizeNode) };
+    case "ConditionalBlock": {
+      const condition = node.condition.source.trim();
+      const known = node.condition.purity === "pure" && !node.condition.reactive;
+      return {
+        ...node,
+        whenTrue: known && condition === "false" ? [] : node.whenTrue.map(optimizeNode),
+        whenFalse: known && condition === "true" ? [] : node.whenFalse.map(optimizeNode)
+      };
+    }
     case "KeyedLoop":
       return { ...node, body: node.body.map(optimizeNode) };
     default:
