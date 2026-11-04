@@ -526,12 +526,18 @@ export class Router {
     this.listening?.();
     this.listening = null;
     this.subscribers.clear();
+    const errors: unknown[] = [];
     for (const entry of [...this.active].reverse()) {
       try { disposeOwner(entry.owner); }
+      catch (error) { errors.push(error); }
       finally { entry.view?.node.parentNode?.removeChild(entry.view.node); }
     }
     this.active = [];
     this.moduleCache.clear();
+    if (errors.length === 1) throw errors[0];
+    if (errors.length > 1) {
+      throw new AggregateError(errors, "Router page scopes failed during disposal");
+    }
   }
 }
 export function createRouter(options: RouterOptions): Router { return new Router(options); }
