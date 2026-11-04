@@ -12,7 +12,10 @@ import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const pkgs = ["signals", "core", "dom", "compiler", "styles", "vite-plugin", "cli"];
+const pkgs = readdirSync(join(root, "packages"), { withFileTypes: true })
+  .filter(entry => entry.isDirectory() && existsSync(join(root, "packages", entry.name, "package.json")))
+  .map(entry => entry.name)
+  .sort();
 const verifyRelease = process.argv.includes("--enforce-release");
 const temp = mkdtempSync(join(tmpdir(), "zaakiy-packed-consumer-"));
 const output = process.env.ZAAKIY_RELEASE_REPORT || join(root, ".generated", "packed-consumer-report.json");
@@ -90,10 +93,13 @@ try {
     'import { zaakiyPlugin } from "@zaakiyjs/vite-plugin";',
     'import * as styles from "@zaakiyjs/styles";',
     'import * as cli from "@zaakiyjs/cli";',
+    'import * as compat from "@zaakiyjs/compat";',
+    'import * as asyncEngine from "@zaakiyjs/async";',
+    'import * as store from "@zaakiyjs/store";',
     'const s = signal(1); s.value++; if(s.value !== 2) throw new Error("Signal contract failed");',
     'if(typeof mount !== "function" || typeof Show !== "function" || typeof For !== "function") throw new Error("DOM/Core entrypoint missing");',
     'if(typeof compile !== "function" || typeof zaakiyPlugin !== "function") throw new Error("Build entrypoint missing");',
-    'if(!Object.keys(styles).length || !Object.keys(cli).length) throw new Error("Packed package empty");',
+    'if(!Object.keys(styles).length || !Object.keys(cli).length || !Object.keys(compat).length || !Object.keys(asyncEngine).length || !Object.keys(store).length) throw new Error("Packed package empty");',
     'const out = compile({ fileName: "test.tsx", source: "function App(){ return <main>ok</main> }" });',
     'if(out.js.length !== 1 || out.diagnostics.some(d => d.severity === "error")) throw new Error(JSON.stringify(out.diagnostics));',
     'console.log("EXTERNAL CONSUMER ESM PASS");'

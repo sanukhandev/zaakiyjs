@@ -1,6 +1,6 @@
 # ADR 0006 — Nested keyed regions and multi-root fragment templates
 
-- **Status:** Proposed acceptance for native DOM nested keyed lists and fragment templates; final CI and review required before merge.
+- **Status:** Implementation reviewed for the restricted native DOM subset; final integrated CI remains mandatory before merge.
 - **Date:** 2026-11-04
 - **Extends:** ADR 0004 (DOM region ABI v1), ADR 0005 (TSX control-flow).
 - **IR:** No schema change: `ConditionalBlock.whenTrue/whenFalse` and `KeyedLoop.body` already contain arrays of IR nodes. `IR_SCHEMA_VERSION` remains 1.
@@ -59,3 +59,5 @@ function GroupRow(props: { live: () => { id: string; name: string } }) {
 ```
 
 This pattern preserves the existing strongly typed `ComponentCall` props and v1 IR. The compiler rewrites the zero-arg getter to the keyed item's stable signal cell and rejects direct values that could become stale. Components must explicitly derive or access reactive state within owner-managed bindings; the compiler does **not** transform arbitrary component functions into rerendering views.
+
+Integration gate: retest this extension against the current merged Compat, Store and Async packages; do not rely solely on an older foundation-only run.
