@@ -5,7 +5,7 @@
 import type { ViewNode } from "./component.js";
 
 export type JSXChild = ViewNode | string | number | boolean | null | undefined | readonly JSXChild[];
-export type ElementRef<E extends Element> = (element: E) => void;
+export type ElementRef<E extends Element> = (element: E | null) => void;
 
 export interface EventAttributes {
   readonly onClick?: (event: MouseEvent) => void;
