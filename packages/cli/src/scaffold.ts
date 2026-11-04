@@ -1,0 +1,110 @@
+import {createRequire} from "node:module";
+import {readFile, lstat} from "node:fs/promises";
+import {dirname, join, resolve} from "node:path";
+import {fileURLToPath} from "node:url";
+import {CliError} from "./args.js";
+import {safeRelativePath, validateProjectName, writeProject, type PlannedWrite} from "./fs-safe.js";
+
+export type Preset = "minimal" | "standard" | "enterprise";
+export type Versions = Readonly<Record<"core" | "dom" | "signals" | "styles" | "vite-plugin", string>>;
+const requiredFiles = ["package.json.tmpl", "tsconfig.json", "vite.config.ts", "zaakiy.config.ts",
+  "index.html", "src/App.tsx", "src/main.tsx", "src/base.css", ".gitignore", "README.md.tmpl"] as const;
+const packageNames = ["core", "dom", "signals", "styles", "vite-plugin"] as const;
+const packageRoot = fileURLToPath(new URL("../templates/minimal/", import.meta.url));
+const requireModule = createRequire(import.meta.url);
+
+export function parsePreset(value: string | undefined): Preset {
+  if (value === undefined) return "minimal";
+  if (value === "minimal" || value === "standard" || value === "enterprise") return value;
+  throw new CliError("UNKNOWN_PRESET", "Unknown preset " + value + ". Supported: minimal, standard, enterprise.");
+}
+function parseVersion(input: unknown, name: string): string {
+  if (typeof input !== "string" || !/^\d+\.\d+\.\d+(?:-[a-z0-9.-]+)?$/i.test(input)) {
+    throw new CliError("INVALID_PACKAGE_VERSION", "Invalid installed version for " + name);
+  }
+  return input;
+}
+async function installedVersion(name: string): Promise<string> {
+  let current = dirname(requireModule.resolve("@zaakiyjs/" + name));
+  while (true) {
+    try {
+      const data: unknown = JSON.parse(await readFile(join(current, "package.json"), "utf8"));
+      if (data && typeof data === "object" && "name" in data && data.name === "@zaakiyjs/" + name) {
+        return parseVersion("version" in data ? data.version : undefined, name);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    const next = dirname(current);
+    if (current === next) throw new CliError("PACKAGE_NOT_FOUND", "Cannot locate installed @zaakiyjs/" + name);
+    current = next;
+  }
+}
+export async function getInstalledVersions(workspace: boolean): Promise<Versions> {
+  const result = {} as Record<(typeof packageNames)[number], string>;
+  for (const name of packageNames) {
+    let version: string;
+    try { version = await installedVersion(name); }
+    catch (error) {
+      throw new CliError("MISSING_FRAMEWORK_DEPENDENCY", "Required @zaakiyjs/" + name + " package is unavailable: " + String(error));
+    }
+    if (version === "0.0.0" && !workspace) {
+      throw new CliError("UNPUBLISHED_FRAMEWORK", "@zaakiyjs/" + name + " is at the M0 0.0.0 contract version. Publish compatible versions before generating a standalone application.");
+    }
+    result[name] = workspace ? "workspace:^" : "^" + version;
+  }
+  return result;
+}
+export async function assertFrameworkReady(): Promise<void> {
+  try {
+    const [core, dom, vite] = await Promise.all([
+      import("@zaakiyjs/core"), import("@zaakiyjs/dom"), import("@zaakiyjs/vite-plugin")
+    ]);
+    const has = (value: unknown, name: string): boolean =>
+      typeof (value as Record<string, unknown>)[name] === "function";
+    if (!has(core, "signal") || !has(dom, "mount") || !has(vite, "zaakiyPlugin")) {
+      throw new Error("signal(), mount() or zaakiyPlugin() is not exported by the installed packages");
+    }
+  } catch (error) {
+    throw new CliError("FOUNDATION_NOT_READY", "Cannot scaffold a buildable app: the installed ZaakiyJS runtime/compiler integration is not ready. " + String(error));
+  }
+}
+function replaceTokens(content: string, name: string, preset: Preset, manager: string, versions: Versions): string {
+  let result = content
+    .replaceAll("__PROJECT_NAME__", name)
+    .replaceAll("__PRESET__", preset)
+    .replaceAll("__PACKAGE_MANAGER__", manager);
+  for (const pkg of packageNames) result = result.replaceAll("__VERSION_" + pkg.toUpperCase().replace("-", "_") + "__", versions[pkg]);
+  if (/__[A-Z][A-Z0-9_]*__/.test(result)) throw new CliError("INVALID_TEMPLATE", "Unresolved template token detected");
+  return result;
+}
+export async function scaffoldPlan(name: string, preset: Preset, manager: string, versions: Versions): Promise<PlannedWrite[]> {
+  validateProjectName(name);
+  const files: PlannedWrite[] = [];
+  for (const file of requiredFiles) {
+    const fullPath = resolve(packageRoot, file);
+    const info = await lstat(fullPath).catch(() => { throw new CliError("INVALID_TEMPLATE", "Missing template file " + file); });
+    if (!info.isFile() || info.isSymbolicLink() || info.size > 100_000) throw new CliError("INVALID_TEMPLATE", "Unsafe template file " + file);
+    const content = await readFile(fullPath, "utf8");
+    const path = file.endsWith(".tmpl") ? file.slice(0, -5) : file;
+    files.push({path: safeRelativePath(path), content: replaceTokens(content, name, preset, manager, versions)});
+  }
+  JSON.parse(files.find(file => file.path === "package.json")?.content ?? "");
+  if (preset !== "minimal") {
+    files.push({path: "src/features/README.md", content: "# Features\n\nOrganize feature modules by cohesive responsibility. No router is required.\n"});
+    files.push({path: "src/shared/README.md", content: "# Shared\n\nPlace reusable, framework-independent domain contracts here.\n"});
+  }
+  if (preset === "enterprise") {
+    files.push({path: "src/app/providers/README.md", content: "# Providers\n\nCompose application-root dependencies here. Do not use process-global mutable singletons.\n"});
+    files.push({path: "src/app/branding/README.md", content: "# Branding\n\nUse the typed root zaakiy.config.ts as the build-time brand source.\n"});
+    files.push({path: "src/features/README-mvvm.md", content: "# MVVM\n\nFeature folders may contain model, viewmodel, view, services and adapters. ViewModels depend on model interfaces, never UI or infrastructure implementations.\n"});
+  }
+  return files;
+}
+export async function scaffoldProject(input: {
+  cwd: string; name: string; preset: Preset; manager: string;
+  outputPath?: string; dryRun: boolean; force: boolean; versions: Versions
+}): Promise<string[]> {
+  const parent = input.outputPath ? resolve(input.cwd, safeRelativePath(input.outputPath)) : resolve(input.cwd);
+  return writeProject(parent, input.name, await scaffoldPlan(input.name, input.preset, input.manager, input.versions), {dryRun: input.dryRun, force: input.force});
+}
