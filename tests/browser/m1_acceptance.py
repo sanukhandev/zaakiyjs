@@ -204,6 +204,29 @@ def nested_keyed_fragments(page: Page) -> None:
     page.evaluate("window.__groupBefore.removed.click()")
     expect(page.locator("#selected")).to_have_text("-")
 
+
+def keyed_component_live_getter(page: Page) -> None:
+    page.evaluate("window.__componentBefore = [...document.querySelectorAll('#component-groups h3')]")
+    assert page.locator("#component-groups h3").all_text_contents() == ["One", "Two"]
+    page.locator("#group-rename").click()
+    assert page.locator("#component-groups h3").all_text_contents() == ["One2", "Two"]
+    same = page.evaluate("""() => {
+      const nodes = [...document.querySelectorAll('#component-groups h3')];
+      return nodes[0] === window.__componentBefore[0] &&
+             nodes[1] === window.__componentBefore[1];
+    }""")
+    assert same, "Component getter update may not reinitialize keyed component rows"
+    page.locator("#group-reorder").click()
+    assert page.locator("#component-groups h3").all_text_contents() == ["Two", "One2"]
+    moved = page.evaluate("""() => {
+      const nodes = [...document.querySelectorAll('#component-groups h3')];
+      return nodes[0] === window.__componentBefore[1] &&
+             nodes[1] === window.__componentBefore[0];
+    }""")
+    assert moved, "Component-root keyed reorder must preserve node identity"
+    page.locator("#group-remove").click()
+    assert page.locator("#component-groups h3").all_text_contents() == ["Two"]
+
 CASES = (
     ("counter_keyboard", counter_keyboard),
     ("conditional_ownership", conditional_ownership),
@@ -215,6 +238,7 @@ CASES = (
     ("disposal_stress", disposal_stress),
     ("multi_root_branches", multi_root_branches),
     ("nested_keyed_fragments", nested_keyed_fragments),
+    ("keyed_component_live_getter", keyed_component_live_getter),
 )
 
 
