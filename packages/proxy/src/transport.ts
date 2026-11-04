@@ -70,6 +70,7 @@ export async function dispatch(input: TransportInput): Promise<ProxyOutgoing> {
     let upstreamRequest!: ClientRequest;
     let upstreamResponse: IncomingMessage | undefined;
     let consumed = false;
+    let writerDone = false;
     const cleanup = (): void => {
       if (cleanupTimer !== undefined) { clearTimeout(cleanupTimer); cleanupTimer = undefined; }
       input.signal.removeEventListener("abort", onAbort);
@@ -85,6 +86,29 @@ export async function dispatch(input: TransportInput): Promise<ProxyOutgoing> {
     const cancel = (): void => {
       cleanup(); upstreamResponse?.destroy(); upstreamRequest.destroy();
     };
+    const deliver = (response: IncomingMessage): void => {
+      if (settled) return;
+      settled = true;
+      if (cleanupTimer !== undefined) { clearTimeout(cleanupTimer); cleanupTimer = undefined; }
+      const maximum = input.upstream.maxResponseBytes ?? 8_388_608;
+      const body = async function* (): AsyncGenerator<Uint8Array> {
+        if (consumed) throw new ProxyUpstreamError("Response already consumed");
+        consumed = true;
+        let size = 0;
+        try {
+          for await (const chunk of response) {
+            if (input.signal.aborted) throw input.signal.reason;
+            const buffer = chunk as Buffer;
+            size += buffer.byteLength;
+            if (size > maximum) throw new ProxyUpstreamError("Upstream response size exceeded");
+            yield buffer;
+          }
+        } finally { cancel(); }
+      };
+      const headers = responseHeaders(response.headers as IncomingHttpHeaders, input.responseHeaderAllowlist);
+      resolve({ status: response.statusCode ?? 502, headers, body: input.method === "HEAD" ? undefined : body(), cancel });
+      if (input.method === "HEAD") cancel();
+    };
     try {
       upstreamRequest = request(options, response => {
         if (settled) { response.destroy(); return; }
@@ -95,27 +119,11 @@ export async function dispatch(input: TransportInput): Promise<ProxyOutgoing> {
         if (declaredLength && /^\d+$/.test(declaredLength) && Number(declaredLength) > (input.upstream.maxResponseBytes ?? 8_388_608)) {
           response.destroy(); fail(new ProxyUpstreamError("Response size limit exceeded")); return;
         }
-        settled = true;
-        if (cleanupTimer !== undefined) { clearTimeout(cleanupTimer); cleanupTimer = undefined; }
         upstreamResponse = response;
-        const maximum = input.upstream.maxResponseBytes ?? 8_388_608;
-        const body = async function* (): AsyncGenerator<Uint8Array> {
-          if (consumed) throw new ProxyUpstreamError("Response already consumed");
-          consumed = true;
-          let size = 0;
-          try {
-            for await (const chunk of response) {
-              if (input.signal.aborted) throw input.signal.reason;
-              const buffer = chunk as Buffer;
-              size += buffer.byteLength;
-              if (size > maximum) throw new ProxyUpstreamError("Upstream response size exceeded");
-              yield buffer;
-            }
-          } finally { cancel(); }
-        };
-        const headers = responseHeaders(response.headers as IncomingHttpHeaders, input.responseHeaderAllowlist);
-        resolve({ status: response.statusCode ?? 502, headers, body: input.method === "HEAD" ? undefined : body(), cancel });
-        if (input.method === "HEAD") cancel();
+        // A server may reply before consuming a streamed request. Do not emit a
+        // successful downstream status until the entire inbound body passed limits.
+        response.pause();
+        if (writerDone) deliver(response);
       });
     } catch (error) { fail(error); return; }
     upstreamRequest.on("error", error => {
@@ -153,6 +161,8 @@ export async function dispatch(input: TransportInput): Promise<ProxyOutgoing> {
           }
         }
         if (!upstreamRequest.destroyed) upstreamRequest.end();
+        writerDone = true;
+        if (upstreamResponse) deliver(upstreamResponse);
       } catch (error) {
         upstreamRequest.destroy(); fail(error);
       }
