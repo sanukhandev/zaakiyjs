@@ -22,7 +22,7 @@ type FakeElement = {
 };
 type FakeNode = FakeText | FakeElement;
 
-function execute(source: string, entry: string): { root: FakeNode; elements: FakeElement[] } {
+function execute(source: string, entry: string, globals: Record<string, unknown> = {}): { root: FakeNode; elements: FakeElement[] } {
   const compiled = compile({ fileName, source });
   expect(compiled.diagnostics.filter(d => d.severity === "error")).toEqual([]);
   const asset = compiled.js[0];
@@ -81,7 +81,7 @@ function execute(source: string, entry: string): { root: FakeNode; elements: Fak
   const noImports = asset.code.split("\n")
     .filter(line => !line.trimStart().startsWith("import "))
     .join("\n").replace(/^export\s+/gm, "");
-  const context = { ...env, __fixture: undefined as (() => FakeNode) | undefined };
+  const context = { ...env, ...globals, __fixture: undefined as (() => FakeNode) | undefined };
   runInNewContext(noImports + "\n__fixture = " + entry + ";", context, { timeout: 1000 });
   if (!context.__fixture) throw new Error("Missing fixture export: " + entry);
   return { root: context.__fixture(), elements };
@@ -174,12 +174,12 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
     expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
     expect(result.js[0]?.code).not.toContain("__zBindText(__z_owner");
     let calls = 0;
-    const rendered = compile({ fileName, source });
-    expect(rendered.js).toHaveLength(1);
-    // The emitted source is inspected to guarantee a one-time setup call.
-    expect(rendered.js[0]?.code.match(/read\(\)/g)?.length).toBe(1);
-    calls++;
+    const { root } = execute(source, "App", {
+      read: () => { calls++; return "once"; }
+    });
+    expect(allText(root)).toBe("once");
     expect(calls).toBe(1);
+    expect(result.js[0]?.code.match(/read\(\)/g)?.length).toBe(1);
   });
 
   it("preserves conditional dependencies inside the tracked read callback", () => {
