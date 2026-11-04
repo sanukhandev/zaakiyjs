@@ -21,3 +21,5 @@ python3 tests/browser/m1_acceptance.py --base-url http://127.0.0.1:4188
 ```
 
 **Scope:** This verifies the M1 **supported native-element** `<Show>`/`<For>` subset and browser-level cleanup. It does not claim multi-root templates, nested loops, SSR, hydration, general-purpose JSX fragments, or npm publication.
+
+The advanced extension adds three browser cases per engine: multi-root conditional branches, fragment-backed nested keyed lists and live-getter component-root keyed rows. With the extension enabled the matrix runs **11 cases × 3 engines = 33** and retains the original eight cases.

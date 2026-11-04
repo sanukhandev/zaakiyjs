@@ -214,7 +214,9 @@ export function analyze(request: CompileRequest): Analysis {
       } else if (isJsx(child)) {
         nodes.push(element(child, namespace));
       } else if (ts.isJsxFragment(child)) {
-        report("ZC2101", "JSX fragments require a frozen fragment/lifetime ABI.", child);
+        // Fragments are compile-only grouping syntax; children share the current
+        // owner and DOM parent. No synthetic element or runtime JSX factory.
+        nodes.push(...childrenOf(child.children, namespace));
       } else if (ts.isJsxExpression(child) && child.expression) {
         const node = child.expression;
         if (ts.isConditionalExpression(node) && (isJsx(node.whenTrue) || isJsx(node.whenFalse))) {
@@ -324,10 +326,12 @@ export function analyze(request: CompileRequest): Analysis {
         while (ts.isParenthesizedExpression(current)) current = current.expression;
         return current;
       };
-      const asDom = (input: ts.Expression | undefined): IRNode | undefined => {
-        if (!input) return undefined;
+      const asNodes = (input: ts.Expression | undefined): IRNode[] => {
+        if (!input) return [];
         const candidate = unwrapped(input);
-        return isJsx(candidate) ? element(candidate, parentNamespace) : undefined;
+        if (isJsx(candidate)) return [element(candidate, parentNamespace)];
+        if (ts.isJsxFragment(candidate)) return childrenOf(candidate.children, parentNamespace);
+        return [];
       };
       const children = ts.isJsxElement(node)
         ? node.children.filter(child => !(ts.isJsxText(child) && !child.text.trim()))
@@ -335,27 +339,25 @@ export function analyze(request: CompileRequest): Analysis {
       if (intrinsic === "Show") {
         const when = getValue("when", true);
         const fallback = getValue("fallback", false);
-        const direct = children[0];
-        if (children.length !== 1 || !direct || !isJsx(direct)) {
-          report("ZC2403", "Show requires exactly one native JSX child element.", node);
+        // Direct sibling roots and explicit JSX fragments are both represented
+        // by the existing ConditionalBlock.whenTrue/whenFalse arrays in IR v1.
+        const rendered: IRNode[] = [];
+        for (const direct of children) {
+          if (isJsx(direct)) rendered.push(element(direct, parentNamespace));
+          else if (ts.isJsxFragment(direct)) rendered.push(...childrenOf(direct.children, parentNamespace));
+          else report("ZC2403", "Show children must be JSX nodes or fragments.", direct);
         }
-        const rendered = direct && isJsx(direct) ? element(direct, parentNamespace) : undefined;
-        if (rendered && rendered.kind !== "StaticElement") {
-          report("ZC2403", "Show v1 requires one native element root; wrap nested control flow in an element.", direct ?? node);
-        }
-        const alternate = asDom(fallback);
-        if (fallback && !alternate &&
+        const alternate = asNodes(fallback);
+        if (fallback && !alternate.length &&
             unwrapped(fallback).kind !== ts.SyntaxKind.NullKeyword) {
-          report("ZC2403", "Show fallback must be a single JSX element or null.", fallback);
+          report("ZC2403", "Show fallback must be JSX or a fragment (or null).", fallback);
         }
-        if (alternate && alternate.kind !== "StaticElement") {
-          report("ZC2403", "Show fallback v1 requires a native JSX element root.", fallback!);
-        }
+        if (!children.length) report("ZC2403", "Show requires JSX children.", node);
         return {
           kind: "ConditionalBlock", id: idOf("ConditionalBlock", span), span,
           condition: when ? expression(when) : { source: "false", span, purity: "pure", reactive: false },
-          whenTrue: rendered && rendered.kind === "StaticElement" ? [rendered] : [],
-          whenFalse: alternate && alternate.kind === "StaticElement" ? [alternate] : []
+          whenTrue: rendered,
+          whenFalse: alternate
         };
       }
 
@@ -368,9 +370,9 @@ export function analyze(request: CompileRequest): Analysis {
       const itemParameter = callback?.parameters.length === 1 &&
         ts.isIdentifier(callback.parameters[0]!.name)
         ? callback.parameters[0]!.name.text : undefined;
-      const root = callback && ts.isExpression(callback.body) ? asDom(callback.body) : undefined;
-      if (children.length !== 1 || !itemParameter || !root || root.kind !== "StaticElement") {
-        report("ZC2404", "For requires one child render callback (item => <nativeElement />).", node);
+      const body = callback && ts.isExpression(callback.body) ? asNodes(callback.body) : [];
+      if (children.length !== 1 || !itemParameter || !body.length) {
+        report("ZC2404", "For requires one child render callback (item => JSX or fragment).", node);
       }
       if (by && (!ts.isArrowFunction(unwrapped(by)) && !ts.isIdentifier(unwrapped(by)) ||
           containsJsx(by))) {
@@ -388,7 +390,7 @@ export function analyze(request: CompileRequest): Analysis {
           : { source: "[]", span, purity: "pure", reactive: false },
         key: { source: keySource, span: by ? spanOf(source, by) : span, purity: "unknown", reactive: false },
         itemParameter,
-        body: root && root.kind === "StaticElement" ? [root] : []
+        body
       };
     }
 
