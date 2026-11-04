@@ -148,6 +148,85 @@ def disposal_stress(page: Page) -> None:
     assert page.evaluate("document.getElementById('app').childNodes.length") == 0
 
 
+
+def multi_root_branches(page: Page) -> None:
+    expect(page.locator("#advanced-a")).to_have_text("One")
+    expect(page.locator("#advanced-b")).to_have_text("Two")
+    page.evaluate("window.__oldAdvanced = document.querySelector('#advanced-a')")
+    page.locator("#toggle").click()
+    expect(page.locator("#advanced-a")).to_have_count(0)
+    expect(page.locator("#advanced-b")).to_have_count(0)
+    expect(page.locator("#fallback-a")).to_have_text("A")
+    expect(page.locator("#fallback-b")).to_have_text("B")
+    page.locator("#toggle").click()
+    expect(page.locator("#fallback-a")).to_have_count(0)
+    expect(page.locator("#fallback-b")).to_have_count(0)
+    expect(page.locator("#advanced-a")).to_have_text("One")
+    assert page.evaluate("document.querySelector('#advanced-a') !== window.__oldAdvanced")
+
+
+def nested_keyed_fragments(page: Page) -> None:
+    page.evaluate("""() => {
+      const headings = [...document.querySelectorAll('#groups h2')];
+      const labels = [...document.querySelectorAll('#groups li strong')];
+      window.__groupBefore = { headings, labels, removed: document.querySelector('#groups li button') };
+      const observer = new MutationObserver(events => window.__groupMutations.push(...events));
+      window.__groupMutations = [];
+      observer.observe(document.querySelector('#groups'),
+        {subtree: true, childList: true, attributes: true, characterData: true});
+      window.__groupStop = () => observer.disconnect();
+    }""")
+    page.locator("#group-rename").click()
+    expect(page.locator("#groups h2").first).to_have_text("One2")
+    expect(page.locator("#groups li strong").first).to_have_text("One2:First2")
+    assert page.locator("#groups h2").all_text_contents() == ["One2", "Two"]
+    unchanged = page.evaluate("""() => ({
+      name: document.querySelectorAll('#groups h2')[1] === window.__groupBefore.headings[1],
+      row: document.querySelectorAll('#groups li strong')[1] === window.__groupBefore.labels[1],
+      unrelated: window.__groupMutations.filter(m =>
+        m.target === window.__groupBefore.labels[1].firstChild ||
+        m.target === window.__groupBefore.headings[1].firstChild).length
+    })""")
+    assert unchanged == {"name": True, "row": True, "unrelated": 0}, unchanged
+    page.evaluate("window.__groupStop()")
+    page.locator("#group-reorder").click()
+    expect(page.locator("#groups h2").first).to_have_text("Two")
+    assert page.locator("#groups h2").all_text_contents() == ["Two", "One2"]
+    moved = page.evaluate("""() => {
+      const headings = [...document.querySelectorAll('#groups h2')];
+      return headings[0] === window.__groupBefore.headings[1] &&
+             headings[1] === window.__groupBefore.headings[0];
+    }""")
+    assert moved, "A keyed fragment reorder must preserve both root DOM identities"
+    page.locator("#group-remove").click()
+    expect(page.locator("#groups h2")).to_have_count(1)
+    assert page.locator("#groups h2").all_text_contents() == ["Two"]
+    page.evaluate("window.__groupBefore.removed.click()")
+    expect(page.locator("#selected")).to_have_text("-")
+
+
+def keyed_component_live_getter(page: Page) -> None:
+    page.evaluate("window.__componentBefore = [...document.querySelectorAll('#component-groups h3')]")
+    assert page.locator("#component-groups h3").all_text_contents() == ["One", "Two"]
+    page.locator("#group-rename").click()
+    assert page.locator("#component-groups h3").all_text_contents() == ["One2", "Two"]
+    same = page.evaluate("""() => {
+      const nodes = [...document.querySelectorAll('#component-groups h3')];
+      return nodes[0] === window.__componentBefore[0] &&
+             nodes[1] === window.__componentBefore[1];
+    }""")
+    assert same, "Component getter update may not reinitialize keyed component rows"
+    page.locator("#group-reorder").click()
+    assert page.locator("#component-groups h3").all_text_contents() == ["Two", "One2"]
+    moved = page.evaluate("""() => {
+      const nodes = [...document.querySelectorAll('#component-groups h3')];
+      return nodes[0] === window.__componentBefore[1] &&
+             nodes[1] === window.__componentBefore[0];
+    }""")
+    assert moved, "Component-root keyed reorder must preserve node identity"
+    page.locator("#group-remove").click()
+    assert page.locator("#component-groups h3").all_text_contents() == ["Two"]
+
 CASES = (
     ("counter_keyboard", counter_keyboard),
     ("conditional_ownership", conditional_ownership),
@@ -157,6 +236,9 @@ CASES = (
     ("injection_is_inert", injection_is_inert),
     ("duplicate_keys_atomic", duplicate_keys_atomic),
     ("disposal_stress", disposal_stress),
+    ("multi_root_branches", multi_root_branches),
+    ("nested_keyed_fragments", nested_keyed_fragments),
+    ("keyed_component_live_getter", keyed_component_live_getter),
 )
 
 

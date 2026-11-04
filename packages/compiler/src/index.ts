@@ -77,7 +77,9 @@ export function compile(request: CompileRequest): CompileResult {
     return {
       irVersion: IR_SCHEMA_VERSION, js: [], css: [],
       diagnostics: [...ordered, {
-        code: "ZC9001", severity: "error",
+        code: error instanceof Error && /^ZC\d{4}:/.test(error.message)
+          ? error.message.slice(0, 6) : "ZC9001",
+        severity: "error",
         message: error instanceof Error ? error.message : "Unexpected compiler emission failure."
       }],
       manifest

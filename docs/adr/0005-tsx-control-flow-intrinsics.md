@@ -41,3 +41,7 @@ function App() {
 No `innerHTML`, `eval`, `new Function`, runtime compiler or global Promise/timer patches are introduced. Component/region lifecycle and disposal follow [ADR 0004](0004-dom-region-abi.md); scheduler phases follow [ADR 0003](0003-signals-scheduler.md). TypeScript checks native JSX props and key selector types; source-level diagnostics reject unsupported shapes. The supported M1 syntax passed [24/24 actual browser cases](../../tests/browser/README.md) in Chromium, Firefox and WebKit, including keyboard access, mutation targeting, focus, cleanup, XSS text, and duplicate keys. This does not certify all accessibility guidelines or supported browser versions; SSR/hydration and advanced JSX grammar remain additional release gates.
 
 The existing `IR_SCHEMA_VERSION=1` is retained; this is an additive compiler authoring feature, not a previously published API migration.
+
+## Extension (ADR 0006)
+
+The original single-root restriction is extended without changing IR schema or DOM region ABI. [ADR 0006](0006-nested-keyed-fragment-templates.md) defines nested keyed signal ownership and multiple-root native DocumentFragment templates. The pre-existing native-element wrapper requirement for the top-level application remains. Component-root keyed templates and top-level fragment expressions are **not** part of this extension; they still fail closed until separate reviewed contracts are available.
