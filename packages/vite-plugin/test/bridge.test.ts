@@ -7,6 +7,7 @@ import {
   formatDiagnostic,
   hasCompiler,
   hasStyles,
+  hasStyleTokenExtractor,
   invokeCompiler,
   invokeStyles,
   styleTokensFromResult
@@ -46,14 +47,24 @@ describe("M0 Vite/compiler/styles contract bridge", () => {
 
   it("reads versioned style token metadata without pretending the compiler implemented extraction", () => {
     expect(styleTokensFromResult(emptyResult, "fixture.tsx")).toEqual([]);
-    // Actual compiler branch emits sorted string[] rather than M0 object tokens.
-    expect(styleTokensFromResult({
+    const source = '<div class="flex gap-4" />';
+    const compilerResult: CompileResult = {
       ...emptyResult,
       manifest: { styleTokens: ["flex", "gap-4"] }
-    }, "fixture.tsx")).toEqual([
-      { token: "flex", file: "fixture.tsx", offset: 0 },
-      { token: "gap-4", file: "fixture.tsx", offset: 0 }
-    ]);
+    };
+    if (hasStyleTokenExtractor()) {
+      expect(styleTokensFromResult(compilerResult, "fixture.tsx", source)).toEqual([
+        { token: "flex", file: "fixture.tsx", offset: source.indexOf("flex") },
+        { token: "gap-4", file: "fixture.tsx", offset: source.indexOf("gap-4") }
+      ]);
+      expect(() => styleTokensFromResult({
+        ...emptyResult, manifest: { styleTokens: ["not-present"] }
+      }, "fixture.tsx", source)).toThrow("ZV2013");
+    } else {
+      // No fake offsets are permitted while the M0 styles package is types-only.
+      expect(() => styleTokensFromResult(compilerResult, "fixture.tsx", source))
+        .toThrow("ZV2011");
+    }
     expect(styleTokensFromResult({
       ...emptyResult,
       manifest: { styleTokens: [{ token: "flex", file: "fixture.tsx", offset: 42 }] }
@@ -62,6 +73,10 @@ describe("M0 Vite/compiler/styles contract bridge", () => {
       ...emptyResult,
       manifest: { styleTokens: [{ token: "flex", offset: -1 }] }
     }, "fixture.tsx")).toThrow("ZV2005");
+    expect(() => styleTokensFromResult({
+      ...emptyResult,
+      manifest: { styleTokens: [{ token: "flex", file: "fixture.tsx", offset: 0 }] }
+    }, "fixture.tsx", source)).toThrow("ZV2014");
   });
 
   it("forwards source diagnostics with 1-based compiler spans to zero-based Rollup columns", () => {

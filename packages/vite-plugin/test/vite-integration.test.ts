@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { build, createServer, type ViteDevServer, type RollupOutput } from "vite";
 import { fileURLToPath } from "node:url";
+import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { hasCompiler, hasStyles } from "../src/bridge.js";
 import { zaakiyPlugin } from "../src/index.js";
 
@@ -59,10 +62,18 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
     expect(String(html?.source)).toContain('href="/assets/theme.css"');
     const manifest = assets.find(e => e.fileName === "zaakiy-assets.json");
     expect(manifest).toBeDefined();
-    const parsed = JSON.parse(String(manifest?.source)) as { schemaVersion: number; assets: { fileName: string }[] };
+    const parsed = JSON.parse(String(manifest?.source)) as {
+      schemaVersion: number;
+      assets: { fileName: string; sourceFile?: string }[];
+    };
     expect(parsed.schemaVersion).toBe(1);
     expect(parsed.assets.map(a => a.fileName)).toContain("assets/theme.css");
     expect(parsed.assets.filter(a => a.fileName.endsWith(".js")).length).toBeGreaterThanOrEqual(2);
+    expect(parsed.assets.some(a => a.sourceFile === "src/index.js")).toBe(true);
+    expect(parsed.assets.every(a =>
+      !a.sourceFile || (!a.sourceFile.startsWith("/") &&
+        !a.sourceFile.includes("\\") && !a.sourceFile.includes("../"))
+    )).toBe(true);
   });
 
   it("uses Vite's actual watcher to trigger a full reload for changed TSX, never silent owner reuse", async () => {
@@ -123,6 +134,34 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
     const first = await compile();
     expect(first.length).toBeGreaterThanOrEqual(4);
     expect(await compile()).toEqual(first);
+  });
+
+  it("produces the same manifest bytes in two independently located checkouts", async () => {
+    const sandbox = mkdtempSync(join(tmpdir(), "zaakiy-vite-manifest-"));
+    try {
+      const manifests: string[] = [];
+      for (const name of ["machine-a", "machine-b"]) {
+        const root = join(sandbox, name);
+        cpSync(plainRoot, root, { recursive: true });
+        const built = await build({
+          configFile: false,
+          root,
+          plugins: [zaakiyPlugin()],
+          logLevel: "silent",
+          build: { write: false, emptyOutDir: false }
+        });
+        const output = Array.isArray(built) ? built[0] : built;
+        const manifest = (output as RollupOutput).output.find(
+          item => item.type === "asset" && item.fileName === "zaakiy-assets.json"
+        );
+        expect(manifest?.type).toBe("asset");
+        manifests.push(String(manifest?.type === "asset" ? manifest.source : ""));
+      }
+      expect(manifests[0]).toBe(manifests[1]);
+      expect(manifests[0]).not.toContain(sandbox.replaceAll("\\", "/"));
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
   });
 
   it("does not silently fall back to another JSX transform when compiler is missing", async () => {

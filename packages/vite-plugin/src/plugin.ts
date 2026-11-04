@@ -8,6 +8,7 @@ import {
 } from "vite";
 import type { ExtractedStyleToken, StyleConfig } from "@zaakiyjs/styles";
 import type { CompilerDiagnostic } from "@zaakiyjs/compiler";
+import { cssSourceMapComment, portableSourceFile } from "./asset-paths.js";
 import type { ZaakiyAssetManifest, ZaakiyViteOptions, GeneratedAssetRecord } from "./index.js";
 import {
   assertBrowserOutput,
@@ -333,7 +334,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         key,
         code: asset.code + '\nimport "' + PUBLIC_CSS_ID + '";\n',
         map: asset.map ?? null,
-        tokens: styleTokensFromResult(output, file),
+        tokens: styleTokensFromResult(output, file, source),
         additionalCss: output.css.map((item) => item.code)
       };
       modules.set(file, record);
@@ -377,7 +378,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       await collectCss(true);
       // Emit even an empty stylesheet so every HTML entry has a valid link.
       const content = compiledCssMap && resolved?.build.sourcemap
-        ? css + "\n/*# sourceMappingURL=zaakiy-styles.css.map */\n"
+        ? css + "\n" + cssSourceMapComment(cssOutputFile) + "\n"
         : css;
       this.emitFile({ type: "asset", fileName: cssOutputFile, source: content });
       if (compiledCssMap && resolved?.build.sourcemap) {
@@ -404,7 +405,12 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
             return {
               fileName: entry.fileName,
               kind: "js",
-              ...(entry.facadeModuleId ? { sourceFile: simpleFile(entry.facadeModuleId) } : {})
+              ...(entry.facadeModuleId && resolved
+                ? (() => {
+                    const sourceFile = portableSourceFile(simpleFile(entry.facadeModuleId), resolved.root);
+                    return sourceFile ? { sourceFile } : {};
+                  })()
+                : {})
             };
           }
           if (entry.fileName.endsWith(".css")) return { fileName: entry.fileName, kind: "css" };

@@ -89,26 +89,87 @@ export async function invokeStyles(request: StyleCompilerRequest): Promise<Style
   return value as unknown as StyleCompilerResult;
 }
 
-export function styleTokensFromResult(result: CompileResult, file: string): ExtractedStyleToken[] {
+/**
+ * Resolve token offsets only from an authoritative producer.
+ *
+ * The compiler's legacy string[] manifest contains no source spans. The real
+ * styles package exposes a conservative static-literal extractor; it is used
+ * only to recover exact positions for tokens already approved by the compiler.
+ * Unknown positions are fatal rather than falsely reporting offset 0.
+ */
+export function hasStyleTokenExtractor(): boolean {
+  return typeof stylesExports.extractStyleTokens === "function";
+}
+
+export function styleTokensFromResult(
+  result: CompileResult,
+  file: string,
+  source?: string
+): ExtractedStyleToken[] {
   const tokens: unknown = result.manifest?.styleTokens;
   if (tokens === undefined) return [];
   if (!Array.isArray(tokens)) {
     throw new Error("ZV2004: Compiler manifest.styleTokens must be an array");
   }
+
+  const unlocated = tokens.some((token: unknown) => typeof token === "string");
+  const recovered = new Map<string, ExtractedStyleToken>();
+  if (unlocated) {
+    if (source === undefined || !hasStyleTokenExtractor()) {
+      throw new Error(
+        "ZV2011: Compiler emitted style token names without source offsets. " +
+        "An executable @zaakiyjs/styles.extractStyleTokens() is required, " +
+        "or the compiler must emit ExtractedStyleToken records with exact spans."
+      );
+    }
+    const extractor = stylesExports.extractStyleTokens as
+      (source: string, file: string) => unknown;
+    const extracted: unknown = extractor(source, file);
+    if (!record(extracted) || !Array.isArray(extracted.tokens)) {
+      throw new Error("ZV2012: @zaakiyjs/styles extractor returned malformed token metadata");
+    }
+    for (const token of extracted.tokens as readonly unknown[]) {
+      if (!record(token) || typeof token.token !== "string" ||
+          token.file !== file || !Number.isSafeInteger(token.offset) ||
+          Number(token.offset) < 0 ||
+          source.slice(Number(token.offset), Number(token.offset) + token.token.length) !== token.token) {
+        throw new Error("ZV2012: @zaakiyjs/styles extractor returned an invalid original-source offset");
+      }
+      const located: ExtractedStyleToken = {
+        token: token.token, file, offset: Number(token.offset)
+      };
+      if (!recovered.has(located.token)) recovered.set(located.token, located);
+    }
+  }
+
   return tokens.map((item: unknown): ExtractedStyleToken => {
-    // The actual foundation compiler collects sorted, deduplicated strings.
-    // M0's styles contract requires file/offset, so use the compilation file
-    // and a documented unknown offset (0) when the compiler omits provenance.
     if (typeof item === "string") {
       if (!item.trim()) throw new Error("ZV2005: Empty style token in compiler manifest");
-      return { token: item, file, offset: 0 };
+      const located = recovered.get(item);
+      if (!located) {
+        throw new Error(
+          "ZV2013: No verifiable original-source position for compiler style token '" +
+          item + "' in " + file + ". The compiler must emit a precise token span."
+        );
+      }
+      return located;
     }
     if (!record(item) || typeof item.token !== "string" || !item.token.trim() ||
         typeof item.offset !== "number" || !Number.isSafeInteger(item.offset) ||
         item.offset < 0 || (item.file !== undefined && typeof item.file !== "string")) {
       throw new Error("ZV2005: Invalid extracted style token in compiler manifest");
     }
-    return { token: item.token, file: typeof item.file === "string" ? item.file : file, offset: item.offset };
+    if (item.file === undefined || item.file === file) {
+      if (source !== undefined &&
+          source.slice(item.offset, item.offset + item.token.length) !== item.token) {
+        throw new Error("ZV2014: Compiler style token position does not match original source");
+      }
+    }
+    return {
+      token: item.token,
+      file: typeof item.file === "string" ? item.file : file,
+      offset: item.offset
+    };
   });
 }
 
