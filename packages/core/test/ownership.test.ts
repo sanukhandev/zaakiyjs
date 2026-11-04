@@ -7,6 +7,7 @@ import {
   runWithOwner, suspendOwner, transferOwner, useContext
 } from "../src/index.js";
 import type { ViewNode } from "../src/index.js";
+import { getOwnerProviders } from "../src/owner.js";
 
 describe("owner-scoped lifecycle", () => {
   it("creates independent roots and restores lexical context", () => {
@@ -218,6 +219,21 @@ describe("scope-local typed context", () => {
     expect(useContext(root, RepositoryToken)).toBeUndefined();
     expect(() => requireContext(root, RepositoryToken)).toThrow(MissingProviderError);
     disposeOwner(root);
+  });
+
+  it("releases provider references even when disposed owners remain reachable", () => {
+    const root = createOwner();
+    const child = createOwner(root);
+    const token = createContext<{ readonly value: string }>("ScopedService");
+    const service = { value: "instance" };
+    provide(root, token, service);
+    const stored = getOwnerProviders(root);
+    expect(stored.size).toBe(1);
+    expect(requireContext(child, token)).toBe(service);
+    disposeOwner(root);
+    expect(stored.size).toBe(0);
+    expect(child.parent).toBeNull();
+    expect(() => requireContext(child, token)).toThrow(/disposed/);
   });
 
   it("isolates applications and simulated SSR requests", () => {
