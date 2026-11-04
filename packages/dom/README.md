@@ -42,9 +42,9 @@ The example is generated-code style. M0's TSX is still typecheck-only. There is 
 
 ## Integration gate
 
-**Draft / blocked:** M0 core and signals on `main` expose only types. This package requires the agreed owner and signal callable APIs. The repository M0 export-surface contract test will require coordinated retirement. The frozen lockfile includes the jsdom test dependency. Native Chromium smoke and package artifact checks run when CI has a Chrome binary; a compiler-generated Counter fixture runs when `@zaakiyjs/compiler` is implemented; Firefox/WebKit Playwright coverage remains a separate integration gate.
+**Draft / blocked:** M0 core and signals on `main` expose only types. This package requires the agreed owner and signal callable APIs. The repository M0 export-surface contract test will require coordinated retirement. The frozen lockfile includes the jsdom test dependency. Artifact and npm-pack checks run in CI. Native Chromium smoke runs when a Chrome binary is present; the compiler-generated Counter fixture runs when `@zaakiyjs/compiler` is implemented. Firefox/WebKit Playwright coverage remains a separate integration gate.
 
-No measured bundle size, memory, or performance claims are made before a reproducible build and CI pass.
+Production bundle size and memory-leak benchmarks require dedicated reproducible profiling; the artifact and Chromium smoke tests report directly measured byte counts but must not be represented as a full production-bundle benchmark.
 
 ## Validation
 
