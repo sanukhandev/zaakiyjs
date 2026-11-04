@@ -10,6 +10,8 @@ describe("published ESM package", () => {
     const cwd = dirname(dirname(fileURLToPath(import.meta.url)));
     const temp = mkdtempSync(join(tmpdir(), "zaakiy-http-pack-"));
     try {
+      // Root CI verifier is integration-owned; validate the package-local lint gate here.
+      execFileSync("pnpm", ["run", "lint"], { cwd, stdio: "pipe" });
       execFileSync("pnpm", ["pack", "--pack-destination", temp], { cwd });
       const tgz = readdirSync(temp).find(x => x.endsWith(".tgz"));
       expect(tgz).toBeDefined();
