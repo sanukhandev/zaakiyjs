@@ -214,6 +214,154 @@ describe('@zaakiyjs/forms', () => {
     form.dispose();
   });
 
+
+  it('preserves field errors with corrected paths across keyed moves', async () => {
+    const form = createForm({ initialValues: defaults() });
+    const array = form.array('items');
+    const label = form.field('items.1.label', { validators: [() => 'Not allowed'] });
+    expect((await label.validate()).status).toBe('invalid');
+    expect(label.errors.value[0]?.path).toBe('items.1.label');
+    array.move(1, 0);
+    expect(label.path.value).toBe('items.0.label');
+    expect(label.errors.value[0]?.path).toBe('items.0.label');
+    expect(label.status.value).toBe('invalid');
+    form.dispose();
+  });
+
+  it('aborts a pending validator captured at the prior item path during reorder', async () => {
+    const deferredValidation = deferred<string | undefined>();
+    let observedSignal: AbortSignal | undefined;
+    const form = createForm({ initialValues: defaults() });
+    const array = form.array('items');
+    const field = form.field('items.0.label', { validators: [(_v, { signal }) => {
+      observedSignal = signal;
+      return deferredValidation.promise;
+    }] });
+    const validation = field.validate();
+    expect(field.pending.value).toBe(true);
+    array.move(0, 1);
+    expect(observedSignal?.aborted).toBe(true);
+    expect((await validation).status).toBe('cancelled');
+    expect(field.pending.value).toBe(false);
+    deferredValidation.resolve('stale error');
+    await Promise.resolve();
+    expect(field.errors.value).toEqual([]);
+    expect(field.path.value).toBe('items.1.label');
+    form.dispose();
+  });
+
+  it('refreshes ancestor field signals when a keyed array changes', () => {
+    const form = createForm({ initialValues: defaults() });
+    const items = form.field('items');
+    const array = form.array('items');
+    array.insert(0, { label: 'NEW', tags: [] });
+    expect(items.value.value.map(x => x.label)).toEqual(['NEW', 'A', 'B']);
+    expect(items.dirty.value).toBe(true);
+    form.reset();
+    expect(items.value.value.map(x => x.label)).toEqual(['A', 'B']);
+    form.dispose();
+  });
+
+  it('rejects structural writes through parents of keyed nested arrays atomically', () => {
+    const form = createForm({ initialValues: defaults() });
+    const nested = form.array('items.0.tags');
+    expect(() => form.setValue('items.0', { label: 'Replaced', tags: ['x', 'y'] })).toThrow('keyed array');
+    expect(form.getValue('items.0.label')).toBe('A');
+    expect(nested.keys.value).toHaveLength(1);
+    form.setValue('items.0', { label: 'Edited', tags: ['y'] });
+    expect(nested.keys.value).toHaveLength(1);
+    expect(form.getValue('items.0.label')).toBe('Edited');
+    form.dispose();
+  });
+
+  it('removes nested keyed-array registrations when setValues deletes their parent item', () => {
+    const form = createForm({ initialValues: defaults() });
+    form.array('items');
+    const nested = form.array('items.1.tags');
+    form.setValues({ ...defaults(), items: [{ label: 'A2', tags: ['x'] }] });
+    expect(form.getValue('items')).toHaveLength(1);
+    expect(() => nested.append('bad')).toThrow('disposed');
+    form.reset();
+    expect(form.getValue('items')).toHaveLength(2);
+    form.dispose();
+  });
+
+  it('cancels validations when declared dependencies change without a change trigger', async () => {
+    const pending = deferred<string | undefined>();
+    const form = createForm({ initialValues: defaults() });
+    const confirm = form.field('confirm', {
+      dependencies: ['password'],
+      validateOn: ['submit'],
+      validators: [() => pending.promise]
+    });
+    const first = confirm.validate();
+    form.setValue('password', 'changed');
+    expect((await first).status).toBe('cancelled');
+    pending.resolve('stale result');
+    await Promise.resolve();
+    expect(confirm.errors.value).toEqual([]);
+    expect(confirm.status.value).toBe('idle');
+    form.dispose();
+  });
+
+
+  it('defensively copies object-valued field and group reads and freezes array keys', () => {
+    const form = createForm({ initialValues: defaults() });
+    const profile = form.field('profile');
+    const group = form.group('profile');
+    const array = form.array('items');
+    const fieldSnapshot = profile.value.value;
+    fieldSnapshot.name = 'mutated outside signals';
+    expect(form.getValue('profile.name')).toBe('');
+    const groupSnapshot = group.value.value;
+    groupSnapshot.name = 'mutated group';
+    expect(form.getValue('profile.name')).toBe('');
+    const initialSnapshot = profile.initialValue.value;
+    initialSnapshot.name = 'mutated baseline';
+    expect(profile.initialValue.value.name).toBe('');
+    expect(Object.isFrozen(array.keys.value)).toBe(true);
+    expect(() => (array.keys.value as string[]).push('corrupt')).toThrow();
+    expect(array.keys.value).toHaveLength(2);
+    form.dispose();
+  });
+
+  it('does not attach old server validation errors after the user edits submitted values', async () => {
+    const remote = deferred<never>();
+    const form = createForm({ initialValues: defaults(), onSubmit: () => remote.promise });
+    const email = form.field('email');
+    form.setValue('email', 'old@example.com');
+    const submission = form.submit();
+    await vi.waitFor(() => expect(form.submitting.value).toBe(true));
+    await Promise.resolve(); await Promise.resolve();
+    form.setValue('email', 'new@example.com');
+    remote.reject(new SubmissionValidationError([{ code: 'taken', source: 'server', path: 'email', message: 'Old email taken' }]));
+    expect((await submission).status).toBe('invalid');
+    expect(email.errors.value).toEqual([]);
+    expect(form.getValue('email')).toBe('new@example.com');
+    form.dispose();
+  });
+
+  it('invalidates declared dependents after whole-form values are replaced', async () => {
+    const job = deferred<string | undefined>();
+    const form = createForm({ initialValues: defaults() });
+    const confirm = form.field('confirm', { dependencies: ['password'], validateOn: ['submit'], validators: [() => job.promise] });
+    const pending = confirm.validate();
+    form.setValues({ ...defaults(), password: 'new password' });
+    expect((await pending).status).toBe('cancelled');
+    job.resolve('stale');
+    await Promise.resolve();
+    expect(confirm.errors.value).toEqual([]);
+    expect(confirm.status.value).toBe('idle');
+    form.dispose();
+  });
+
+  it('refuses to register a nonexistent runtime path', () => {
+    const form = createForm({ initialValues: defaults() });
+    expect(() => form.field('items.2.label')).toThrow('does not exist');
+    expect(() => form.field('profile.unknown' as never)).toThrow('does not exist');
+    form.dispose();
+  });
+
   it('blocks structural replacement that would corrupt keyed array state', () => {
     const form = createForm({ initialValues: defaults() });
     form.array('items');
@@ -261,6 +409,20 @@ describe('@zaakiyjs/forms', () => {
     expect(email.errors.value[0]?.code).toBe('taken');
     expect(email.value.value).toBe('used@example.com');
     form.dispose();
+  });
+
+
+  it('times out a submission that ignores cancellation without leaving pending state', async () => {
+    vi.useFakeTimers();
+    try {
+      const form = createForm({ initialValues: defaults(), submitTimeoutMs: 40, onSubmit: () => new Promise(() => undefined) });
+      const submission = form.submit();
+      await vi.advanceTimersByTimeAsync(41);
+      expect(await submission).toEqual({ status: 'failed', failure: { kind: 'transport', message: 'Submission timed out' } });
+      expect(form.submitting.value).toBe(false);
+      expect(form.submitSucceeded.value).toBe(false);
+      form.dispose();
+    } finally { vi.useRealTimers(); }
   });
 
   it('returns transport failure and requires explicit retry', async () => {

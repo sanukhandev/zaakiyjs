@@ -1,7 +1,7 @@
 import { getOwner, onCleanup, runWithOwner } from '@zaakiyjs/core';
 import { batch, computed, signal } from '@zaakiyjs/signals';
 import type { ReadonlySignal, WritableSignal } from '@zaakiyjs/signals';
-import { copyValue, overlaps, pathInArray, readPath, sameValue, splitPath, writePath } from './path.js';
+import { copyValue, hasPath, overlaps, pathInArray, readPath, sameValue, splitPath, writePath } from './path.js';
 import type {
   ArrayElement, ArrayHandle, FieldGroup, FieldHandle, FieldOptions, FieldPath,
   FieldValidationContext, FormController, FormOptions, PathValue,
@@ -26,7 +26,7 @@ interface FieldRecord<T extends object> {
   readonly pending: WritableSignal<boolean>;
   readonly status: WritableSignal<ValidationStatus>;
   readonly validators: readonly Validator<T>[];
-  readonly dependencies: readonly string[];
+  readonly dependencies: string[];
   readonly triggers: ReadonlySet<ValidationTrigger>;
   readonly required: boolean | string;
   generation: number;
@@ -174,45 +174,73 @@ export function createForm<T extends object, TResult = void>(options: FormOption
     rec.serverIssues.value = [];
     if (rec.triggers.has('change') && !rec.disabled.peek()) void validateRecord(rec).catch(() => undefined);
   }
-  function refreshRecords(changedPath: string, oldValues: T, revalidate = true): void {
+  function refreshRecords(changedPath: string, revalidate = true): Set<FieldRecord<T>> {
+    const changed = new Set<FieldRecord<T>>();
     for (const rec of [...records]) {
       const path = rec.path.peek();
       if (!overlaps(path, changedPath)) continue;
       const next = readPath(valuesNow(), path);
-      const previous = readPath(oldValues, path);
+      const previous = rec.value.peek();
       if (sameValue(previous, next)) continue;
+      changed.add(rec);
       rec.value.value = copyValue(next);
       if (revalidate) handleFieldChange(rec, previous, next);
     }
+    return changed;
   }
-  function validateDependents(path: string): void {
+  function validateDependents(path: string, refreshed: ReadonlySet<FieldRecord<T>>): void {
     for (const rec of records) {
-      if (rec.disposed || rec.disabled.peek() || !rec.triggers.has('change')) continue;
-      if (overlaps(path, rec.path.peek())) continue; // already revalidated directly
-      if (rec.dependencies.some(dependency => overlaps(dependency, path))) {
-        void validateRecord(rec).catch(() => undefined);
-      }
+      if (rec.disposed || rec.disabled.peek() || refreshed.has(rec)) continue;
+      if (!rec.dependencies.some(dependency => overlaps(dependency, path))) continue;
+      // Even if change validation was not requested, an old async result
+      // may no longer be valid for the declared cross-field dependency.
+      cancelField(rec);
+      rec.status.value = 'idle';
+      rec.fieldIssues.value = [];
+      rec.serverIssues.value = [];
+      if (rec.triggers.has('change')) void validateRecord(rec).catch(() => undefined);
+    }
+  }
+  function validateChangedDependencies(before: T, after: T, refreshed: ReadonlySet<FieldRecord<T>>): void {
+    for (const rec of records) {
+      if (rec.disposed || rec.disabled.peek() || refreshed.has(rec)) continue;
+      if (!rec.dependencies.some(path => !sameValue(readPath(before, path), readPath(after, path)))) continue;
+      cancelField(rec);
+      rec.status.value = 'idle';
+      rec.fieldIssues.value = [];
+      rec.serverIssues.value = [];
+      if (rec.triggers.has('change')) void validateRecord(rec).catch(() => undefined);
     }
   }
   function mutate(path: string, value: unknown): void {
     alive(); splitPath(path);
-    if (arrays.has(path) && Array.isArray(value) && value.length !== (readPath(valuesNow(), path) as unknown[]).length) {
-      throw new Error('Use keyed array insert/remove for structural changes');
-    }
     const old = valuesNow();
     const updated = writePath(old, path, copyValue(value));
+    // Structural changes to ANY registered descendant array must go through
+    // the keyed array API. Checking the exact path alone misses parent writes.
+    for (const arr of arrays.values()) {
+      if (arr.disposed) continue;
+      const arrayPath = arr.path.peek();
+      if (!overlaps(arrayPath, path)) continue;
+      const before = readPath(old, arrayPath);
+      const after = readPath(updated, arrayPath);
+      if (!Array.isArray(before) || !Array.isArray(after) || before.length !== after.length) {
+        throw new Error('Use keyed array insert/remove for structural changes');
+      }
+    }
     if (sameValue(old, updated)) return;
     batch(() => {
       current = updated;
       invalidateForm();
-      refreshRecords(path, old);
-      validateDependents(path);
+      const changed = refreshRecords(path);
+      validateDependents(path, changed);
       touchRevision();
       if (formTriggers.has('change')) void validateFormOnly().catch(() => undefined);
     });
   }
   function createField<P extends FieldPath<T>>(path: P, configuration: FieldOptions<T, PathValue<T, P>> = {}): FieldHandle<T, P> {
     alive(); splitPath(path);
+    if (!hasPath(valuesNow(), path)) throw new RangeError('Field path does not exist in current values');
     const existing = byPath.get(path);
     if (existing) return makeFieldHandle<P>(existing);
     const raw = copyValue(readPath(valuesNow(), path));
@@ -236,9 +264,9 @@ export function createForm<T extends object, TResult = void>(options: FormOption
     const read = (): void => { if (rec.disposed) throw new Error('Field has been disposed'); alive(); };
     const fieldErrors = computed(() => [...rec.fieldIssues.value, ...rec.crossIssues.value, ...rec.serverIssues.value]);
     const value: WritableSignal<PathValue<T, P>> = {
-      get value() { read(); return rec.value.value as PathValue<T, P>; },
+      get value() { read(); return copyValue(rec.value.value) as PathValue<T, P>; },
       set value(next) { read(); mutate(rec.path.peek(), next); },
-      peek() { read(); return rec.value.peek() as PathValue<T, P>; }
+      peek() { read(); return copyValue(rec.value.peek()) as PathValue<T, P>; }
     };
     const visibleErrors = computed(() => {
       const errors = fieldErrors.value;
@@ -249,7 +277,10 @@ export function createForm<T extends object, TResult = void>(options: FormOption
       id: rec.id,
       path: computed(() => rec.path.value),
       value,
-      initialValue: computed(() => rec.initial.value as PathValue<T, P>),
+      initialValue: {
+        get value() { read(); return copyValue(rec.initial.value) as PathValue<T, P>; },
+        peek() { read(); return copyValue(rec.initial.peek()) as PathValue<T, P>; }
+      },
       dirty: computed(() => !sameValue(rec.value.value, rec.initial.value)),
       pristine: computed(() => sameValue(rec.value.value, rec.initial.value)),
       touched: computed(() => rec.touched.value),
@@ -362,15 +393,26 @@ export function createForm<T extends object, TResult = void>(options: FormOption
   }
   function reindex(arrayPath: string, oldKeys: readonly string[], newKeys: readonly string[]): void {
     const newIndex = new Map(newKeys.map((key, index) => [key, index]));
-    // Stage remaps first: cyclic moves must not overwrite the old map entries.
+    function remap(path: string): string | null {
+      const position = pathInArray(path, arrayPath);
+      if (!position) return path;
+      const key = oldKeys[position.index];
+      const index = key === undefined ? undefined : newIndex.get(key);
+      return index === undefined ? null : `${arrayPath}.${index}${position.suffix}`;
+    }
+    function remapIssues(issues: readonly ValidationIssue[]): readonly ValidationIssue[] {
+      return issues.map(issue => {
+        if (!issue.path) return issue;
+        const nextPath = remap(issue.path);
+        return nextPath === null ? issue : nextPath === issue.path ? issue : { ...issue, path: nextPath };
+      });
+    }
+    // Stage remaps before mutating maps: cyclic swaps must not clobber keys.
     const nested: { oldPath: string; arr: ArrayRecord; nextPath: string | null }[] = [];
     for (const [oldPath, arr] of arrays) {
-      if (oldPath === arrayPath) continue;
-      const inArray = pathInArray(oldPath, arrayPath);
-      if (!inArray) continue;
-      const key = oldKeys[inArray.index];
-      const index = key === undefined ? undefined : newIndex.get(key);
-      nested.push({ oldPath, arr, nextPath: index === undefined ? null : `${arrayPath}.${index}${inArray.suffix}` });
+      if (oldPath !== arrayPath && pathInArray(oldPath, arrayPath)) {
+        nested.push({ oldPath, arr, nextPath: remap(oldPath) });
+      }
     }
     for (const entry of nested) arrays.delete(entry.oldPath);
     for (const entry of nested) {
@@ -378,20 +420,45 @@ export function createForm<T extends object, TResult = void>(options: FormOption
       entry.arr.path.value = entry.nextPath;
       arrays.set(entry.nextPath, entry.arr);
     }
-    for (const rec of [...records]) {
-      const original = rec.path.peek();
-      const location = pathInArray(original, arrayPath);
-      if (!location) continue;
-      const key = oldKeys[location.index];
-      const index = key === undefined ? undefined : newIndex.get(key);
-      byPath.delete(original);
-      if (index === undefined) { disposeField(rec); continue; }
-      const nextPath = `${arrayPath}.${index}${location.suffix}`;
-      rec.path.value = nextPath;
+    const staged: { rec: FieldRecord<T>; nextPath: string | null; previous: string }[] = [];
+    for (const rec of records) {
+      const previous = rec.path.peek();
+      if (pathInArray(previous, arrayPath)) {
+        staged.push({ rec, nextPath: remap(previous), previous });
+      }
+    }
+    for (const entry of staged) byPath.delete(entry.previous);
+    for (const { rec, nextPath, previous } of staged) {
+      if (nextPath === null) { disposeField(rec); continue; }
+      if (nextPath !== previous) {
+        const wasPending = rec.pending.peek();
+        cancelField(rec); // validators captured the old path and values snapshot
+        if (wasPending) {
+          rec.status.value = 'idle';
+          rec.fieldIssues.value = [];
+        } else {
+          rec.fieldIssues.value = remapIssues(rec.fieldIssues.peek());
+        }
+        rec.serverIssues.value = remapIssues(rec.serverIssues.peek());
+        // Dependencies within this same keyed item follow its identity.
+        const previousItem = pathInArray(previous, arrayPath);
+        if (previousItem) {
+          const oldPrefix = `${arrayPath}.${previousItem.index}`;
+          const nextPrefix = `${arrayPath}.${pathInArray(nextPath, arrayPath)!.index}`;
+          for (let i = 0; i < rec.dependencies.length; i++) {
+            const dependency = rec.dependencies[i]!;
+            if (dependency === oldPrefix || dependency.startsWith(oldPrefix + '.')) {
+              rec.dependencies[i] = nextPrefix + dependency.slice(oldPrefix.length);
+            }
+          }
+        }
+        rec.path.value = nextPath;
+      }
     }
     for (const rec of records) byPath.set(rec.path.peek(), rec);
     registryRevision.value++;
   }
+
   function createArray<P extends FieldPath<T>>(path: P): ArrayHandle<T, P> {
     alive(); splitPath(path);
     const contents = readPath(valuesNow(), path);
@@ -399,7 +466,7 @@ export function createForm<T extends object, TResult = void>(options: FormOption
     let arr = arrays.get(path);
     if (!arr) {
       const keys = contents.map(() => `item-${++nextId}`);
-      arr = { path: signal<string>(path), keys: signal<readonly string[]>(keys), initialKeys: [...keys], disposed: false };
+      arr = { path: signal<string>(path), keys: signal<readonly string[]>(Object.freeze(keys)), initialKeys: [...keys], disposed: false };
       arrays.set(path, arr);
     }
     const record = arr;
@@ -417,7 +484,9 @@ export function createForm<T extends object, TResult = void>(options: FormOption
         current = updated;
         invalidateForm();
         reindex(pathNow, oldKeys, keys);
-        record.keys.value = keys;
+        record.keys.value = Object.freeze(keys);
+        const changed = refreshRecords(pathNow);
+        validateDependents(pathNow, changed);
         touchRevision();
         if (formTriggers.has('change')) void validateFormOnly().catch(() => undefined);
       });
@@ -456,36 +525,53 @@ export function createForm<T extends object, TResult = void>(options: FormOption
     alive();
     const old = valuesNow();
     const next = copyValue(values);
-    // Validate registered shapes before touching any reactive or mutable state.
-    for (const arr of arrays.values()) {
-      if (!Array.isArray(readPath(next, arr.path.peek()))) throw new TypeError('Updated values must preserve registered arrays');
+    // A nested array may disappear because an ancestor item was removed.
+    // Otherwise registered array shapes must be preserved, atomically.
+    const registered = [...arrays.values()].filter(arr => !arr.disposed)
+      .sort((a, b) => splitPath(a.path.peek()).length - splitPath(b.path.peek()).length);
+    for (const arr of registered) {
+      const path = arr.path.peek();
+      if (Array.isArray(readPath(next, path))) continue;
+      const removedWithParent = registered.some(parent => {
+        const parentPath = parent.path.peek();
+        if (parentPath === path) return false;
+        const pos = pathInArray(path, parentPath);
+        const newParent = readPath(next, parentPath);
+        return pos !== null && Array.isArray(newParent) && pos.index >= newParent.length;
+      });
+      if (!removedWithParent) throw new TypeError('Updated values must preserve registered arrays');
     }
-    // A wholesale update preserves identity for overlapping item positions.
+    // Process parent arrays before their children so nested registrations
+    // follow stable keys and removed descendants are disposed deterministically.
     batch(() => {
       current = next;
       invalidateForm();
-      for (const arr of [...arrays.values()]) {
+      for (const arr of registered) {
         if (arr.disposed) continue;
         const path = arr.path.peek();
-        const updated = readPath(next, path) as unknown[];
+        const updated = readPath(next, path);
+        if (!Array.isArray(updated)) throw new TypeError('Updated values must preserve registered arrays');
         const oldKeys = arr.keys.peek();
         const newKeys = restoreInitialKeys && arr.initialKeys.length === updated.length
           ? [...arr.initialKeys]
           : Array.from({ length: updated.length }, (_, index) => oldKeys[index] ?? `item-${++nextId}`);
         reindex(path, oldKeys, newKeys);
-        arr.keys.value = newKeys;
+        arr.keys.value = Object.freeze(newKeys);
         if (setBaseline) arr.initialKeys = [...newKeys];
       }
+      const refreshed = new Set<FieldRecord<T>>();
       for (const rec of records) {
         const value = readPath(next, rec.path.peek());
         const prev = rec.value.peek();
         rec.value.value = copyValue(value);
+        if (!sameValue(prev, value)) refreshed.add(rec);
         if (setBaseline) rec.initial.value = copyValue(value);
         if (setBaseline) {
           cancelField(rec); rec.touched.value = false; rec.status.value = 'idle';
           rec.fieldIssues.value = []; rec.crossIssues.value = []; rec.serverIssues.value = [];
         } else handleFieldChange(rec, prev, value);
       }
+      if (!setBaseline) validateChangedDependencies(old, next, refreshed);
       if (setBaseline) initial = copyValue(next);
       touchRevision();
       if (!setBaseline && formTriggers.has('change')) void validateFormOnly().catch(() => undefined);
@@ -525,8 +611,12 @@ export function createForm<T extends object, TResult = void>(options: FormOption
     } catch (error) {
       if (submissionGeneration !== generation || disposed || (controller.signal.aborted && !linked.timedOut())) return { status: 'aborted' };
       if (error instanceof SubmissionValidationError) {
-        for (const rec of records) rec.serverIssues.value = error.issues.filter(issue => issue.path === rec.path.peek());
-        formIssues.value = [...formIssues.peek(), ...error.issues.filter(issue => !issue.path || !byPath.has(issue.path))];
+        // Do not attach errors from a previous submitted snapshot to
+        // the user's newer in-progress edits.
+        if (revision.peek() === valuesRevision) {
+          for (const rec of records) rec.serverIssues.value = error.issues.filter(issue => issue.path === rec.path.peek());
+          formIssues.value = [...formIssues.peek(), ...error.issues.filter(issue => !issue.path || !byPath.has(issue.path))];
+        }
         submitted.value = true;
         const failure: SubmissionFailure = { kind: 'domain', message: 'Submission rejected by server validation' };
         submitFailure.value = failure;
@@ -555,7 +645,12 @@ export function createForm<T extends object, TResult = void>(options: FormOption
     formIssues.value = [];
   }
   form = {
-    values: computed(() => { revision.value; return snapshot() as Readonly<T>; }),
+    // An uncached signal facade prevents form snapshots being retained by a
+    // computed's memoized value after owner disposal.
+    values: {
+      get value() { revision.value; return snapshot() as Readonly<T>; },
+      peek() { revision.peek(); return snapshot() as Readonly<T>; }
+    },
     dirty: computed(() => { revision.value; return !sameValue(valuesNow(), initial); }),
     valid: computed(() => {
       registryRevision.value;
@@ -579,7 +674,10 @@ export function createForm<T extends object, TResult = void>(options: FormOption
       alive(); splitPath(path);
       return {
         path,
-        value: computed(() => { revision.value; return copyValue(readPath(valuesNow(), path)) as PathValue<T, P>; }),
+        value: {
+          get value() { revision.value; return copyValue(readPath(valuesNow(), path)) as PathValue<T, P>; },
+          peek() { revision.peek(); return copyValue(readPath(valuesNow(), path)) as PathValue<T, P>; }
+        },
         field<C extends FieldPath<PathValue<T, P>>>(child: C, configuration?: FieldOptions<T, PathValue<PathValue<T, P>, C>>) {
           const combined = `${path}.${child}` as Extract<`${P}.${C}`, FieldPath<T>>;
           return createField(combined, configuration as FieldOptions<T, PathValue<T, typeof combined>>);

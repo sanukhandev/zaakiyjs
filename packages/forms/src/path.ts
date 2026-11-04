@@ -7,6 +7,15 @@ export function splitPath(path: string): string[] {
   if (parts.length > 16 || parts.some(p => !p || forbidden.has(p))) throw new TypeError('Unsafe or invalid field path');
   return parts;
 }
+/** An omitted optional property is different from an explicit undefined value. */
+export function hasPath(root: unknown, path: string): boolean {
+  let value: unknown = root;
+  for (const key of splitPath(path)) {
+    if (value === null || typeof value !== 'object' || !own.call(value, key)) return false;
+    value = (value as Record<string, unknown>)[key];
+  }
+  return true;
+}
 export function readPath(root: unknown, path: string): unknown {
   return splitPath(path).reduce<unknown>((value, key) => {
     if (value === null || typeof value !== 'object' || !own.call(value, key)) return undefined;
