@@ -53,6 +53,8 @@ function purityOf(node: ts.Expression): Purity {
 }
 
 function containsReactiveRead(node: ts.Node, names: ReadonlySet<string>): boolean {
+  // Closures are values at setup, not reactive reads; their bodies run only on invocation.
+  if (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) return false;
   if (ts.isPropertyAccessExpression(node) && node.name.text === "value" &&
       ts.isIdentifier(node.expression) && names.has(node.expression.text)) return true;
   return ts.forEachChild(node, child => containsReactiveRead(child, names) || undefined) ?? false;
