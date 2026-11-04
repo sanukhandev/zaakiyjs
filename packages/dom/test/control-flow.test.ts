@@ -128,6 +128,31 @@ describe("compiled Show and For with real DOM and signals", () => {
     expect(fixture.rows.observers?.size).toBe(0);
   });
 
+  it("adds and removes keyed owners without retaining detached event handlers", async () => {
+    const fixture = await appFixture();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const app = mount(() => fixture.App(), host);
+    const [removed, retained] = [...host.querySelectorAll("li")];
+    const oldButton = removed?.querySelector("button");
+    fixture.rows.value = [{id: "b", label: "Beta"}, {id: "c", label: "Gamma"}];
+    flushSync();
+    const next = [...host.querySelectorAll("li")];
+    expect(next).toHaveLength(2);
+    expect(next[0]).toBe(retained);
+    expect(next[1]?.querySelector("span")?.textContent).toBe("Gamma");
+    fixture.clicked.value = "";
+    oldButton?.click();
+    expect(fixture.clicked.value).toBe("");
+    next[1]?.querySelector("button")?.click();
+    expect(fixture.clicked.value).toBe("c");
+    fixture.rows.value = [];
+    flushSync();
+    expect(host.querySelectorAll("li")).toHaveLength(0);
+    app.dispose();
+    expect(fixture.rows.observers?.size).toBe(0);
+  });
+
   it("rejects duplicate keys before modifying existing DOM", async () => {
     const fixture = await appFixture();
     const host = document.createElement("div");
