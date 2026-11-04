@@ -12,6 +12,7 @@ export interface ShowProps {
 }
 
 export function Show(_props: ShowProps): ViewNode {
+  void _props;
   throw new Error("ZaakiyJS <Show> must be transformed by @zaakiyjs/compiler.");
 }
 
@@ -22,5 +23,6 @@ export interface ForProps<Item, Key extends PropertyKey> {
 }
 
 export function For<Item, Key extends PropertyKey>(_props: ForProps<Item, Key>): ViewNode {
+  void _props;
   throw new Error("ZaakiyJS <For> must be transformed by @zaakiyjs/compiler.");
 }
