@@ -81,6 +81,7 @@ export function detectSourceFeatures(input: SourceInput): DetectionResult {
           report("web.abort-controller", node);
           report("web.abort-reason", node);
         }
+        if (node.expression.text === "eval" || node.expression.text === "Function") report("js.dynamic-code", node);
         if (node.expression.text === "fetch") report("web.fetch", node);
         if (node.expression.text === "structuredClone") report("web.structured-clone", node);
       }
@@ -91,6 +92,7 @@ export function detectSourceFeatures(input: SourceInput): DetectionResult {
       }
     }
     if (ts.isNewExpression(node) && ts.isIdentifier(node.expression)) {
+      if (node.expression.text === "Function") report("js.dynamic-code", node);
       if (node.expression.text === "AbortController") report("web.abort-controller", node);
       if (node.expression.text === "ResizeObserver") report("web.resize-observer", node);
     }
