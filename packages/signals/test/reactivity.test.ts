@@ -266,6 +266,187 @@ describe("signals", () => {
     expect(values).toEqual([0, 2]);
     stop.dispose();
   });
+  it("recovers after an initial effect failure with an error handler", () => {
+    const ready = signal(false);
+    const source = signal(1);
+    const errors: unknown[] = [];
+    const seen: number[] = [];
+    const stop = effect(() => {
+      const value = source.value;
+      if (!ready.value) throw new Error("not ready");
+      seen.push(value);
+    }, { onError: error => errors.push(error) });
+    expect(errors).toHaveLength(1);
+    ready.value = true;
+    flushSync();
+    source.value = 2;
+    flushSync();
+    expect(seen).toEqual([1, 2]);
+    stop.dispose();
+  });
+  it("recovers a previously failed computed and its consumer", () => {
+    const ready = signal(false);
+    const input = signal(1);
+    const derived = computed(() => {
+      if (!ready.value) throw new Error("unavailable");
+      return input.value * 3;
+    });
+    const results: number[] = [];
+    const errors: unknown[] = [];
+    const stop = effect(() => { results.push(derived.value); }, { onError: error => errors.push(error) });
+    expect(errors).toHaveLength(1);
+    ready.value = true;
+    flushSync();
+    input.value = 5;
+    flushSync();
+    expect(results).toEqual([3, 15]);
+    stop.dispose();
+  });
+  it("retains partial error dependencies until a successful rerun prunes them", () => {
+    const chooseOther = signal(false);
+    const first = signal(0);
+    const second = signal(0);
+    const completed: number[] = [];
+    const errors: unknown[] = [];
+    const stop = effect(() => {
+      if (chooseOther.value) {
+        void second.value;
+        throw new Error("temporary failure");
+      }
+      completed.push(first.value);
+    }, { onError: error => errors.push(error) });
+    chooseOther.value = true;
+    flushSync();
+    second.value++;
+    flushSync();
+    expect(errors).toHaveLength(2);
+    chooseOther.value = false;
+    flushSync();
+    const before = completed.length;
+    second.value++;
+    flushSync();
+    expect(completed.length).toBe(before);
+    first.value++;
+    flushSync();
+    expect(completed.at(-1)).toBe(1);
+    stop.dispose();
+  });
+  it("self-disposal cannot resurrect subscriptions and cleans returned resources", () => {
+    const gate = signal(0);
+    const lateDependency = signal(0);
+    const ref: { handle?: ReturnType<typeof effect> } = {};
+    const cleanup: string[] = [];
+    ref.handle = effect(() => {
+      if (gate.value > 0) {
+        ref.handle?.dispose();
+        void lateDependency.value;
+        return () => { cleanup.push("late"); };
+      }
+      return () => { cleanup.push("initial"); };
+    });
+    gate.value = 1;
+    flushSync();
+    expect(cleanup).toEqual(["initial", "late"]);
+    const inbound = lateDependency as unknown as { readonly observers: ReadonlySet<unknown> };
+    expect(inbound.observers.size).toBe(0);
+    lateDependency.value++;
+    flushSync();
+    expect(inbound.observers.size).toBe(0);
+  });
+  it("disposal in a cleanup cancels the pending next effect body", () => {
+    const state = signal(0);
+    const ref: { handle?: ReturnType<typeof effect> } = {};
+    let executions = 0;
+    let cleanups = 0;
+    ref.handle = effect(() => {
+      void state.value;
+      executions++;
+      return () => { cleanups++; ref.handle?.dispose(); };
+    });
+    state.value++;
+    flushSync();
+    state.value++;
+    flushSync();
+    expect(executions).toBe(1);
+    expect(cleanups).toBe(1);
+    const inbound = state as unknown as { readonly observers: ReadonlySet<unknown> };
+    expect(inbound.observers.size).toBe(0);
+  });
+  it("rejects a synchronous nested scheduler flush in cleanup", () => {
+    const state = signal(0);
+    const errors: unknown[] = [];
+    const stop = effect(() => {
+      void state.value;
+      return () => { flushSync(); };
+    }, { onError: error => errors.push(error) });
+    state.value++;
+    flushSync();
+    expect(errors).toHaveLength(1);
+    expect(String(errors[0])).toMatch(/reenter/);
+    stop.dispose();
+  });
+  it("completes independent jobs when another effect throws", () => {
+    const failSource = signal(0);
+    const successSource = signal(0);
+    const seen: number[] = [];
+    const failing = effect(() => { if (failSource.value > 0) throw new Error("isolated fault"); });
+    const succeeding = effect(() => { seen.push(successSource.value); });
+    batch(() => { failSource.value++; successSource.value++; });
+    expect(() => flushSync()).toThrow("isolated fault");
+    expect(seen).toEqual([0, 1]);
+    failing.dispose(); succeeding.dispose();
+  });
+  it("randomized conditional dependency switching matches an independent oracle", () => {
+    let seed = 0xabc12345;
+    const next = () => (seed = (Math.imul(seed, 1103515245) + 12345) >>> 0);
+    const select = signal(0);
+    const inputs = Array.from({ length: 24 }, () => signal(0));
+    const projection = computed(() => inputs[select.value]!.value);
+    const nested = computed(() => projection.value * 2 + 1);
+    const seen: number[] = [];
+    const stop = effect(() => { seen.push(nested.value); });
+    const reference = Array(24).fill(0) as number[];
+    for (let step = 0; step < 500; step++) {
+      const index = next() % inputs.length;
+      const value = next() % 10_000;
+      batch(() => { select.value = index; inputs[index]!.value = value; reference[index] = value; });
+      flushSync();
+      expect(seen.at(-1)).toBe(reference[index]! * 2 + 1);
+      const unrelated = (index + 1) % inputs.length;
+      const before = seen.length;
+      inputs[unrelated]!.value = next() % 10_000;
+      flushSync();
+      expect(seen.length).toBe(before);
+    }
+    stop.dispose();
+  });
+  it("reattaches a previously cold computed to upstream signals", () => {
+    const source = signal(0);
+    const derived = computed(() => source.value + 1);
+    expect(derived.value).toBe(1);
+    source.value = 1;
+    const seen: number[] = [];
+    const stop = effect(() => { seen.push(derived.value); });
+    source.value = 2;
+    flushSync();
+    expect(seen).toEqual([2, 3]);
+    stop.dispose();
+    const inbound = source as unknown as { readonly observers: ReadonlySet<unknown> };
+    expect(inbound.observers.size).toBe(0);
+  });
+  it("reattaches cold nested computed chains after changing their inputs", () => {
+    const source = signal(1);
+    const inner = computed(() => source.value + 1);
+    const outer = computed(() => inner.value + 1);
+    expect(outer.peek()).toBe(3);
+    source.value = 3;
+    const results: number[] = [];
+    const stop = effect(() => { results.push(outer.value); });
+    source.value = 8;
+    flushSync();
+    expect(results).toEqual([5, 10]);
+    stop.dispose();
+  });
   it("randomized graph agrees with a simple pure reference model", () => {
     let seed = 0x12345678;
     const next = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0);
