@@ -1,5 +1,6 @@
 import {test} from "node:test";
 import {strict as assert} from "node:assert";
+import {URL} from "node:url";
 import {readFile} from "node:fs/promises";
 
 test("generated starter declares a strict TypeScript native-DOM app", async () => {

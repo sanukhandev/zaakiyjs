@@ -7,7 +7,7 @@ export interface PlannedWrite { path: string; content: string }
 const reserved = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i;
 function safeSegment(name: string): boolean {
   return name.length > 0 && name.length <= 120 && !reserved.test(name) &&
-    !/[<>:"|?*\u0000-\u001f]/.test(name) && !/[. ]$/.test(name);
+    !/[<>:"|?*]/.test(name) && ![...name].some(char => char.charCodeAt(0) < 32) && !/[. ]$/.test(name);
 }
 export function validateProjectName(name: string): string {
   if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name) || name.length > 100 || reserved.test(name)) {

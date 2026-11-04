@@ -18,7 +18,7 @@ const templateBlobHashes: Readonly<Record<string, string>> = {
   "src/App.tsx": "5d4e97ce9b2b470cb727d830b443e31176b07681",
   "src/main.tsx": "8d6a8c319eaa2bec8cb4718755b4898650ae0381",
   "src/base.css": "ed7e0e7e27b66f5e27b0419683f0741442d42543",
-  "tests/scaffold.test.mjs": "76d5525ecda4dc37dc37a0ac068e40b72d4e8d57",
+  "tests/scaffold.test.mjs": "e70080edfb312f0ecc7958c69157b4f9c02100ea",
   "gitignore.tmpl": "7da9c936635b4372e739c683f47194da4334e8a5",
   "README.md.tmpl": "7df8fcbad13f32830994d11756b93d212462c060"
 };
