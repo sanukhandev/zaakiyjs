@@ -42,18 +42,29 @@ export interface PageView {
   /** Required when this page has a nested child route with visible content. */
   readonly outlet?: Element;
 }
-export interface PageAdapterContext<P extends Record<string, string> = Record<string, string>>
-  extends RouteContext<P> {
-  readonly data: unknown;
+export interface PageAdapterContext<
+  P extends Record<string, string> = Record<string, string>, Data = unknown
+> extends RouteContext<P> {
+  readonly data: Data;
   readonly metadata: Readonly<Record<string, unknown>>;
 }
 /**
  * Setup is synchronous and executes inside runWithOwner; async work belongs in
  * loaders, never in a Promise continuation pretending to have lexical ownership.
  */
-export interface PageAdapter<P extends Record<string, string> = Record<string, string>> {
-  readonly setup?: (context: PageAdapterContext<P>) => unknown;
-  readonly render: (model: unknown, context: PageAdapterContext<P>) => PageView;
+export interface PageAdapter<
+  P extends Record<string, string> = Record<string, string>,
+  Model = unknown,
+  Data = unknown
+> {
+  readonly setup?: (context: PageAdapterContext<P, Data>) => Model;
+  readonly render: (model: Model, context: PageAdapterContext<P, Data>) => PageView;
+}
+/** Preserve strong Model and loader-data types at the application boundary. */
+export function definePageAdapter<
+  P extends Record<string, string>, Model, Data = unknown
+>(adapter: PageAdapter<P, Model, Data>): PageAdapter<P> {
+  return adapter as unknown as PageAdapter<P>;
 }
 export interface RouteModule {
   readonly loader?: RouteLoader;
