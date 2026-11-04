@@ -123,11 +123,22 @@ export interface RouterSignals {
   readonly url: ReadonlySignal<string>;
   readonly matches: ReadonlySignal<readonly ActiveRoute[]>;
   readonly params: ReadonlySignal<Readonly<Record<string, string>>>;
-  readonly search: ReadonlySignal<URLSearchParams>;
+  readonly search: ReadonlySignal<ReadonlySearchParams>;
   readonly hash: ReadonlySignal<string>;
   readonly status: ReadonlySignal<NavigationStatus>;
   readonly pending: ReadonlySignal<string | null>;
   readonly error: ReadonlySignal<unknown>;
+}
+/** Immutable facade: mutating native URLSearchParams must not bypass navigation. */
+export interface ReadonlySearchParams extends Iterable<[string, string]> {
+  get(name: string): string | null;
+  getAll(name: string): string[];
+  has(name: string, value?: string): boolean;
+  entries(): URLSearchParamsIterator<[string, string]>;
+  keys(): URLSearchParamsIterator<string>;
+  values(): URLSearchParamsIterator<string>;
+  forEach(callback: (value: string, key: string) => void): void;
+  toString(): string;
 }
 export interface HistoryAdapter {
   current(): string;
