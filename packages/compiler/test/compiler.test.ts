@@ -94,6 +94,7 @@ function allText(node: FakeNode): string {
 describe("TSX-to-DOM compiler safe vertical slice", () => {
   it("emits static JSX and text with no virtual DOM or framework runtime imports", () => {
     const result = compile({ fileName, source: "function App() { return <main>Hello</main>; }" });
+    console.info("DEBUG STATIC EMIT", JSON.stringify(result.js[0]?.code));
     expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
     expect(result.js).toHaveLength(1);
     expect(result.js[0]?.code).toContain('__zCreateElement("main", "html")');
