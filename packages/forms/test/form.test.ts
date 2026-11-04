@@ -480,7 +480,7 @@ describe('@zaakiyjs/forms', () => {
     const firstProfile = first.field('profile.name');
     const secondEmail = second.field('email');
     let unrelatedRuns = 0;
-    const unrelated = effect(() => { firstProfile.value.value; secondEmail.value.value; unrelatedRuns++; });
+    const unrelated = effect(() => { void firstProfile.value.value; void secondEmail.value.value; unrelatedRuns++; });
     firstEmail.value.value = 'changed';
     flushSync();
     expect(unrelatedRuns).toBe(1);
