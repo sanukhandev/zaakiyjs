@@ -22,6 +22,8 @@ class Scope implements OwnerScope {
   private readonly mountCallbacks: Cleanup[] = [];
   readonly providers = new Map<symbol, unknown>();
   componentInitialized = false;
+  /** Provider reads remain valid while teardown callbacks execute. */
+  private cleanupInProgress = false;
 
   constructor(parent: Scope | null) {
     this.parent = parent;
@@ -47,6 +49,13 @@ class Scope implements OwnerScope {
 
   ensureAlive(): void {
     if (this.disposed) throw new Error("Owner has been disposed");
+  }
+
+  /** Read-only context access is permitted during cleanup, not after it. */
+  ensureReadable(): void {
+    if (this.disposed && !this.cleanupInProgress) {
+      throw new Error("Owner has been disposed");
+    }
   }
 
   initialize(): void {
@@ -107,22 +116,31 @@ class Scope implements OwnerScope {
 
   dispose(): void {
     if (this.disposed) return;
-    this.state = "disposed"; // Reject registrations before user cleanup runs.
-    this.parent?.children.delete(this);
-    this.parent = null; // Sever ancestry; a retained disposed child must not retain its app.
+    // Reject all new registrations immediately, but permit existing providers
+    // to be read while owner and descendant cleanup callbacks run.
+    this.state = "disposed";
+    this.cleanupInProgress = true;
     const errors: unknown[] = [];
-    const children = [...this.children].reverse();
-    this.children.clear();
-    for (const child of children) {
-      try { child.dispose(); } catch (error) { errors.push(error); }
+    try {
+      const children = [...this.children].reverse();
+      this.children.clear();
+      for (const child of children) {
+        try { child.dispose(); } catch (error) { errors.push(error); }
+      }
+      this.mountCallbacks.length = 0;
+      for (let index = this.cleanups.length - 1; index >= 0; index--) {
+        try { this.cleanups[index]?.(); } catch (error) { errors.push(error); }
+      }
+    } finally {
+      // Ancestry and provider values must survive through the last cleanup,
+      // including child cleanup when an ancestor is already disposing.
+      this.mountCallbacks.length = 0;
+      this.cleanups.length = 0;
+      this.providers.clear();
+      this.parent?.children.delete(this);
+      this.parent = null; // Retained disposed scopes must not retain their app.
+      this.cleanupInProgress = false;
     }
-    this.mountCallbacks.length = 0;
-    // Cleanups may read providers owned by ancestors; clear only after descendants.
-    for (let index = this.cleanups.length - 1; index >= 0; index--) {
-      try { this.cleanups[index]?.(); } catch (error) { errors.push(error); }
-    }
-    this.cleanups.length = 0;
-    this.providers.clear();
     if (errors.length === 1) throw errors[0];
     if (errors.length > 1) throw new AggregateError(errors, "Owner disposal failed");
   }
@@ -143,6 +161,11 @@ function asScope(owner: OwnerScope): Scope {
 
 export function assertLiveOwner(owner: OwnerScope): void {
   asScope(owner).ensureAlive();
+}
+
+/** Context lookup only: does not authorize registrations on a disposing owner. */
+export function assertReadableOwner(owner: OwnerScope): void {
+  asScope(owner).ensureReadable();
 }
 
 export function createOwner(parent: OwnerScope | null = null): OwnerScope {
