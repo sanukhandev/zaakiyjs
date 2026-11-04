@@ -143,6 +143,7 @@ export class Router {
   private readonly pendingState = signal<string | null>(null);
   private readonly errorState = signal<unknown>(null);
   private readonly moduleCache = new Map<string, Promise<RouteModule>>();
+  private readonly pendingOwners = new Map<number, RuntimeEntry[]>();
   private readonly subscribers = new Set<(entries: readonly ActiveRoute[]) => void>();
   private active: RuntimeEntry[] = [];
   private current: Transaction | null = null;
@@ -219,8 +220,31 @@ export class Router {
 
   back(): void { this.options.history.go(-1); }
   forward(): void { this.options.history.go(1); }
+  /** Abort and synchronously dispose all uncommitted route scopes. */
   cancel(reason: CancellationReason = "explicit"): void {
-    if (this.current && !this.current.controller.signal.aborted) this.current.controller.abort(reason);
+    const tx = this.current;
+    if (!tx) return;
+    if (!tx.controller.signal.aborted) tx.controller.abort(reason);
+    this.releasePending(tx.id);
+    // Keep tx until its Promise settles; its continuation will fail the
+    // transaction identity/abort check rather than publishing stale data.
+    if (reason === "explicit" && !this.disposed) {
+      batch(() => { this.pendingState.value = null; this.statusState.value = "idle"; });
+    }
+  }
+  private releasePending(id: number): void {
+    const entries = this.pendingOwners.get(id);
+    this.pendingOwners.delete(id);
+    if (!entries) return;
+    const errors: unknown[] = [];
+    for (const entry of [...entries].reverse()) {
+      if (entry.owner.disposed) continue;
+      try { disposeOwner(entry.owner); } catch (error) { errors.push(error); }
+    }
+    if (errors.length && !this.disposed) {
+      this.errorState.value = errors.length === 1 ? errors[0] :
+        new AggregateError(errors, "Pending route owner cleanup failed");
+    }
   }
   private moduleFor(entry: CompiledRoute): Promise<RouteModule | undefined> {
     if (!entry.route.lazy) return Promise.resolve(undefined);
@@ -301,7 +325,7 @@ export class Router {
     const from = normalizeUrl(this.urlState.peek(), ORIGIN + "/");
     let to = normalizeUrl(raw, serialize(from));
     const tx: Transaction = { controller: new AbortController(), id: ++this.nextId };
-    this.current?.controller.abort("superseded");
+    if (this.current) this.cancel("superseded");
     this.current = tx;
     const committedUrl = serialize(from);
     const attemptedUrl = serialize(to);
@@ -326,6 +350,7 @@ export class Router {
         const matches = matchRoutes(this.table, localPath);
         common = prefixLength(this.active, matches, options.force ?? false, committedUrl, serialize(to));
         staged = [];
+        this.pendingOwners.set(tx.id, staged);
         next = [...this.active.slice(0, common)];
         for (let i = common; i < matches.length; i++) {
           const m = matches[i]!;
@@ -366,12 +391,12 @@ export class Router {
             }
           }
         } catch (error) {
-          for (const entry of [...staged].reverse()) disposeOwner(entry.owner);
+          this.releasePending(tx.id);
           staged = [];
           throw error;
         }
         if (redirect === undefined) break;
-        for (const entry of [...staged].reverse()) disposeOwner(entry.owner);
+        this.releasePending(tx.id);
         staged = [];
         to = normalizeUrl(redirect, serialize(to));
         this.pendingState.value = serialize(to);
@@ -389,6 +414,7 @@ export class Router {
         }
         // Route state and History become authoritative before any mount hooks
         // execute, so a mount-triggered redirect can never publish stale state.
+        this.pendingOwners.delete(tx.id);
         staged = [];
         this.active = next;
         if (!isPop) {
@@ -427,11 +453,7 @@ export class Router {
       catch (error) { this.errorState.value = error; }
       return { status: "committed", url: destination };
     } catch (error) {
-      for (const entry of [...staged].reverse()) {
-        if (!entry.owner.disposed) {
-          try { disposeOwner(entry.owner); } catch { /* Preserve navigation failure */ }
-        }
-      }
+      this.releasePending(tx.id);
       const cancelled = error instanceof NavigationCancelledError || tx.controller.signal.aborted;
       if (this.current === tx && !this.disposed) {
         this.current = null;
@@ -451,8 +473,9 @@ export class Router {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.current?.controller.abort("router-disposed");
+    this.cancel("router-disposed");
     this.current = null;
+    for (const id of [...this.pendingOwners.keys()]) this.releasePending(id);
     this.listening?.();
     this.listening = null;
     this.subscribers.clear();
