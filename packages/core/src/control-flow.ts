@@ -8,7 +8,7 @@ import type { ViewNode } from "./component.js";
 export interface ShowProps {
   readonly when: boolean;
   readonly fallback?: ViewNode | null;
-  readonly children: ViewNode;
+  readonly children: ViewNode | readonly ViewNode[];
 }
 
 export function Show(_props: ShowProps): ViewNode {
