@@ -249,6 +249,22 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
   });
 
 
+
+  it("extracts single-quoted static class tokens without throwing or reordering them", () => {
+    const source = "function App(){ return <div class={'p-2 text-sm'}>safe</div>; }";
+    const result = compile({ fileName, source });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.manifest?.styleTokens).toEqual(["p-2", "text-sm"]);
+    expect(result.js[0]?.code).toContain('p-2 text-sm');
+  });
+
+  it("rejects inline style attributes rather than emitting the DOM runtime's forbidden style sink", () => {
+    const result = compile({ fileName, source:
+      'function App(){ return <div style="color: red">unsafe</div>; }' });
+    expect(result.js).toEqual([]);
+    expect(result.diagnostics.some(d => d.code === "ZC2204")).toBe(true);
+  });
+
   it("tracks aliased signal reads and nested signal props, without reinitializing components", () => {
     const aliases = [
       signalDecl,
