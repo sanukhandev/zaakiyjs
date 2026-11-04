@@ -1,0 +1,45 @@
+# Temporary branch-only lockfile normalization; delete before merge.
+name: Normalize Vite Security Lockfile
+on:
+  push:
+    branches: [test/p1-release-hardening-gates]
+    paths:
+      - .github/workflows/normalize-vite-lock.yml
+permissions:
+  contents: write
+jobs:
+  normalize:
+    if: github.repository == 'sanukhandev/zaakiyjs' && github.ref == 'refs/heads/test/p1-release-hardening-gates'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/p1-release-hardening-gates
+          persist-credentials: true
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Upgrade vulnerable Vite 6 to pinned patched 6.4.5
+        run: |
+          node --input-type=module - <<'JS'
+          import {readFileSync, writeFileSync} from "node:fs";
+          const p=JSON.parse(readFileSync("package.json","utf8"));
+          if(p.devDependencies.vite!=="6.3.5" && p.devDependencies.vite!=="6.4.5")
+            throw new Error("Unexpected Vite dependency; inspect manually");
+          p.devDependencies.vite="6.4.5";
+          writeFileSync("package.json",JSON.stringify(p,null,2)+"\n");
+          JS
+          pnpm install --no-frozen-lockfile
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package.json pnpm-lock.yaml
+          if ! git diff --cached --quiet; then
+            git commit -m "fix(security): pin patched Vite 6.4.5 and regenerate lockfile"
+            git push origin HEAD:refs/heads/test/p1-release-hardening-gates
+          fi
