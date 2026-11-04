@@ -59,6 +59,9 @@ function renderDeclarations(declarations: readonly (readonly [string, string])[]
  */
 export function compileStyles(request: StyleCompilerRequest): StyleCompilerResult {
   const diagnostics: StyleDiagnostic[] = validateBrand(request.config.brand);
+  if (request.config.mode !== undefined && !["light", "dark", "system"].includes(request.config.mode)) {
+    diagnostics.push({ code: "ZSTY_INVALID_MODE", message: "Appearance mode must be light, dark or system", severity: "error" });
+  }
   for (const [name, version] of Object.entries(request.config.targets ?? {})) {
     if (!["chrome", "firefox", "safari"].includes(name) || typeof version !== "number" ||
         !Number.isFinite(version) || version <= 0 || version > 300) {

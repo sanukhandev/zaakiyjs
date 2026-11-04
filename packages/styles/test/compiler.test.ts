@@ -155,6 +155,12 @@ describe("Zaakiy CSS compiler", () => {
     const joined = compileStyles({config, tokens:[{ token: "flex bad-utility", file: "source.tsx", offset: 10 }], minify:true});
     expect(joined.diagnostics.find(d => d.token === "bad-utility")).toMatchObject({ file: "source.tsx", offset: 15 });
   });
+  it("rejects invalid appearance modes from untyped config input", () => {
+    const badConfig = { ...config, mode: "invalid" as StyleConfig["mode"] };
+    const result = compileStyles({ config: badConfig, tokens: source("flex") });
+    expect(result.css).toBe("");
+    expect(result.diagnostics[0]?.code).toBe("ZSTY_INVALID_MODE");
+  });
   it("rejects invalid typed browser target versions without emitting CSS", () => {
     const invalid = compileStyles({config:{...config,targets:{safari:-1}},tokens:source("flex")});
     expect(invalid.css).toBe("");
@@ -178,8 +184,10 @@ describe("Zaakiy CSS compiler", () => {
     }
   });
   it("keeps package dependency independent of Tailwind and Gemini", () => {
-    const manifest = { dependencies: { postcss: "8.5.32" } };
-    expect(Object.keys(manifest.dependencies)).toEqual(["postcss"]);
+    const css = compile("flex", "transition", "bg-primary").css;
+    expect(css).not.toContain("tailwind");
+    expect(css).not.toContain("<script");
+    expect(css).not.toContain("__zaakiyRuntime");
     expect(brandCss(config)).not.toContain("@import");
   });
 });
