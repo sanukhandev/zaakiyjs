@@ -476,6 +476,20 @@ describe("signals", () => {
     stop.dispose();
     expect((input as unknown as { readonly observers: ReadonlySet<unknown> }).observers.size).toBe(0);
   });
+  it("allows more than 10,000 independent subscribers without cycle false positives", () => {
+    const shared = signal(0);
+    let executions = 0;
+    const handles = Array.from({ length: 12_000 }, () => effect(() => {
+      void shared.value;
+      executions++;
+    }));
+    shared.value++;
+    expect(() => flushSync()).not.toThrow();
+    expect(executions).toBe(24_000);
+    handles.forEach(handle => handle.dispose());
+    const inbound = shared as unknown as { readonly observers: ReadonlySet<unknown> };
+    expect(inbound.observers.size).toBe(0);
+  });
   it("randomized graph agrees with a simple pure reference model", () => {
     let seed = 0x12345678;
     const next = () => (seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0);
