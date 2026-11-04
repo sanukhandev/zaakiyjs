@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 import traceback
-from playwright.sync_api import Error as PlaywrightError, Page, expect, sync_playwright
+from playwright.sync_api import Page, expect, sync_playwright
 
 
 def navigate(page: Page, target: str) -> dict:
@@ -17,15 +17,7 @@ def metrics(page: Page) -> dict:
 
 
 def start(page: Page, base: str, path: str = "/app/") -> None:
-    target = base + path
-    try:
-        page.goto(target, wait_until="domcontentloaded", timeout=30000)
-    except PlaywrightError as error:
-        # Firefox can report an interrupted goto for a duplicate same-URL
-        # document navigation. Verify URL and real route readiness regardless.
-        expected = f'Navigation to "{target}" is interrupted by another navigation to "{target}"'
-        if expected not in str(error) or page.url != target:
-            raise
+    page.goto(base + path, wait_until="networkidle", timeout=30000)
     expect(page.get_by_role("heading", name="ZaakiyJS Router acceptance")).to_be_visible()
     assert page.evaluate("window.__zaakiyRouter.router.signals.status.value") == "idle"
 
@@ -194,7 +186,7 @@ CASES = (
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base-url", default="http://127.0.0.1:4190")
+    parser.add_argument("--base-url", default="http://127.0.0.1:4188")
     args = parser.parse_args()
     failures = []
     passed = 0
