@@ -116,6 +116,11 @@ export function setProperty(target: Element, name: string, value: unknown): void
 
 export function setAttribute(target: Element, name: string, value: string | null): void {
   assertWritableName(name);
+  // Runtime callers can bypass TS. Never validate one string coercion but commit
+  // another (a stateful toString() could then bypass URL and style policies).
+  if (value !== null && typeof value !== "string") {
+    throw new TypeError("DOM attribute value must be a string or null: " + name);
+  }
   if (["srcset", "imagesrcset", "ping", "srcdoc", "style"].includes(name.toLowerCase())) {
     throw new TypeError("Unsafe or unsupported DOM attribute: " + name);
   }
@@ -141,6 +146,9 @@ export function setClass(target: Element, value: string | null): void {
 /** Static or reactive CSS values: no executable CSS functions or arbitrary URLs. */
 export function setStyle(target: Element, name: string, value: string | null): void {
   if (!CSS_NAME.test(name)) throw new TypeError("Invalid CSS property: " + name);
+  if (value !== null && typeof value !== "string") {
+    throw new TypeError("DOM style value must be a string or null: " + name);
+  }
   if (value !== null && /(?:url\s*\(|expression\s*\(|@import|[{}])/i.test(value)) {
     throw new TypeError("Potentially unsafe CSS value: " + name);
   }
@@ -166,7 +174,14 @@ function bind(owner: OwnerScope, run: () => void): BindingHandle {
         active.dispose();
       }
     };
-    onCleanup(() => handle.dispose());
+    try {
+      onCleanup(() => handle.dispose());
+    } catch (error) {
+      try { handle.dispose(); } catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], "DOM binding registration failed");
+      }
+      throw error;
+    }
     return handle;
   });
 }
@@ -240,7 +255,12 @@ export function listen(
         node.removeEventListener(eventName, handler, options);
       }
     };
-    onCleanup(() => handle.dispose());
+    try {
+      onCleanup(() => handle.dispose());
+    } catch (error) {
+      handle.dispose();
+      throw error;
+    }
     return handle;
   });
 }
@@ -258,7 +278,13 @@ export function listenStable(
   const listener = listen(owner, node, name, wrapper, options);
   let binding: BindingHandle;
   try {
-    binding = bind(owner, () => { current = read(); });
+    binding = bind(owner, () => {
+      const next = read();
+      if (typeof next !== "function") {
+        throw new TypeError("Stable event handler must be a function");
+      }
+      current = next;
+    });
   } catch (error) {
     listener.dispose();
     throw error;
