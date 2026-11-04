@@ -473,6 +473,55 @@ describe('@zaakiyjs/forms', () => {
     expect(() => form.getValue('email')).toThrow('disposed');
   });
 
+  it('preserves pristine state for immutable Blob/File and RegExp values', () => {
+    const blob = new Blob(['first'], { type: 'application/octet-stream' });
+    const originalPattern = /example/gi;
+    const form = createForm({ initialValues: { upload: { blob, pattern: originalPattern } } });
+    const upload = form.field('upload.blob');
+    const pattern = form.field('upload.pattern');
+
+    expect(upload.value.value).toBe(blob);
+    expect(upload.dirty.value).toBe(false);
+    expect(pattern.dirty.value).toBe(false);
+    expect(form.dirty.value).toBe(false);
+
+    // Different payloads can have the same size and MIME type. Equality must
+    // compare Blob identity, not just metadata.
+    const otherBlob = new Blob(['other'], { type: 'application/octet-stream' });
+    form.setValue('upload.blob', otherBlob);
+    expect(upload.dirty.value).toBe(true);
+    expect(form.dirty.value).toBe(true);
+
+    form.reset();
+    expect(upload.value.value).toBe(blob);
+    expect(upload.dirty.value).toBe(false);
+    expect(pattern.dirty.value).toBe(false);
+    expect(form.dirty.value).toBe(false);
+
+    form.setValue('upload.pattern', /example/gi);
+    expect(pattern.dirty.value).toBe(false);
+    expect(form.dirty.value).toBe(false);
+
+    const differentPosition = /example/gi;
+    differentPosition.lastIndex = 2;
+    form.setValue('upload.pattern', differentPosition);
+    expect(pattern.dirty.value).toBe(true);
+    expect(form.dirty.value).toBe(true);
+    form.reset();
+    expect(pattern.dirty.value).toBe(false);
+    expect(form.dirty.value).toBe(false);
+
+    if (typeof File !== 'undefined') {
+      const file = new File(['file data'], 'example.txt', { type: 'text/plain' });
+      form.setValues({ upload: { blob: file, pattern: /example/gi } });
+      const fileValue = form.getValue('upload.blob');
+      expect(fileValue).toBe(file);
+      form.reset();
+      expect(form.dirty.value).toBe(false);
+    }
+    form.dispose();
+  });
+
   it('isolates independent forms and avoids unrelated reactive updates', () => {
     const first = createForm({ initialValues: defaults() });
     const second = createForm({ initialValues: defaults() });
