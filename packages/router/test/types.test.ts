@@ -13,8 +13,7 @@ const wrong: RouteParams<"/products/:id"> = {};
 // @ts-expect-error parameter must be a string
 const wrongType: RouteParams<"/products/:id"> = { id: 123 };
 // @ts-expect-error second required dynamic segment
-const incomplete: RouteTarget<"/shops/:shopId/products/:productId"> =
-  { route: pair, params: { shopId: "s" } };
+const incomplete: RouteTarget<"/shops/:shopId/products/:productId"> = { route: pair, params: { shopId: "s" } };
 void wrong;
 void wrongType;
 void incomplete;
