@@ -717,3 +717,37 @@ describe("nested keyed and fragment-backed region lowering", () => {
     expect(output.diagnostics.some(d => d.code === "ZC2101")).toBe(true);
   });
 });
+
+describe("signal-aware component-root keyed templates", () => {
+  const fileName = "packages/compiler/test/component-root.tsx";
+
+  it("accepts a lazy item getter and retains stable signal-aware props", () => {
+    const source = [
+      'import {For} from "@zaakiyjs/core";',
+      'import {computed} from "@zaakiyjs/signals";',
+      'const rows = [{id:"one",label:"One"}];',
+      'function Row(props:{live:()=>{id:string;label:string}}) {',
+      ' const label = computed(() => props.live().label); return <li>{label.value}</li>; }',
+      'function App(){return <ul><For each={rows} by={item=>item.id}>',
+      ' {item => <Row live={() => item} />}</For></ul>;}'
+    ].join("\n");
+    const result = compile({fileName,source});
+    expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    expect(result.js).toHaveLength(1);
+    expect(result.js[0]?.code).toContain("initializeOwnedComponent");
+    expect(result.js[0]?.code).toContain(".value");
+  });
+
+  it("rejects item snapshots passed as component props instead of live accessors", () => {
+    const source = [
+      'import {For} from "@zaakiyjs/core";',
+      'const rows = [{id:"one",label:"One"}];',
+      'function Row(props:{item:{id:string;label:string}}) { return <li>{props.item.label}</li>; }',
+      'function App(){return <ul><For each={rows} by={row=>row.id}>',
+      ' {row => <Row item={row} />}</For></ul>;}'
+    ].join("\n");
+    const result = compile({fileName,source});
+    expect(result.js).toEqual([]);
+    expect(result.diagnostics.some(d=>d.code==="ZC2206")).toBe(true);
+  });
+});
