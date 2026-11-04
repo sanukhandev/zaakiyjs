@@ -1,7 +1,9 @@
 import {afterEach, describe, expect, it} from "vitest";
 import {mkdtemp, mkdir, readFile, rm, stat, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
-import {join} from "node:path";
+import {join, dirname} from "node:path";
+import {fileURLToPath} from "node:url";
+import {execFileSync} from "node:child_process";
 import {runCli, runProjectScript} from "../src/index";
 import {CliError, parseArgs} from "../src/args";
 import {generatorPlan, generateFiles} from "../src/generators";
@@ -143,6 +145,31 @@ describe("doctor and process delegation", () => {
     const root = await temp();
     const issues = await diagnoseProject(root);
     expect(issues.some(item => item.code === "MISSING_PROJECT_FILE")).toBe(true);
+  });
+  it("checks installed package exports without requiring CommonJS resolution", async () => {
+    const root = await temp();
+    const target = join(root, "node_modules", "@zaakiyjs", "core");
+    await mkdir(target, {recursive: true});
+    await writeFile(join(target, "package.json"), JSON.stringify({
+      name: "@zaakiyjs/core", version: "0.2.0", type: "module",
+      exports: {".": {import: "./dist/index.js", types: "./dist/index.d.ts"}}
+    }));
+    await scaffoldProject({cwd: root, name: "fixture", preset: "minimal", manager: "npm",
+      versions, dryRun: false, force: false});
+    const issues = await diagnoseProject(root);
+    expect(issues.some(issue => issue.code === "MISSING_PROJECT_FILE")).toBe(true);
+  });
+  it("packs the built CLI with executable and templates and invokes the bin", async () => {
+    const root = dirname(dirname(fileURLToPath(import.meta.url)));
+    const pack = JSON.parse(execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
+      cwd: root, encoding: "utf8"
+    })) as Array<{files: Array<{path: string}>}>;
+    const paths = (pack[0]?.files ?? []).map(file => file.path);
+    expect(paths).toContain("dist/bin.js");
+    expect(paths).toContain("templates/minimal/src/App.tsx");
+    expect(paths).toContain("templates/minimal/gitignore.tmpl");
+    const message = execFileSync(process.execPath, [join(root, "dist", "bin.js"), "--help"], {encoding: "utf8"});
+    expect(message).toContain("zaakiy start --project");
   });
   it("forwards a subprocess nonzero exit code", async () => {
     const root = await temp();
