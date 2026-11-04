@@ -165,14 +165,16 @@ describe("signals", () => {
     good.dispose();
   });
   it("detects direct and indirect computed cycles", () => {
-    let direct!: ReturnType<typeof computed<number>>;
-    direct = computed(() => direct.value + 1);
-    expect(() => direct.value).toThrow(/circular/);
-    let a!: ReturnType<typeof computed<number>>;
-    let b!: ReturnType<typeof computed<number>>;
-    a = computed(() => b.value);
-    b = computed(() => a.value);
-    expect(() => a.value).toThrow(/circular/);
+    const cycle: {
+      direct?: ReturnType<typeof computed<number>>;
+      a?: ReturnType<typeof computed<number>>;
+      b?: ReturnType<typeof computed<number>>;
+    } = {};
+    cycle.direct = computed(() => cycle.direct!.value + 1);
+    expect(() => cycle.direct!.value).toThrow(/circular/);
+    cycle.a = computed(() => cycle.b!.value);
+    cycle.b = computed(() => cycle.a!.value);
+    expect(() => cycle.a!.value).toThrow(/circular/);
   });
   it("detects cyclic writes and resets flush state", () => {
     const count = signal(0);
