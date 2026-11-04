@@ -289,10 +289,10 @@ class Builder {
         if (!root) throw new Error("ZC2202: keyed item must generate one native DOM root");
         const read = "() => (" + node.collection.source + ")";
         const key = "(" + node.itemParameter + ") => (" + node.key.source + ")";
-        const factory = "(" + node.itemParameter + ", " + childOwner + ") => {\\n" +
-          "const " + itemCell + " = " + this.abi.signal + "(" + node.itemParameter + ");\\n" +
-          scoped.lines.join("\\n") + "\\nreturn { node: " + root + ", update: (" +
-          nextItem + ") => { " + itemCell + ".value = " + nextItem + "; } };\\n}";
+        const factory = "(" + node.itemParameter + ", " + childOwner + ") => {\n" +
+          "const " + itemCell + " = " + this.abi.signal + "(" + node.itemParameter + ");\n" +
+          scoped.lines.join("\n") + "\nreturn { node: " + root + ", update: (" +
+          nextItem + ") => { " + itemCell + ".value = " + nextItem + "; } };\n}";
         this.push("const " + region + " = " + this.abi.createRegion + "(" + parent + ");", node.span);
         this.push(this.abi.bindKeyedRegion + "(" + this.owner + ", " + region + ", " +
           read + ", " + key + ", " + factory + ");", node.span);
