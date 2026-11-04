@@ -68,6 +68,7 @@ describe("scaffold", () => {
     const files = await scaffoldProject({cwd: root, name: "my-app", preset: "minimal", manager: "npm", versions, dryRun: false, force: false});
     expect(files).toContain("my-app/src/main.tsx");
     expect(files).toContain("my-app/.gitignore");
+    expect(await readFile(join(root,"my-app","src/App.tsx"),"utf8")).toContain('from "@zaakiyjs/signals"');
     const manifest = JSON.parse(await readFile(join(root, "my-app", "package.json"), "utf8")) as {scripts: Record<string, string>};
     expect(manifest.scripts.build).toContain("vite build");
     expect(await runProjectScript("test", join(root, "my-app"), "npm")).toBe(0);

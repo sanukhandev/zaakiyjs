@@ -1,4 +1,3 @@
-import {createRequire} from "node:module";
 import {createHash} from "node:crypto";
 import {readFile, lstat} from "node:fs/promises";
 import {dirname, join, resolve} from "node:path";
@@ -16,7 +15,7 @@ const templateBlobHashes: Readonly<Record<string, string>> = {
   "vite.config.ts": "0e7a21d01597b11497c1aad4c0b01e1e5e001423",
   "zaakiy.config.ts": "23aa46f725bbb7b3704a07ec83addb481d01bfe7",
   "index.html": "49eabdc95ff2eb50bc7af6a984d19123156cec79",
-  "src/App.tsx": "7ba763a052647a451971764310db17ea4a02b5bb",
+  "src/App.tsx": "5d4e97ce9b2b470cb727d830b443e31176b07681",
   "src/main.tsx": "8d6a8c319eaa2bec8cb4718755b4898650ae0381",
   "src/base.css": "ed7e0e7e27b66f5e27b0419683f0741442d42543",
   "tests/scaffold.test.mjs": "76d5525ecda4dc37dc37a0ac068e40b72d4e8d57",
@@ -25,7 +24,6 @@ const templateBlobHashes: Readonly<Record<string, string>> = {
 };
 const packageNames = ["core", "dom", "signals", "styles", "vite-plugin"] as const;
 const packageRoot = fileURLToPath(new URL("../templates/minimal/", import.meta.url));
-const requireModule = createRequire(import.meta.url);
 
 export function parsePreset(value: string | undefined): Preset {
   if (value === undefined) return "minimal";
@@ -39,7 +37,11 @@ function parseVersion(input: unknown, name: string): string {
   return input;
 }
 async function installedVersion(name: string): Promise<string> {
-  let current = dirname(requireModule.resolve("@zaakiyjs/" + name));
+  let resolved: string;
+  try { resolved = import.meta.resolve("@zaakiyjs/" + name); }
+  catch (error) { throw new CliError("PACKAGE_NOT_FOUND", "Cannot resolve ESM package @zaakiyjs/" + name + ": " + String(error)); }
+  if (!resolved.startsWith("file:")) throw new CliError("PACKAGE_NOT_FOUND", "Non-file package entry: " + resolved);
+  let current = dirname(fileURLToPath(resolved));
   while (true) {
     try {
       const data: unknown = JSON.parse(await readFile(join(current, "package.json"), "utf8"));
@@ -80,8 +82,8 @@ export async function assertFrameworkReady(): Promise<void> {
       const status = (module as {foundationStatus?: {implemented?: boolean}}).foundationStatus;
       return status?.implemented === false;
     });
-    if (unimplemented || !has(core, "signal") || !has(dom, "mount") || !has(vite, "zaakiyPlugin")) {
-      throw new Error("signal(), mount() or zaakiyPlugin() is not exported by the installed packages");
+    if (unimplemented || !has(signals, "signal") || !has(dom, "mount") || !has(vite, "zaakiyPlugin")) {
+      throw new Error("signal() from @zaakiyjs/signals, mount() from @zaakiyjs/dom or zaakiyPlugin() from @zaakiyjs/vite-plugin is unavailable");
     }
   } catch (error) {
     throw new CliError("FOUNDATION_NOT_READY", "Cannot scaffold a buildable app: the installed ZaakiyJS runtime/compiler integration is not ready. " + String(error));

@@ -1,4 +1,4 @@
-import {signal} from "@zaakiyjs/core";
+import {signal} from "@zaakiyjs/signals";
 
 export function App() {
   const count = signal(0);
