@@ -14,3 +14,5 @@ pnpm --filter @zaakiyjs/forms test
 ```
 
 Run repository-wide `pnpm ci` and the Chromium/Firefox/WebKit acceptance workflows before release. A frozen workspace install is required in CI; keep the forms importer in `pnpm-lock.yaml` synchronized.
+
+When Forms is integrated after independently developed workspace packages (such as Store, Compat, or Async), preserve every existing `pnpm-lock.yaml` importer and the workspace validator's existing dependency boundaries. Verify that `@zaakiyjs/forms` is included in both the validator allowlist and its browser-runtime package set; Forms must depend only on Core and Signals.
