@@ -324,6 +324,26 @@ describe("@zaakiyjs/store", () => {
     disposeOwner(root);
   });
 
+  it("rejects disposed or foreign stores through all Store context accessors", () => {
+    const app = createOwner();
+    const other = createOwner();
+    const token = createStoreContext<ReturnType<typeof setup>["store"]>("GuardedStore");
+    const store = setup(app).store;
+    provideStore(app, token, store);
+    expect(requireStore(app, token)).toBe(store);
+    // Core's general provider API cannot bypass Store's stricter read contract.
+    provide(other, token, store);
+    expect(() => requireStore(other, token)).toThrow(/cannot outlive or cross/);
+    expect(() => useStore(other, token)).toThrow(/cannot outlive or cross/);
+    store.dispose();
+    expect(() => requireStore(app, token)).toThrow(/has been disposed/);
+    expect(() => useStore(app, token)).toThrow(/has been disposed/);
+    const child = createOwner(app);
+    expect(() => provideStore(child, createStoreContext<typeof store>(), store)).toThrow(/has been disposed/);
+    disposeOwner(app);
+    disposeOwner(other);
+  });
+
   it("uses owned context providers and rejects mismatched root ownership", () => {
     const app = createOwner();
     const other = createOwner();
