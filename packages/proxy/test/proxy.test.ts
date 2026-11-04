@@ -44,6 +44,31 @@ describe("route config and fail-closed boundary", () => {
     expect(() => createProxyRouter(config(1, { authenticate: () => ({ subject: "a" }), routes: [secure()] }))).not.toThrow();
     expect(() => createProxyRouter(config(1, { routes: [{ id: "x", path: "/x", upstream: "main", methods: ["GET"], access: "authenticated" }] }))).toThrow();
   });
+  it("snapshots startup security policy so later configuration mutation cannot disable protection", async () => {
+    const port = await listen((_req, res) => res.end("ok"));
+    const mutableRoute = {
+      id: "private", path: "/api/items/*", upstream: "main",
+      methods: ["GET"], access: "authenticated" as "authenticated" | "public",
+      authorize: () => false
+    };
+    const mutableUpstream = {
+      origin: "http://127.0.0.1:" + port, allowedPrivateAddresses: ["127.0.0.1"],
+      allowInsecureHttp: true
+    };
+    const options = {
+      upstreams: { main: mutableUpstream },
+      routes: [mutableRoute],
+      authenticate: () => ({ subject: "alice" })
+    };
+    const router = createProxyRouter(options);
+    mutableRoute.access = "public";
+    mutableRoute.methods.push("POST");
+    mutableRoute.authorize = () => true;
+    mutableUpstream.origin = "http://169.254.169.254/";
+    mutableUpstream.allowedPrivateAddresses.push("169.254.169.254");
+    expect((await router.handle(request("GET", "/api/items/a"))).status).toBe(403);
+    expect((await router.handle(request("POST", "/api/items/a"))).status).toBe(405);
+  });
   it("refuses route shadowing regardless of access priority", () => {
     expect(() => createProxyRouter(config(1, { routes: [
       { id: "open", path: "/api/*", upstream: "main", methods: ["GET"], access: "public" },
