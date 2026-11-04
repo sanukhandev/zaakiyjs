@@ -109,7 +109,7 @@ describe("syntax/API/IR/CSS detection and planning", () => {
   });
   it("detects timeout, abort reasons, fetch and structuredClone", () => {
     const r = detectSourceFeatures({ fileName: "app.ts", source:
-      "const s = AbortSignal.timeout(20); s.reason; fetch('/api'); structuredClone({x: 1});" });
+      "const abortSignal = AbortSignal.timeout(20); abortSignal.reason; fetch('/api'); structuredClone({x: 1});" });
     expect(r.requirements.map(x => x.id)).toEqual(expect.arrayContaining([
       "web.abort-signal-timeout", "web.abort-reason", "web.fetch", "web.structured-clone"
     ]));
