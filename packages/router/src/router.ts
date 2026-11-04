@@ -195,7 +195,13 @@ export class Router {
       void this.transition(this.options.history.current(), { history: "none" }, true)
         .catch(() => { /* error is published to signals.error */ });
     });
-    this.starting = this.transition(this.options.history.current(), { history: "none" }, true);
+    this.starting = this.transition(this.options.history.current(), { history: "none" }, true)
+      .catch(error => {
+        this.listening?.();
+        this.listening = null;
+        this.starting = null; // A failed initial load may be retried.
+        throw error;
+      });
     return this.starting;
   }
 
@@ -291,7 +297,10 @@ export class Router {
       if (!adapter) continue;
       const context: PageAdapterContext = { ...contextFor(entry, from, to, signal), data: entry.data, metadata: entry.route.metadata ?? {} };
       const model = adapter.setup ? runWithOwner(entry.owner, () => adapter.setup!(context)) : undefined;
-      if (model instanceof Promise) throw new TypeError("Page adapter setup must be synchronous");
+      if (model !== null && (typeof model === "object" || typeof model === "function") &&
+          "then" in model && typeof model.then === "function") {
+        throw new TypeError("Page adapter setup must be synchronous");
+      }
       const view = runWithOwner(entry.owner, () => adapter.render(model, context));
       if (!view || !view.node || typeof view.node.nodeType !== "number" || view.node.nodeType === 11) {
         throw new TypeError("Page adapter must return a single native DOM node (not a fragment)");
