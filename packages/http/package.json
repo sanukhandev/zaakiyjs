@@ -1,0 +1,19 @@
+{
+  "name": "@zaakiyjs/http",
+  "version": "0.0.0",
+  "description": "Typed Fetch transport and secure interceptor pipeline for ZaakiyJS",
+  "type": "module",
+  "sideEffects": false,
+  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "scripts": {
+    "lint": "eslint src test",
+    "typecheck": "tsc --noEmit --project tsconfig.json && tsc --noEmit --project tsconfig.types.json",
+    "build": "tsc --project tsconfig.build.json",
+    "test": "vitest run test"
+  },
+  "publishConfig": { "access": "public" },
+  "devDependencies": { "@zaakiyjs/async": "workspace:^" }
+}
