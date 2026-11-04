@@ -104,7 +104,7 @@ export function matchRoutes(table: RouteTable, pathname: string): readonly Route
     for (const ancestor of entry.parents) {
       prefix = normalized(prefix + "/" + ancestor.path);
       const localParams: Record<string, string> = {};
-      compileTokens(prefix).forEach((token, index) => {
+      compileTokens(prefix).forEach(token => {
         if (token.kind === "param" && params[token.name] !== undefined) {
           localParams[token.name] = params[token.name]!;
         }
