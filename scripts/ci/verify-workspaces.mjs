@@ -1,54 +1,55 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-// Verify that new workspace packages cannot silently skip required commands.
-// The framework has no implemented packages yet; the root tooling is checked
-// separately by ESLint and TypeScript in CI during bootstrap.
-const requiredScripts = ["lint", "typecheck", "build"];
-const workspaceGroups = ["packages", "apps", "examples"];
-let sourcePackages = 0;
+const expected = new Set(["signals", "core", "dom", "compiler", "styles", "vite-plugin", "cli"]);
+const scriptNames = ["lint", "typecheck", "build", "test"];
+const manifestByName = new Map();
 let errors = 0;
-
-for (const group of workspaceGroups) {
+function fail(message) { console.error(message); errors++; }
+for (const group of ["packages", "apps", "examples"]) {
   if (!existsSync(group)) continue;
   for (const entry of readdirSync(group)) {
     const dir = join(group, entry);
     if (!statSync(dir).isDirectory()) continue;
     const manifestPath = join(dir, "package.json");
-    if (!existsSync(manifestPath)) {
-      console.error(`Missing package.json in workspace: ${dir}`);
-      errors++;
-      continue;
+    if (!existsSync(manifestPath)) { fail(`Missing package.json in workspace ${dir}`); continue; }
+    let pkg;
+    try { pkg = JSON.parse(readFileSync(manifestPath, "utf8")); }
+    catch { fail(`Invalid JSON: ${manifestPath}`); continue; }
+    for (const script of scriptNames) {
+      if (!pkg.scripts?.[script]?.trim()) fail(`Missing operational ${script} script: ${manifestPath}`);
     }
-    let manifest;
-    try {
-      manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-    } catch {
-      console.error(`Invalid package.json: ${manifestPath}`);
-      errors++;
-      continue;
-    }
-    if (group === "packages") {
-      sourcePackages++;
-      if (!manifest.name?.startsWith("@zaakiyjs/")) {
-        console.error(`Publishable workspace must be named @zaakiyjs/*: ${dir}`);
-        errors++;
-      }
-    }
-    for (const script of requiredScripts) {
-      if (typeof manifest.scripts?.[script] !== "string" || !manifest.scripts[script].trim()) {
-        console.error(`Missing required ${script} script in ${manifestPath}`);
-        errors++;
-      }
-    }
+    if (group !== "packages") continue;
+    if (!expected.has(entry)) fail(`Unexpected M0 source package: ${dir}`);
+    if (pkg.name !== `@zaakiyjs/${entry}`) fail(`Name/path mismatch: ${manifestPath}`);
+    if (pkg.type !== "module" || !pkg.types || !pkg.exports?.["."]?.types || !pkg.exports?.["."]?.import) fail(`Missing ESM exports/types: ${manifestPath}`);
+    if (!pkg.version || !pkg.publishConfig || pkg.publishConfig.access !== "public") fail(`Missing independent version or publication metadata: ${manifestPath}`);
+    manifestByName.set(pkg.name, pkg);
   }
 }
-if (sourcePackages > 0 && !existsSync("pnpm-lock.yaml")) {
-  console.error("pnpm-lock.yaml is mandatory once a source package is added.");
-  errors++;
+for (const name of expected) if (!manifestByName.has(`@zaakiyjs/${name}`)) fail(`Missing required M0 package: ${name}`);
+const browserPackages = new Set(["@zaakiyjs/signals", "@zaakiyjs/core", "@zaakiyjs/dom"]);
+const buildOnly = new Set(["@zaakiyjs/compiler", "@zaakiyjs/styles", "@zaakiyjs/vite-plugin", "@zaakiyjs/cli"]);
+const depsOf = (name) => Object.keys(manifestByName.get(name)?.dependencies ?? {}).filter((dep) => dep.startsWith("@zaakiyjs/"));
+for (const [name, pkg] of manifestByName) {
+  for (const dep of depsOf(name)) {
+    if (!manifestByName.has(dep)) fail(`Unknown internal dependency ${name} -> ${dep}`);
+    if (!pkg.dependencies[dep].startsWith("workspace:")) fail(`Internal dependency must use workspace protocol: ${name} -> ${dep}`);
+    if (browserPackages.has(name) && buildOnly.has(dep)) fail(`Browser package cannot import build-only ${dep}`);
+  }
 }
-if (errors > 0) process.exit(1);
-console.log(`Workspace quality contract valid (${sourcePackages} source packages).`);
-if (sourcePackages === 0) {
-  console.log("Bootstrap only: root tooling is compiled; framework package builds are not implemented yet.");
+if (depsOf("@zaakiyjs/signals").length) fail("signals must not depend on any other workspace package");
+const state = new Map();
+function visit(name, path = []) {
+  if (state.get(name) === "done") return;
+  if (state.get(name) === "active") { fail(`Circular package dependencies: ${[...path, name].join(" -> ")}`); return; }
+  state.set(name, "active");
+  for (const dep of depsOf(name)) if (manifestByName.has(dep)) visit(dep, [...path, name]);
+  state.set(name, "done");
 }
+for (const name of manifestByName.keys()) visit(name);
+if (!existsSync("pnpm-lock.yaml")) fail("M0 source packages require committed pnpm-lock.yaml");
+const changeset = JSON.parse(readFileSync(".changeset/config.json", "utf8"));
+if (changeset.fixed?.length || changeset.linked?.length) fail("Changesets must remain independently versioned");
+if (errors) process.exit(1);
+console.log(`M0 workspace contract valid: ${manifestByName.size} packages, independent versions, no cycles`);
