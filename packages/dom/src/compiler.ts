@@ -44,20 +44,24 @@ function assertSafeUrl(value: unknown, name: string, base: string): void {
     throw new TypeError("Control characters in URL binding: " + name);
   }
   const trimmed = input.trim();
-  // A plain relative URL is safe without resolving against about:blank documents.
-  // A scheme or protocol-relative URL must still pass the protocol allowlist.
-  if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed) && !trimmed.startsWith("//")) return;
-  // srcset is a URL list; a scalar URL parser is not an adequate validator.
-  if (name.toLowerCase() === "srcset") {
-    throw new TypeError("srcset requires a separately approved URL-list policy");
-  }
+  if (!trimmed) return;
+  // Resolve relative addresses against a harmless HTTPS base if this document
+  // has no usable HTTP(S) base (e.g. JSDOM about:blank).
   let url: URL;
   try {
-    url = new URL(trimmed, base);
+    const baseUrl = new URL(base);
+    const safeBase = ["https:", "http:"].includes(baseUrl.protocol)
+      ? base : "https://zaakiy.invalid/";
+    url = new URL(trimmed, safeBase);
   } catch {
-    throw new TypeError("Malformed URL binding: " + name);
+    // An invalid base is not a reason to disable URL validation.
+    try { url = new URL(trimmed, "https://zaakiy.invalid/"); }
+    catch { throw new TypeError("Malformed URL binding: " + name); }
   }
-  if (!["https:", "http:", "mailto:", "tel:"].includes(url.protocol)) {
+  const protocols = name.toLowerCase() === "href"
+    ? ["https:", "http:", "mailto:", "tel:"]
+    : ["https:", "http:"];
+  if (!protocols.includes(url.protocol)) {
     throw new TypeError("Blocked URL scheme in DOM binding: " + name);
   }
 }
@@ -89,7 +93,8 @@ export function setText(target: Text, next: string): void {
 
 export function setProperty(target: Element, name: string, value: unknown): void {
   assertWritableName(name);
-  if (UNSAFE_PROPERTIES.has(name.toLowerCase()) || name.toLowerCase() === "srcset") {
+  if (UNSAFE_PROPERTIES.has(name.toLowerCase()) ||
+    ["srcset", "imagesrcset", "ping"].includes(name.toLowerCase())) {
     throw new TypeError("Unsafe or unsupported DOM property: " + name);
   }
   const record = target as unknown as Record<string, unknown>;
@@ -111,8 +116,8 @@ export function setProperty(target: Element, name: string, value: unknown): void
 
 export function setAttribute(target: Element, name: string, value: string | null): void {
   assertWritableName(name);
-  if (["srcset", "srcdoc", "style"].includes(name.toLowerCase())) {
-    throw new TypeError("srcset requires a separately approved URL-list policy");
+  if (["srcset", "imagesrcset", "ping", "srcdoc", "style"].includes(name.toLowerCase())) {
+    throw new TypeError("Unsafe or unsupported DOM attribute: " + name);
   }
   validateValue(target, name, value);
   if (name === "xlink:href") {
