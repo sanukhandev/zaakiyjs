@@ -98,6 +98,15 @@ export function createStore<S extends object, A extends ActionDefinitions>(
   if (!owner) throw new Error("createStore requires a live owner or runWithOwner");
   if (owner.disposed) throw new Error("Cannot create a store on a disposed owner");
   let closed = false;
+  // Core keeps parent providers readable while descendant cleanup callbacks run.
+  // Its lexical cleanup owner is the only safe exception to normal disposal reads.
+  const assertReadable = (): void => {
+    if (closed) throw new Error("Store has been disposed");
+    if (!owner.disposed) return;
+    let current = getOwner();
+    while (current && current !== owner) current = current.parent;
+    if (!current) throw new Error("Store has been disposed");
+  };
   const assertOpen = (): void => {
     if (closed || owner.disposed) throw new Error("Store has been disposed");
   };
@@ -110,8 +119,8 @@ export function createStore<S extends object, A extends ActionDefinitions>(
     const source = signal(initial[key]);
     sources.set(key, source);
     Object.defineProperty(publicState, key, { enumerable: true, value: Object.freeze({
-      get value() { assertOpen(); return source.value; },
-      peek() { assertOpen(); return source.peek(); }
+      get value() { assertReadable(); return source.value; },
+      peek() { assertReadable(); return source.peek(); }
     }) });
   }
   const state = Object.freeze(publicState) as ReadonlyStoreState<S>;
@@ -180,15 +189,17 @@ export function createStore<S extends object, A extends ActionDefinitions>(
   }
   return Object.freeze({
     owner,
-    get disposed() { return closed || owner.disposed; },
+    // Closed when manual disposal or the owner's final cleanup completes.
+    // Pending owner teardown still allows synchronous reads by descendant cleanups.
+    get disposed() { return closed; },
     state,
     actions,
     select<T>(read: (sourceState: ReadonlyStoreState<S>) => T): ReadonlySignal<T> {
       assertOpen();
-      const memo = computed(() => { assertOpen(); return read(state); });
+      const memo = computed(() => { assertReadable(); return read(state); });
       return Object.freeze({
-        get value() { assertOpen(); return memo.value; },
-        peek() { assertOpen(); return memo.peek(); }
+        get value() { assertReadable(); return memo.value; },
+        peek() { assertReadable(); return memo.peek(); }
       });
     },
     reset(): void {
@@ -214,9 +225,11 @@ function assertStoreInScope<T>(consumer: OwnerScope, value: T): T {
   const storeOwner = descriptor.value as OwnerScope;
   let scope: OwnerScope | null = consumer;
   while (scope && scope !== storeOwner) scope = scope.parent;
-  if (!scope || storeOwner.disposed) {
+  if (!scope) {
     throw new Error("Store provider cannot outlive or cross its store owner");
   }
+  // Core's context access already verifies readable owner ancestry and permits
+  // registered descendant cleanup callbacks during in-progress disposal.
   if ("disposed" in value && value.disposed === true) {
     throw new Error("Store provider has been disposed");
   }
