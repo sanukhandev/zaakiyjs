@@ -68,7 +68,6 @@ export function bootstrapRouter(host: Element): {
 } {
   const appOwner = createOwner();
   provide(appOwner, Repository, { label: id => "Product " + id });
-  let router: Router;
   const shell: PageAdapter = {
     setup() {
       metrics.shellSetup++;
@@ -92,7 +91,7 @@ export function bootstrapRouter(host: Element): {
     }
   };
 
-  router = createRouter({
+  const router = createRouter({
     owner: appOwner,
     history: createBrowserHistory(window),
     base: "/app",
