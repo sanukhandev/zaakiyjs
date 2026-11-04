@@ -1,20 +1,11 @@
 {
   "name": "@zaakiyjs/styles",
   "version": "0.0.0",
-  "description": "ZaakiyJS styles — M0 type contracts only; not implemented",
+  "description": "ZaakiyJS deterministic brand-first atomic CSS compiler",
   "type": "module",
   "sideEffects": false,
-  "files": [
-    "dist",
-    "README.md",
-    "CHANGELOG.md"
-  ],
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
-  },
+  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
   "types": "./dist/index.d.ts",
   "main": "./dist/index.js",
   "scripts": {
@@ -23,7 +14,6 @@
     "build": "tsc --project tsconfig.build.json",
     "test": "vitest run test"
   },
-  "publishConfig": {
-    "access": "public"
-  }
+  "dependencies": { "postcss": "8.5.32" },
+  "publishConfig": { "access": "public" }
 }
