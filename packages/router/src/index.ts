@@ -1,5 +1,5 @@
 /** Native, owner-scoped ZaakiyJS routing. No browser globals at import. */
-export { defineRoute, definePageAdapter, RouteConfigurationError, RouteNotFoundError, NavigationDeniedError,
+export { defineRoute, definePageAdapter, RouteConfigurationError, RouteNotFoundError, RouteModuleLoadError, RouteLoaderError, NavigationDeniedError,
   NavigationCancelledError, RedirectLoopError, UnsafeNavigationError } from "./types.js";
 export type {
   RouteParams, RouteContext, RouteGuard, GuardDecision, RouteLoader, PageView,
