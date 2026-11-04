@@ -52,6 +52,18 @@ describe("HTTP security and lifecycle regressions", () => {
     }
   });
 
+  it("never retries 401/403 even when a custom status retry list includes them", async () => {
+    for (const status of [401, 403]) {
+      const transport = vi.fn(async () => new Response(null, { status }));
+      const client = createHttpClient({ baseURL, fetch: transport });
+      await expect(client.get("/protected", {
+        retry: { maxAttempts: 3, baseDelayMs: 0, maxDelayMs: 0, statusCodes: [401, 403] }
+      })).rejects.toMatchObject({ code: "HTTP_STATUS", status });
+      expect(transport).toHaveBeenCalledTimes(1);
+      client.dispose();
+    }
+  });
+
   it("classifies token refresh expiration as TIMEOUT even when request timeout is longer", async () => {
     vi.useFakeTimers();
     const client = createHttpClient({

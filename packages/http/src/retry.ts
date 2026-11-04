@@ -37,7 +37,8 @@ export function retryAllowed(method: HttpMethod, policy: RetryConfig, key: strin
 }
 export function canRetry(error: HttpError, policy: RetryConfig): boolean {
   return (error.code === "NETWORK" && policy.retryNetworkErrors) ||
-    (error.code === "HTTP_STATUS" && error.status !== undefined && policy.statusCodes.includes(error.status));
+    (error.code === "HTTP_STATUS" && error.status !== undefined &&
+     error.status !== 401 && error.status !== 403 && policy.statusCodes.includes(error.status));
 }
 export async function waitRetry(
   attempt: number, policy: RetryConfig, signal: AbortSignal, started: number, retryAfter: string | null
