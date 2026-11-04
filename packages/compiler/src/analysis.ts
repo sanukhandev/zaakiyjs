@@ -215,7 +215,7 @@ export function analyze(request: CompileRequest): Analysis {
             ? expression(keyAttr.initializer.expression) : expression(node.expression.expression);
           nodes.push({
             kind: "KeyedLoop", id: idOf("KeyedLoop", span), span,
-            collection: expression(node.expression.expression.expression), key,
+            collection: expression(node.expression.expression), key,
             itemParameter,
             body: itemNode ? [element(itemNode, namespace, true)] : []
           });
