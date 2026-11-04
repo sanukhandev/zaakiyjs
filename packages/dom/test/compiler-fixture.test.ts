@@ -9,15 +9,17 @@ import * as compiler from "@zaakiyjs/compiler";
 import { flushSync } from "@zaakiyjs/signals";
 import { mount } from "../src/index.js";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-import { pathToFileURL, fileURLToPath } from "node:url";
+import { basename, dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 type CompileFunction = (input: { fileName: string; source: string }) => {
   diagnostics: readonly { severity: string; message: string }[];
   js: readonly { code: string }[];
 };
 const compile = (compiler as unknown as { compile?: CompileFunction }).compile;
-const packageRoot = fileURLToPath(new URL("..", import.meta.url));
+const cwd = process.cwd();
+const packageRoot = basename(cwd) === "dom" && basename(dirname(cwd)) === "packages"
+  ? cwd : join(cwd, "packages", "dom");
 
 afterEach(() => document.body.replaceChildren());
 

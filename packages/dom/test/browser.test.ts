@@ -22,13 +22,8 @@ function findChromium(): string | null {
 }
 
 describe("real Chromium compiler-ABI smoke", () => {
-  it("preserves targeted mutations, keyed focus and cleanup in a native browser", async () => {
-    const chrome = findChromium();
-    if (!chrome) {
-      // A transparent skip rather than a fabricated browser pass.
-      console.warn("Chromium not installed: native browser smoke not executed");
-      return;
-    }
+  const chrome = findChromium();
+  it.skipIf(!chrome)("preserves targeted mutations, keyed focus and cleanup in a native browser", async () => {
     const outDir = mkdtempSync(join(tmpdir(), "zaakiy-dom-browser-"));
     try {
       await build({
@@ -54,7 +49,7 @@ describe("real Chromium compiler-ABI smoke", () => {
       writeFileSync(join(outDir, "index.html"),
         '<!doctype html><html><head><meta charset="utf-8"></head>' +
         '<body><script src="bundle.js"></script></body></html>');
-      const launched = spawnSync(chrome, [
+      const launched = spawnSync(chrome!, [
         "--headless=new", "--no-sandbox", "--disable-gpu",
         "--disable-dev-shm-usage", "--disable-extensions",
         "--allow-file-access-from-files", "--virtual-time-budget=1000",
