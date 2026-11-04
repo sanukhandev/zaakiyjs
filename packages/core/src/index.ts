@@ -6,7 +6,7 @@ export const foundationStatus = { package: "@zaakiyjs/core", implemented: true }
 export {
   createOwner, runWithOwner, getOwner, onCleanup, onMount, mountOwner,
   activateOwner, deactivateOwner, suspendOwner, disposeOwner, transferOwner,
-  ownDisposable, initializeOwnedComponent
+  ownDisposable, ownEffect, initializeOwnedComponent
 } from "./owner.js";
 export type { OwnerScope, OwnerState, Cleanup } from "./owner.js";
 export {
