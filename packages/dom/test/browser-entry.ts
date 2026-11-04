@@ -8,7 +8,7 @@ import { mount } from "../src/index.js";
 import {
   bindText, createElement, createText, listen, setAttribute
 } from "../src/compiler.js";
-import { bindConditionalRegion, bindKeyedRegion, createRegion } from "../src/regions.js";
+import { bindConditionalRegion, bindKeyedRegion, createRegion } from "../src/compiler.js";
 
 function check(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -55,7 +55,9 @@ try {
     bindKeyedRegion(owner, region, () => items.value, item => item.id, item => {
       const input = document.createElement("input");
       input.dataset.key = item.id;
-      return { node: input };
+      return { node: input, update(next: { id: string }) {
+        input.dataset.key = next.id;
+      } };
     });
     return regionHost;
   }, listHost);

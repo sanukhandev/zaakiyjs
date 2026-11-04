@@ -540,7 +540,11 @@ describe("compiler-lowered native DOM runtime", () => {
       const input = document.createElement("input");
       input.dataset.key = item.id;
       listen(child, input, "change", cleanup);
-      return { node: input };
+      return { node: input, update(next: { id: string }) {
+        // Replacing an item with the same identity must update only bound
+        // content, not replace the focused native input node.
+        input.dataset.key = next.id;
+      } };
     });
     flushSync();
     const b = parent.querySelector<HTMLInputElement>('[data-key="b"]')!;
