@@ -29,7 +29,6 @@ import { analyze } from "./analysis.js";
 import { emitJavaScript, loweringDiagnostics, typeDiagnostics } from "./generate.js";
 import { collectStyleTokens, optimizeIR, validateIR, OPTIMIZATION_PASSES } from "./optimize.js";
 export { optimizeIR, validateIR, OPTIMIZATION_PASSES };
-export type { Analysis } from "./analysis.js";
 
 /** Analyze a TSX source and return a stable JSON-serializable IR v1 document. */
 export function parseToIR(request: CompileRequest): { document: IRDocument; diagnostics: readonly CompilerDiagnostic[] } {
