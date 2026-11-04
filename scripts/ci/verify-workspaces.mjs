@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const expected = new Set(["signals", "core", "dom", "compiler", "styles", "vite-plugin", "cli"]);
-const allowed = new Set([...expected, "compat"]);
+const allowed = new Set([...expected, "compat", "store"]);
 const scriptNames = ["lint", "typecheck", "build", "test"];
 const manifestByName = new Map();
 let errors = 0;
@@ -29,7 +29,7 @@ for (const group of ["packages", "apps", "examples"]) {
   }
 }
 for (const name of expected) if (!manifestByName.has(`@zaakiyjs/${name}`)) fail(`Missing required M0 package: ${name}`);
-const browserPackages = new Set(["@zaakiyjs/signals", "@zaakiyjs/core", "@zaakiyjs/dom"]);
+const browserPackages = new Set(["@zaakiyjs/signals", "@zaakiyjs/core", "@zaakiyjs/dom", "@zaakiyjs/store"]);
 const buildOnly = new Set(["@zaakiyjs/compiler", "@zaakiyjs/styles", "@zaakiyjs/vite-plugin", "@zaakiyjs/cli", "@zaakiyjs/compat"]);
 const depsOf = (name) => Object.keys(manifestByName.get(name)?.dependencies ?? {}).filter((dep) => dep.startsWith("@zaakiyjs/"));
 for (const [name, pkg] of manifestByName) {

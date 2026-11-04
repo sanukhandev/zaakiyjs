@@ -106,6 +106,15 @@ importers:
 
   packages/signals: {}
 
+  packages/store:
+    dependencies:
+      '@zaakiyjs/core':
+        specifier: workspace:^
+        version: link:../core
+      '@zaakiyjs/signals':
+        specifier: workspace:^
+        version: link:../signals
+
   packages/styles:
     dependencies:
       postcss:
