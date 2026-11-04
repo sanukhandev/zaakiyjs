@@ -48,8 +48,11 @@ try {
     check(packed.version === manifest.version, name + ": version mismatch");
     for (const [entry, exports] of Object.entries(packed.exports ?? {})) {
       if (typeof exports !== "object" || exports === null) fail(name + ": non-object ESM export " + entry);
+      const exportTargets = name === "proxy" ? exports.node : exports;
+      if (name === "proxy") check(exportTargets && !exports.import && !exports.default && !exports.browser,
+        name + ": must expose Node-only exports");
       for (const key of ["import", "types"]) {
-        const target = exports[key];
+        const target = exportTargets?.[key];
         check(typeof target === "string" && target.startsWith("./"),
           name + ": missing " + key + " for export " + entry);
         check(contents.has("package/" + target.slice(2)),
@@ -96,6 +99,8 @@ try {
     'import * as compat from "@zaakiyjs/compat";',
     'import * as asyncEngine from "@zaakiyjs/async";',
     'import * as store from "@zaakiyjs/store";',
+    'import { createProxyRouter } from "@zaakiyjs/proxy";',
+    'if(typeof createProxyRouter !== "function") throw new Error("Node proxy export missing");',
     'const s = signal(1); s.value++; if(s.value !== 2) throw new Error("Signal contract failed");',
     'if(typeof mount !== "function" || typeof Show !== "function" || typeof For !== "function") throw new Error("DOM/Core entrypoint missing");',
     'if(typeof compile !== "function" || typeof zaakiyPlugin !== "function") throw new Error("Build entrypoint missing");',
