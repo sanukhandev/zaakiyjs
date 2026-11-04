@@ -228,6 +228,24 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       return null;
     },
 
+    transformIndexHtml: {
+      order: "post",
+      handler(html) {
+        if (!buildMode) return html;
+        // Vite may emit index.html after this plugin's generateBundle hook.
+        // Link at HTML-transform time, never by mutating a possibly absent asset.
+        if (!/<\/head\s*>/i.test(html)) {
+          throw new Error("ZV2010: HTML entry has no </head> for Zaakiy CSS linkage");
+        }
+        const href = ((resolved?.base ?? "/") + OUTPUT_CSS_FILE)
+          .replaceAll("&", "&amp;").replaceAll('"', "&quot;");
+        return html.replace(
+          /<\/head\s*>/i,
+          '<link rel="stylesheet" href="' + href + '"></head>'
+        );
+      }
+    },
+
     async transform(source, id, transformOptions) {
       if (!isTsx(id) || transformOptions?.ssr) return null;
       const file = simpleFile(id);
@@ -317,34 +335,17 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
     async generateBundle(_output, bundle) {
       if (!buildMode) return;
       await collectCss(true);
-      if (css.trim()) {
-        const content = compiledCssMap && resolved?.build.sourcemap
-          ? css + "\n/*# sourceMappingURL=zaakiy-styles.css.map */\n"
-          : css;
-        this.emitFile({ type: "asset", fileName: OUTPUT_CSS_FILE, source: content });
-        if (compiledCssMap && resolved?.build.sourcemap) {
-          this.emitFile({
-            type: "asset",
-            fileName: OUTPUT_CSS_FILE + ".map",
-            source: compiledCssMap
-          });
-        }
-        // HTML entries are rewritten only after Vite's normal JS graph is built.
-        // Library builds receive the standalone CSS asset without an HTML link.
-        const url = ((resolved?.base ?? "/") + OUTPUT_CSS_FILE)
-          .replaceAll("&", "&amp;").replaceAll('"', "&quot;");
-        for (const asset of Object.values(bundle)) {
-          if (asset.type === "asset" && asset.fileName.endsWith(".html") &&
-              typeof asset.source === "string") {
-            if (!/<\/head\s*>/i.test(asset.source)) {
-              this.error("ZV20010: HTML entry has no </head> for Zaakiy CSS linkage");
-            }
-            asset.source = asset.source.replace(
-              /<\/head\s*>/i,
-              '<link rel="stylesheet" href="' + url + '"></head>'
-            );
-          }
-        }
+      // Emit even an empty stylesheet so every HTML entry has a valid link.
+      const content = compiledCssMap && resolved?.build.sourcemap
+        ? css + "\n/*# sourceMappingURL=zaakiy-styles.css.map */\n"
+        : css;
+      this.emitFile({ type: "asset", fileName: OUTPUT_CSS_FILE, source: content });
+      if (compiledCssMap && resolved?.build.sourcemap) {
+        this.emitFile({
+          type: "asset",
+          fileName: OUTPUT_CSS_FILE + ".map",
+          source: compiledCssMap
+        });
       }
       const assets: GeneratedAssetRecord[] = Object.values(bundle)
         .map((entry): GeneratedAssetRecord | null => {
@@ -362,11 +363,9 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
           return null;
         })
         .filter((item): item is GeneratedAssetRecord => item !== null);
-      if (css.trim()) {
-        assets.push({ fileName: OUTPUT_CSS_FILE, kind: "css" });
-        if (compiledCssMap && resolved?.build.sourcemap) {
-          assets.push({ fileName: OUTPUT_CSS_FILE + ".map", kind: "map" });
-        }
+      assets.push({ fileName: OUTPUT_CSS_FILE, kind: "css" });
+      if (compiledCssMap && resolved?.build.sourcemap) {
+        assets.push({ fileName: OUTPUT_CSS_FILE + ".map", kind: "map" });
       }
       assets.push({ fileName: MANIFEST_FILE, kind: "manifest" });
       const manifest: ZaakiyAssetManifest = {
