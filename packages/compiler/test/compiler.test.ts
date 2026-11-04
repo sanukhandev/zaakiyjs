@@ -298,7 +298,6 @@ function originalLineAt(map: { mappings: string }, generatedLine: number, genera
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
   let previousSource = 0;
   let previousLine = 0;
-  let previousColumn = 0;
   const rows = map.mappings.split(";");
   for (let row = 0; row < rows.length; row++) {
     let column = 0;
@@ -320,7 +319,6 @@ function originalLineAt(map: { mappings: string }, generatedLine: number, genera
       if (values.length >= 4) {
         previousSource += values[1] ?? 0;
         previousLine += values[2] ?? 0;
-        previousColumn += values[3] ?? 0;
         if (row === generatedLine && column <= generatedColumn && previousSource === 0) {
           match = previousLine + 1;
         }
