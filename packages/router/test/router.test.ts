@@ -1,8 +1,9 @@
+// @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
 import { createOwner, disposeOwner, onCleanup, provide, createContext } from "@zaakiyjs/core";
 import { createRouter } from "../src/router.js";
 import { createMemoryHistory } from "../src/history.js";
-import { NavigationCancelledError, RedirectLoopError, UnsafeNavigationError } from "../src/types.js";
+import { RedirectLoopError, UnsafeNavigationError } from "../src/types.js";
 import type { RouteDefinition } from "../src/types.js";
 
 function deferred<T>() {
@@ -102,11 +103,19 @@ describe("navigation transactions", () => {
       expect(observed?.aborted).toBe(true);
       pending.resolve();
       expect((await navigation).status).toBe("cancelled");
-      const again = f.router.navigate("/wait");
-      await vi.waitFor(() => expect(f.router.signals.pending.value).toBe("/wait"));
-      f.router.cancel();
-      pending.resolve();
-      expect((await again).status).toBe("cancelled");
+      // A fresh pending navigation also supports explicit cancellation.
+      const nextPending = deferred<void>();
+      const original = f.router.signals.url.value;
+      const againRouter = fixture([home, { id: "explicit", path: "/explicit", loader: () => nextPending.promise }]);
+      try {
+        await againRouter.router.start();
+        const again = againRouter.router.navigate("/explicit");
+        await vi.waitFor(() => expect(againRouter.router.signals.pending.value).toBe("/explicit"));
+        againRouter.router.cancel();
+        nextPending.resolve();
+        expect((await again).status).toBe("cancelled");
+        expect(againRouter.router.signals.url.value).toBe(original);
+      } finally { againRouter.dispose(); }
     } finally { f.dispose(); }
   });
 
@@ -157,6 +166,44 @@ describe("navigation transactions", () => {
     } finally { f.dispose(); host.remove(); }
   });
 
+  it("retains a parent layout while child route changes and tears child owners down once", async () => {
+    const disposed = vi.fn();
+    const f = fixture([{
+      id: "layout", path: "/app", adapter: {
+        render: () => {
+          const node = document.createElement("main");
+          const outlet = document.createElement("div");
+          node.appendChild(outlet);
+          return { node, outlet };
+        }
+      },
+      children: [
+        { id: "first", path: "a", adapter: {
+          setup: () => { onCleanup(disposed); },
+          render: () => ({ node: document.createElement("input") })
+        } },
+        { id: "second", path: "b", adapter: {
+          render: () => ({ node: document.createElement("strong") })
+        } }
+      ]
+    }], "/app/a");
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    f.router.attachOutlet(host);
+    try {
+      await f.router.start();
+      const layout = host.querySelector("main");
+      const initial = host.querySelector("input");
+      expect(layout).not.toBeNull();
+      expect(initial).not.toBeNull();
+      await f.router.navigate("/app/b");
+      expect(host.querySelector("main")).toBe(layout);
+      expect(host.querySelector("input")).toBeNull();
+      expect(host.querySelector("strong")).not.toBeNull();
+      expect(disposed).toHaveBeenCalledTimes(1);
+    } finally { f.dispose(); host.remove(); }
+  });
+
   it("is idempotent on start and cleans up history subscriptions on dispose", async () => {
     const history = createMemoryHistory("/home");
     const listen = vi.spyOn(history, "listen");
@@ -168,7 +215,6 @@ describe("navigation transactions", () => {
     await a;
     expect(listen).toHaveBeenCalledTimes(1);
     router.dispose();
-    expect(() => router.start()).not.toThrow(); // Returns a rejected Promise.
     await expect(router.start()).rejects.toThrow("disposed");
     disposeOwner(owner);
   });
