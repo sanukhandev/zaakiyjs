@@ -99,6 +99,7 @@ class Scope implements OwnerScope {
     if (this.disposed) return;
     this.state = "disposed"; // Reject registrations before user cleanup runs.
     this.parent?.children.delete(this);
+    this.parent = null; // Sever ancestry; a retained disposed child must not retain its app.
     const errors: unknown[] = [];
     const children = [...this.children].reverse();
     this.children.clear();
