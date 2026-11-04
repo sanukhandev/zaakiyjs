@@ -29,5 +29,5 @@ const plugin: Plugin = viteFactory(opts);
 const span: SourceSpan = { file: "fixture.tsx", start: { line: 1, column: 1, offset: 0 }, end: { line: 1, column: 2, offset: 1 } };
 export const irDocument: IRDocument = { irVersion: 1, sourceFile: "fixture.tsx", nodes: [{ id: "text-1", kind: "StaticText", text: "hello", span }] };
 export const brand: StyleConfig = { brand: { colors: { primary: "#0f172a" } } };
-export const View: Component<{ label: string }> = ({ label }) => <div class="flex" onClick={(_event: MouseEvent) => count.value++}><span>{label}: {numberValue}</span></div>;
+export const View: Component<{ label: string }> = ({ label }) => <div class="flex" onClick={(event: MouseEvent) => { if (event.type === "click") count.value++; }}><span>{label}: {numberValue}</span></div>;
 void owner; void ownerValue; void disposed; void key; void css; void output; void cmd; void plugin;

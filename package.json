@@ -14,11 +14,18 @@
   },
   "devDependencies": {
     "@eslint/js": "9.39.1",
+    "@zaakiyjs/cli": "workspace:^",
+    "@zaakiyjs/compiler": "workspace:^",
+    "@zaakiyjs/core": "workspace:^",
+    "@zaakiyjs/dom": "workspace:^",
+    "@zaakiyjs/signals": "workspace:^",
+    "@zaakiyjs/styles": "workspace:^",
+    "@zaakiyjs/vite-plugin": "workspace:^",
     "eslint": "9.39.1",
-    "typescript-eslint": "8.46.0",
-    "typescript": "5.9.3",
     "turbo": "2.5.8",
-    "vitest": "3.2.4",
-    "vite": "6.3.5"
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.46.0",
+    "vite": "6.3.5",
+    "vitest": "3.2.4"
   }
 }
