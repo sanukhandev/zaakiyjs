@@ -2,7 +2,7 @@
 // Hand-authored ABI fixtures until the compiler emits executable TSX.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { signal, flushSync } from "@zaakiyjs/signals";
-import { createOwner, disposeOwner } from "@zaakiyjs/core";
+import { createOwner, disposeOwner, initializeOwnedComponent, mountOwner, onCleanup, onMount } from "@zaakiyjs/core";
 import { mount } from "../src/index.js";
 import {
   bindAttribute, bindClass, bindProperty, bindRef, bindStyle, bindText,
@@ -25,11 +25,32 @@ describe("compiler-lowered native DOM runtime", () => {
     }, container);
     expect(calls).toBe(1);
     expect(container.textContent).toBe("one");
+    expect(view.owner.state).toBe("active");
     view.dispose();
     view.dispose();
     expect(container.childNodes).toHaveLength(1);
     expect(container.firstChild).toBe(original);
     expect(view.owner.disposed).toBe(true);
+  });
+
+
+  it("mounts nested component owners once and disposes descendants before the parent", () => {
+    const order: string[] = [];
+    const container = document.createElement("div");
+    const app = mount((owner) => {
+      onCleanup(() => order.push("root"));
+      const child = createOwner(owner);
+      const el = initializeOwnedComponent(child, () => {
+        onMount(() => order.push("child mounted"));
+        onCleanup(() => order.push("child"));
+        return document.createElement("section");
+      });
+      onMount(() => mountOwner(child));
+      return el;
+    }, container);
+    expect(order).toEqual(["child mounted"]);
+    app.dispose();
+    expect(order).toEqual(["child mounted", "child", "root"]);
   });
 
   it("uses Text.data with zero unrelated mutations and tracks dynamic dependencies", async () => {

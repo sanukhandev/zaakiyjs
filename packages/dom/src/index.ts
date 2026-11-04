@@ -1,4 +1,4 @@
-import { createOwner, disposeOwner, runWithOwner } from "@zaakiyjs/core";
+import { createOwner, disposeOwner, initializeOwnedComponent, mountOwner } from "@zaakiyjs/core";
 import type { OwnerScope } from "@zaakiyjs/core";
 
 export const foundationStatus = { package: "@zaakiyjs/dom", implemented: true } as const;
@@ -56,7 +56,7 @@ export function mount(factory: MountFactory, container: DomTarget): MountHandle 
   };
 
   try {
-    const view = runWithOwner(owner, () => factory(owner));
+    const view = initializeOwnedComponent(owner, () => factory(owner));
     const nodes: readonly Node[] = Array.isArray(view)
       ? view as readonly Node[]
       : [view as Node];
@@ -66,6 +66,7 @@ export function mount(factory: MountFactory, container: DomTarget): MountHandle 
       }
       container.insertBefore(node, end);
     }
+    mountOwner(owner);
   } catch (error) {
     try {
       disposeOwner(owner);

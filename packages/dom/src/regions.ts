@@ -2,7 +2,7 @@
  * Internal implementation of conditional and keyed DOM regions.
  * Not exported via package exports: the public compiler loop ABI is pending ADR.
  */
-import { createOwner, disposeOwner, onCleanup, runWithOwner } from "@zaakiyjs/core";
+import { createOwner, disposeOwner, initializeOwnedComponent, mountOwner, onCleanup, runWithOwner } from "@zaakiyjs/core";
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { BindingHandle } from "./index.js";
@@ -74,13 +74,20 @@ export function bindConditionalRegion(
     const child = createOwner(owner);
     let node: Node;
     try {
-      node = runWithOwner(child, () => create(child));
+      node = initializeOwnedComponent(child, () => create(child));
     } catch (error) {
       disposeOwner(child);
       throw error;
     }
-    region.parent.insertBefore(node, region.end);
-    current = child;
+    try {
+      region.parent.insertBefore(node, region.end);
+      mountOwner(child);
+      current = child;
+    } catch (error) {
+      disposeOwner(child);
+      removeBetween(region.start, region.end);
+      throw error;
+    }
   }, clear);
 }
 
@@ -208,7 +215,7 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
           const child = createOwner(owner);
           let view: KeyedView<Item>;
           try {
-            view = runWithOwner(child, () => create(item, child));
+            view = initializeOwnedComponent(child, () => create(item, child));
           } catch (error) {
             disposeOwner(child);
             throw error;
@@ -220,7 +227,15 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
           fragment.appendChild(start);
           fragment.appendChild(view.node);
           fragment.appendChild(end);
-          region.parent.insertBefore(fragment, region.end);
+          try {
+            region.parent.insertBefore(fragment, region.end);
+            mountOwner(child);
+          } catch (error) {
+            disposeOwner(child);
+            const inserted = { key, item, owner: child, start, end, view };
+            removeEntry(inserted);
+            throw error;
+          }
           record = { key, item, owner: child, start, end, view };
           records.set(key, record);
         } else if (!Object.is(record.item, item)) {
