@@ -36,9 +36,11 @@ describe("@zaakiyjs/http", () => {
     next = new Response("binary");
     const bytes = await client.get<ArrayBuffer>("/binary", { responseType: "arrayBuffer" });
     expect(new TextDecoder().decode(bytes)).toBe("binary");
+    next = new Response("form-ack", { headers: { "content-type": "text/plain" } });
     const form = new FormData(); form.set("name", "Ada");
     await client.post("/form", form, { responseType: "text" });
     expect(new Headers(observed.at(-1)?.headers).has("content-type")).toBe(false);
+    next = new Response("urlencoded-ack", { headers: { "content-type": "text/plain" } });
     await client.post("/urlencoded", new URLSearchParams({ a: "1" }), { responseType: "text" });
     expect(new Headers(observed.at(-1)?.headers).get("content-type")).toContain("application/x-www-form-urlencoded");
     client.dispose();
@@ -71,7 +73,7 @@ describe("@zaakiyjs/http", () => {
     const trace = (ctx: { headers: Headers }): void => { events.push("q1"); ctx.headers.set("x-trace", "1"); };
     const remove = client.interceptors.request.use(trace);
     client.interceptors.request.use(trace);
-    client.interceptors.request.use(() => { events.push("q2"); });
+    client.interceptors.request.use(ctx => { events.push("q2"); ctx.headers.set("x-trace", "1"); });
     client.interceptors.response.use(r => { events.push("r1"); return { ...r, data: { data: 2 } }; });
     client.interceptors.response.use(r => { events.push("r2"); return r; });
     expect(await client.get("/ok")).toEqual({ data: 2 });
