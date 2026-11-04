@@ -70,6 +70,23 @@ export function validateIR(value: unknown): readonly CompilerDiagnostic[] {
       return;
     }
     if (identities.has(node.id)) fail(path + " duplicates IR id " + node.id + ".");
+    const fields: Record<string, readonly string[]> = {
+      StaticText: ["text"],
+      StaticElement: ["tag", "namespace", "children"],
+      DynamicText: ["expression"],
+      PropertyBinding: ["name", "target", "expression"],
+      EventBinding: ["name", "expression"],
+      ConditionalBlock: ["condition", "whenTrue", "whenFalse"],
+      KeyedLoop: ["collection", "key", "body"],
+      ComponentCall: ["component", "props"],
+      StyleToken: ["token", "variant"],
+      CompatFeature: ["feature", "targets"]
+    };
+    const permitted = new Set(["id", "kind", "span", ...(fields[node.kind] ?? [])]);
+    for (const field of Object.keys(node)) {
+      if (!permitted.has(field)) fail(path + " contains unknown IR v1 field " + field + ".");
+    }
+
     identities.add(node.id);
     switch (node.kind) {
       case "StaticText":
