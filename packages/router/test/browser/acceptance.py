@@ -18,6 +18,7 @@ def metrics(page: Page) -> dict:
 
 def start(page: Page, base: str, path: str = "/app/") -> None:
     page.goto(base + path, wait_until="networkidle", timeout=30000)
+    page.wait_for_function("window.__zaakiyRouter !== undefined", timeout=4000)
     expect(page.get_by_role("heading", name="ZaakiyJS Router acceptance")).to_be_visible()
     assert page.evaluate("window.__zaakiyRouter.router.signals.status.value") == "idle"
 
@@ -217,16 +218,20 @@ def main() -> int:
                         print(f"PASS {engine} / {case}", flush=True)
                         passed += 1
                     except Exception:
-                        failures.append((engine, case, traceback.format_exc()))
-                        print(f"FAIL {engine} / {case}", flush=True)
+                        failures.append((engine, case, traceback.format_exc() + f"\\nPage errors: {errors}"))
+                        print(f"FAIL {engine} / {case}: {errors}", flush=True)
                         try:
                             page.screenshot(path=f"/tmp/zaakiy-router-{engine}-{case}.png")
                         except Exception:
                             pass
                     finally:
                         context.close()
+                    if failures:
+                        break
             finally:
                 browser.close()
+            if failures:
+                break
     for engine, case, detail in failures:
         print(f"\nFAILED {engine} / {case}\n{detail}", file=sys.stderr)
     print(f"Router browser matrix: {passed}/{3 * (len(CASES) + 1)} passed, {len(failures)} failed")
