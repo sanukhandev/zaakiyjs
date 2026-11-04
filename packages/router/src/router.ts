@@ -66,7 +66,7 @@ function readonlySearch(value: string): ReadonlySearchParams {
     entries: () => params.entries(),
     keys: () => params.keys(),
     values: () => params.values(),
-    forEach: (callback: (value: string, key: string) => void) => params.forEach(callback),
+    forEach: (callback: (value: string, key: string) => void) => params.forEach((value, key) => callback(value, key)),
     toString: () => params.toString(),
     [Symbol.iterator]: () => params[Symbol.iterator]()
   });
