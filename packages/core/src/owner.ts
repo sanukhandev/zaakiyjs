@@ -129,7 +129,11 @@ class Scope implements OwnerScope {
       }
       this.mountCallbacks.length = 0;
       for (let index = this.cleanups.length - 1; index >= 0; index--) {
-        try { this.cleanups[index]?.(); } catch (error) { errors.push(error); }
+        try {
+          // A teardown always runs in its own lexical owner, never the caller's.
+          // Registration remains forbidden because this scope is already disposed.
+          withLexicalOwner(this, () => this.cleanups[index]?.());
+        } catch (error) { errors.push(error); }
       }
     } finally {
       // Ancestry and provider values must survive through the last cleanup,
@@ -174,13 +178,18 @@ export function createOwner(parent: OwnerScope | null = null): OwnerScope {
   return new Scope(parentScope);
 }
 
+/** Set a synchronous lexical owner without permitting new setup on disposed scopes. */
+function withLexicalOwner<T>(owner: OwnerScope, callback: () => T): T {
+  const previous = currentOwner;
+  currentOwner = owner;
+  try { return callback(); } finally { currentOwner = previous; }
+}
+
 /** Lexical context is synchronous: it does not flow across await/Promise callbacks. */
 export function runWithOwner<T>(owner: OwnerScope, initialize: () => T): T {
   const scope = asScope(owner);
   scope.ensureAlive();
-  const previous = currentOwner;
-  currentOwner = scope;
-  try { return initialize(); } finally { currentOwner = previous; }
+  return withLexicalOwner(scope, initialize);
 }
 
 export function getOwner(): OwnerScope | null {
