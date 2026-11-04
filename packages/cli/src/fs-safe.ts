@@ -105,7 +105,11 @@ export async function writeGenerated(rootPath: string, files: readonly PlannedWr
   for (const file of plan) {
     const path = safeDestination(root, file.path);
     await ensureNoSymlinkAncestors(root, path);
-    if (await exists(path) && !options.force) throw new CliError("FILE_EXISTS", "File already exists: " + path + " (use --force to replace explicitly)");
+    if (await exists(path) && !options.dryRun) {
+      const info = await lstat(path);
+      if (!info.isFile()) throw new CliError("DIRECTORY_COLLISION", "Refusing to overwrite non-file path " + path);
+      if (!options.force) throw new CliError("FILE_EXISTS", "File already exists: " + path + " (use --force to replace explicitly)");
+    }
   }
   if (options.dryRun) return plan.map(file => file.path);
   const stage = await mkdtemp(join(root, ".zaakiy-stage-"));
