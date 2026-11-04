@@ -175,7 +175,7 @@ function toExpression(code: string, original: ts.Node, source: ts.SourceFile): t
     throw new Error("Compiler internal error: failed to parse generated expression.");
   }
   const declaration = statement.declarationList.declarations[0];
-  if (!declaration?.initializer || holder.parseDiagnostics.length > 0) {
+  if (!declaration?.initializer || ((holder as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics?.length ?? 0) > 0) {
     throw new Error("Compiler internal error: generated TypeScript expression is invalid.");
   }
   const output = declaration.initializer;
@@ -202,8 +202,7 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
       }
       return ts.visitEachChild(node, visit, context);
     };
-    const visited = ts.visitNode(file, visit);
-    if (!visited) return file;
+    const visited = ts.visitEachChild(file, visit, context);
     const imports = ts.createSourceFile("__zaakiy_imports.ts", DOM_IMPORT + "\n" + CORE_IMPORT,
       ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
     return ts.factory.updateSourceFile(visited,
