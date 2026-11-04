@@ -4,16 +4,29 @@
   "description": "ZaakiyJS deterministic brand-first atomic CSS compiler",
   "type": "module",
   "sideEffects": false,
-  "files": ["dist", "README.md", "CHANGELOG.md"],
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "types": "./dist/index.d.ts",
   "main": "./dist/index.js",
   "scripts": {
     "lint": "eslint src test",
-    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "typecheck": "tsc --noEmit --project tsconfig.json && tsc --noEmit --project tsconfig.test.json",
     "build": "tsc --project tsconfig.build.json",
     "test": "vitest run test"
   },
-  "dependencies": { "postcss": "8.5.32" },
-  "publishConfig": { "access": "public" }
+  "dependencies": {
+    "postcss": "8.5.32"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }

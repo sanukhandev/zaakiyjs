@@ -100,14 +100,30 @@ export function renderBrandScope(scope: string, tokens: BrandOverride): string {
   const parts = declarationsForTokens(tokens);
   return parts.length ? `[data-zaakiy-brand="${scope}"]{${parts.join(";")}}` : "";
 }
+/** Native scoped variables: explicit light/dark markers override system preference. */
 export function brandCss(config: StyleConfig): string {
-  const brand = config.brand;
-  const root = `:root{${declarationsForTokens(brand, true).join(";")}}`;
+  const { brand, mode = "system" } = config;
+  const light = declarationsForTokens(brand, true).join(";");
+  const root = `:root{${light}}`;
   const dark = brand.appearance?.dark;
   if (!dark) return root;
-  const decl = declarationsForTokens(dark).join(";");
-  if (!decl) return root;
-  if (config.mode === "dark") return `${root}:root{${decl}}`;
-  if (config.mode === "light") return root;
-  return `${root}:root[data-zaakiy-mode="dark"]{${decl}}@media (prefers-color-scheme:dark){:root:not([data-zaakiy-mode="light"]):not([data-zaakiy-mode="dark"]){${decl}}}`;
+  const darkDeclaration = declarationsForTokens(dark).join(";");
+  if (!darkDeclaration) return root;
+
+  // data-zaakiy-mode can be placed on the app root or a nested feature scope;
+  // class="dark" is supported for the same explicit-toggle workflow.
+  const scopes = `:root[data-zaakiy-mode="dark"],[data-zaakiy-mode="dark"],.dark{${darkDeclaration}}`;
+  if (mode === "dark") return `${root}:root{${darkDeclaration}}${scopes}`;
+
+  // Reset only tokens that the dark appearance actually changes. Repeating
+  // the entire default brand would bloat CSS and mask feature brand scopes.
+  const lightDeclarations = new Map(declarationsForTokens(brand, true).map(d => [d.slice(0, d.indexOf(":")), d]));
+  const lightReset = declarationsForTokens(dark).map(d => {
+    const property = d.slice(0, d.indexOf(":"));
+    return lightDeclarations.get(property) ?? `${property}:initial`;
+  }).join(";");
+  const explicitLight = `[data-zaakiy-mode="light"]{${lightReset}}`;
+  if (mode === "light") return `${root}${scopes}${explicitLight}`;
+  const automatic = `@media (prefers-color-scheme:dark){:root:not([data-zaakiy-mode="light"]):not([data-zaakiy-mode="dark"]):not(.dark){${darkDeclaration}}}`;
+  return `${root}${scopes}${explicitLight}${automatic}`;
 }

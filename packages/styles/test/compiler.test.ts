@@ -25,7 +25,7 @@ describe("Zaakiy CSS compiler", () => {
     expect(css).toContain("--z-duration-fast:100ms");
     expect(css).toContain("@layer zaakiy.tokens,zaakiy.utilities");
     expect(css).toContain(".bg-primary{background-color:var(--z-color-primary)}");
-    expect(css).toContain(':root[data-zaakiy-mode="dark"]{--z-color-primary:#abcdef}');
+    expect(css).toContain(':root[data-zaakiy-mode="dark"],[data-zaakiy-mode="dark"],.dark{--z-color-primary:#abcdef}');
     expect(css).toContain("prefers-color-scheme:dark");
     expect(() => postcss.parse(css)).not.toThrow();
   });
@@ -115,6 +115,67 @@ describe("Zaakiy CSS compiler", () => {
     expect(() => postcss.parse(expanded.css)).not.toThrow();
     expect(compact.css).not.toContain("tailwind");
     expect(compact.sourceMap).toBeUndefined(); // No misleading TSX-origin map is generated.
+  });
+  it("orders custom breakpoint rules by actual CSS width, not insertion order", () => {
+    const cfg: StyleConfig = { ...config, brand: { ...config.brand, breakpoints: { desktop: "1200px", tablet: "800px" } } };
+    const output = compileStyles({ config: cfg, tokens: source("lg:p-6", "desktop:p-8", "tablet:p-2", "md:p-4"), minify: true }).css;
+    expect(output.indexOf("min-width:768px")).toBeLessThan(output.indexOf("min-width:800px"));
+    expect(output.indexOf("min-width:800px")).toBeLessThan(output.indexOf("min-width:1024px"));
+    expect(output.indexOf("min-width:1024px")).toBeLessThan(output.indexOf("min-width:1200px"));
+  });
+  it("supports system dark utility activation and explicit dark/light scopes", () => {
+    const css = compile("dark:bg-primary").css;
+    expect(css).toContain(':where([data-zaakiy-mode="dark"],.dark) .dark\\:bg-primary');
+    expect(css).toContain('@media (prefers-color-scheme:dark){:root:not([data-zaakiy-mode="light"]):not([data-zaakiy-mode="dark"]):not(.dark) .dark\\:bg-primary');
+    expect(css).toContain('[data-zaakiy-mode="light"]{--z-color-primary:#123456}');
+    const pinned = compileStyles({config:{...config,mode:"dark"},tokens:source("dark:bg-primary"),minify:true}).css;
+    expect(pinned).toContain('.dark\\:bg-primary{background-color:var(--z-color-primary)}');
+    expect(pinned).not.toContain('prefers-color-scheme:dark');
+  });
+  it("flattens unsupported CSS Cascade Layers for legacy browser targets", () => {
+    const legacy = compileStyles({
+      config: { ...config, targets: { safari: 14 } },
+      tokens: source("flex", "select-none", "focus-visible:outline"), minify: true
+    });
+    expect(legacy.css).not.toContain("@layer");
+    expect(legacy.css).toContain(".flex{display:flex}");
+    expect(legacy.css).toContain("-webkit-user-select:none;user-select:none");
+    expect(legacy.css).toContain(".focus-visible\\:outline:focus{outline-style:solid}");
+    expect(legacy.diagnostics.map(d => d.code)).toContain("ZSTY_COMPAT_LAYER_FLATTENED");
+    expect(legacy.diagnostics.map(d => d.code)).toContain("ZSTY_COMPAT_FOCUS_VISIBLE_FALLBACK");
+    expect(() => postcss.parse(legacy.css)).not.toThrow();
+    const firefox = compileStyles({config:{...config,targets:{firefox:96}},tokens:source("grid")});
+    expect(firefox.css).not.toContain("@layer");
+  });
+  it("distinguishes static class strings from expressions and records accurate source offsets", () => {
+    const text = '<div className={"flex" + " hidden"} class={state ? "block" : "hidden"} className={"p-4"} />';
+    const extraction = extractStyleTokens(text, "source.tsx");
+    expect(extraction.tokens.map(t => t.token)).toEqual(["p-4"]);
+    expect(extraction.diagnostics.map(d => d.code)).toEqual(["ZSTY_DYNAMIC_CLASS", "ZSTY_DYNAMIC_CLASS"]);
+    const joined = compileStyles({config, tokens:[{ token: "flex bad-utility", file: "source.tsx", offset: 10 }], minify:true});
+    expect(joined.diagnostics.find(d => d.token === "bad-utility")).toMatchObject({ file: "source.tsx", offset: 15 });
+  });
+  it("rejects invalid typed browser target versions without emitting CSS", () => {
+    const invalid = compileStyles({config:{...config,targets:{safari:-1}},tokens:source("flex")});
+    expect(invalid.css).toBe("");
+    expect(invalid.diagnostics[0]?.code).toBe("ZSTY_INVALID_BROWSER_TARGET");
+  });
+  it("uses stable location selection for duplicated invalid classes", () => {
+    const requests = [
+      {token:"invalid-utility",file:"z.tsx",offset:500},
+      {token:"invalid-utility",file:"a.tsx",offset:8},
+    ];
+    for (const tokens of [requests, [...requests].reverse()]) {
+      const result = compileStyles({config,tokens,minify:true});
+      expect(result.diagnostics[0]).toMatchObject({token:"invalid-utility",file:"a.tsx",offset:8});
+    }
+  });
+  it("allows no invalid CSS injection through custom brand tokens in scoped modes", () => {
+    for (const value of ["url(https://evil.test/a)", "red}body{display:none", "rgb(1,2,3);@import 'x'", "#fff\n@media{}"]){
+      const output = compileStyles({config:{brand:{appearance:{dark:{colors:{primary:value}}}}},tokens:source("dark:bg-primary")});
+      expect(output.css).toBe("");
+      expect(output.diagnostics[0]?.code).toBe("ZSTY_INVALID_BRAND_TOKEN");
+    }
   });
   it("keeps package dependency independent of Tailwind and Gemini", () => {
     const manifest = { dependencies: { postcss: "8.5.32" } };

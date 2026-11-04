@@ -8,18 +8,24 @@ export interface ExtractionResult { readonly tokens: readonly ExtractedStyleToke
 export function extractStyleTokens(source: string, file: string): ExtractionResult {
   const tokens: ExtractedStyleToken[] = [];
   const diagnostics: StyleDiagnostic[] = [];
+  // Avoid treating a partially captured JSX expression as a static string.
+  // This is intentionally a *conservative* helper, not a TSX parser.
   const attributes = /\b(?:class|className)\s*=\s*(?:(["'])([^"']*)\1|\{([^}]*)\})/gu;
   for (const match of source.matchAll(attributes)) {
     const offset = match.index;
     let literal: string | undefined;
     let start = -1;
-    if (match[1]) { literal = match[2] ?? ""; start = offset + match[0].indexOf(match[1]) + 1; }
-    else {
-      const expr = (match[3] ?? "").trim();
-      const quote = expr[0];
-      if ((quote === '"' || quote === "'" || quote === "`") && expr.endsWith(quote) && !expr.includes("${")) {
-        literal = expr.slice(1, -1);
-        start = offset + match[0].indexOf(quote) + 1;
+    if (match[1]) {
+      literal = match[2] ?? "";
+      start = offset + match[0].indexOf(match[1]) + 1;
+    } else {
+      const expression = (match[3] ?? "").trim();
+      // Whitespace around the complete string literal is allowed; operators,
+      // identifiers, calls and interpolated templates are always dynamic.
+      const quoted = /^(?:"([^"\\]*(?:\\.[^"\\]*)*)"|'([^'\\]*(?:\\.[^'\\]*)*)'|`([^`\\]*(?:\\.[^`\\]*)*)`)$/u.exec(expression);
+      if (quoted && !expression.includes("${") && !/\\/u.test(expression)) {
+        literal = quoted[1] ?? quoted[2] ?? quoted[3] ?? "";
+        start = offset + match[0].indexOf(expression) + 1;
       }
     }
     if (literal === undefined) {
