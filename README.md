@@ -271,6 +271,8 @@ The first implementation slice should be **one typed TSX counter** proving signa
 
 ## About the creator
 
+**ZaakiyJS is part of Zaakiy Verse.**
+
 **ZaakiyJS** was conceived by **Sanu Khan**, with the goal of creating an independent, compiler-first TypeScript frontend framework focused on precise reactivity, maintainable architecture, and optional verified AI-assisted development.
 
 **Creator's website:** [sanukhan.dev](https://sanukhan.dev)  
