@@ -37,7 +37,11 @@ function basePath(value: string | undefined): string {
   return normalized.replace(/\/+$/, "") || "/";
 }
 function normalizeUrl(input: string, relativeTo: string): URL {
-  if (!input || /[\u0000-\u001f\u007f\\]/.test(input) ||
+  const invalidControl = [...input].some(character => {
+    const code = character.charCodeAt(0);
+    return code <= 31 || code === 127;
+  });
+  if (!input || invalidControl || input.includes("\\") ||
       input.startsWith("//") || /^[A-Za-z][\w+.-]*:/.test(input)) {
     throw new UnsafeNavigationError("Navigation must target a safe same-origin application URL");
   }
@@ -495,8 +499,9 @@ export class Router {
       }
       // Mount only after native DOM insertion and state commit. Core guarantees
       // exactly-once mount callbacks and child-first cleanup.
-      if (next[common]) {
-        try { mountOwner(next[common].owner); }
+      const firstNew = next[common];
+      if (firstNew) {
+        try { mountOwner(firstNew.owner); }
         catch (error) {
           this.statusState.value = "error";
           this.errorState.value = error;
