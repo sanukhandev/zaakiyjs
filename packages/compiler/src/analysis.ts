@@ -256,7 +256,9 @@ export function analyze(request: CompileRequest): Analysis {
   };
   scan(source);
 
-  for (const diagnostic of source.parseDiagnostics) {
+  // TypeScript keeps parser diagnostics on its internal SourceFile instance; isolate that access here.
+  const syntactic = (source as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics ?? [];
+  for (const diagnostic of syntactic) {
     const start = diagnostic.start ?? 0;
     diagnostics.push({
       code: "ZCTS" + diagnostic.code, severity: "error",
