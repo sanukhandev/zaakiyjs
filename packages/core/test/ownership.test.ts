@@ -41,6 +41,8 @@ describe("owner-scoped lifecycle", () => {
     expect(root.disposed).toBe(true);
     expect(a.disposed).toBe(true);
     expect(b.disposed).toBe(true);
+    expect(a.parent).toBeNull(); // A retained disposed child cannot retain root providers.
+    expect(b.parent).toBeNull();
   });
 
   it("is idempotent and rejects late registration and child creation", () => {
