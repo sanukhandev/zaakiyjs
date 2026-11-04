@@ -1,10 +1,10 @@
 import {spawn, spawnSync} from "node:child_process";
 import {readFile, stat} from "node:fs/promises";
-import {resolve, join} from "node:path";
+import {resolve, join, posix} from "node:path";
 import {CliError, parseArgs, assertOptions, flagOption, valueOption} from "./args.js";
 import {diagnoseProject} from "./doctor.js";
 import {generateFiles, supportedGenerators} from "./generators.js";
-import {safeRelativePath} from "./fs-safe.js";
+import {safeRelativePath, validateProjectName} from "./fs-safe.js";
 import {assertFrameworkReady, getInstalledVersions, parsePreset, scaffoldProject, type Versions} from "./scaffold.js";
 import type {CliIO} from "./types.js";
 
@@ -76,6 +76,36 @@ export async function runProjectScript(command: "dev" | "build" | "test", cwd: s
     });
   });
 }
+function assertNodeVersion(): void {
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  if ((major ?? 0) < 20 || (major === 20 && (minor ?? 0) < 19)) {
+    throw new CliError("NODE_UNSUPPORTED", "Node.js >=20.19 is required.");
+  }
+}
+async function assertWorkspaceTarget(root: string, name: string, parentPath: string | undefined,
+  manager: "npm" | "pnpm" | "yarn"): Promise<void> {
+  if (manager !== "pnpm") throw new CliError("WORKSPACE_MANAGER", "--workspace requires --package-manager pnpm.");
+  let yaml: string;
+  try { yaml = await readFile(join(root, "pnpm-workspace.yaml"), "utf8"); }
+  catch { throw new CliError("NO_WORKSPACE", "--workspace requires pnpm-workspace.yaml in the current directory."); }
+  const relativeTarget = posix.join(parentPath ? safeRelativePath(parentPath) : "", validateProjectName(name));
+  const patterns = yaml.split(/\r?\n/).flatMap(line => {
+    const match = /^\s*-\s*['"]?([^'"]+)['"]?\s*$/.exec(line);
+    return match ? [match[1] ?? ""] : [];
+  }).filter(pattern => pattern && !pattern.startsWith("!"));
+  const covered = patterns.some(pattern => {
+    if (pattern === relativeTarget) return true;
+    if (pattern.endsWith("/*")) {
+      return posix.dirname(relativeTarget) === pattern.slice(0, -2);
+    }
+    if (pattern.endsWith("/**")) {
+      return relativeTarget.startsWith(pattern.slice(0, -3) + "/");
+    }
+    return false;
+  });
+  if (!covered) throw new CliError("WORKSPACE_NOT_INCLUDED",
+    "Target " + relativeTarget + " is outside declared pnpm workspace packages; choose --path packages (or another included directory).");
+}
 async function ensureProjectDirectory(cwd: string): Promise<void> {
   try {
     const info = await stat(join(cwd, "package.json"));
@@ -99,6 +129,7 @@ export async function runCli(argv: readonly string[], io?: Partial<CliIO>): Prom
       out((await cliVersion()) + "\n");
       return 0;
     }
+    if (args.command !== "doctor") assertNodeVersion();
     if (args.command === "start") {
       assertOptions(args, ["project", "template", "path", "package-manager", "dry-run", "force", "workspace"], 0);
       const name = valueOption(args.options, "project");
@@ -107,10 +138,7 @@ export async function runCli(argv: readonly string[], io?: Partial<CliIO>): Prom
       const manager = packageManager(valueOption(args.options, "package-manager"));
       const dryRun = flagOption(args.options, "dry-run");
       const workspace = flagOption(args.options, "workspace");
-      if (workspace) {
-        try {await stat(join(root, "pnpm-workspace.yaml"));}
-        catch {throw new CliError("NO_WORKSPACE", "--workspace requires pnpm-workspace.yaml in the current directory.");}
-      }
+      if (workspace) await assertWorkspaceTarget(root, name, valueOption(args.options, "path"), manager);
       if (!dryRun) await assertFrameworkReady();
       const simulated = {core: "workspace:^", dom: "workspace:^", signals: "workspace:^", styles: "workspace:^", "vite-plugin": "workspace:^"} satisfies Versions;
       const versions = dryRun ? simulated : await getInstalledVersions(workspace);

@@ -56,6 +56,17 @@ describe("CLI commands", () => {
     expect(c.output().stderr).toMatch(/FOUNDATION_NOT_READY|UNPUBLISHED_FRAMEWORK/);
     await expect(stat(join(root, "my-app"))).rejects.toThrow();
   });
+  it("refuses workspace output outside the declared pnpm workspace globs", async () => {
+    const root = await temp();
+    await writeFile(join(root, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\n");
+    const c = capture(root);
+    expect(await runCli(["start","--project","foo","--workspace","--package-manager","npm","--dry-run"],c.io)).toBe(1);
+    expect(c.output().stderr).toContain("WORKSPACE_MANAGER");
+    const other = capture(root);
+    const code = await runCli(["start","--project","foo","--workspace","--package-manager","pnpm","--dry-run"], other.io);
+    expect(code).toBe(1);
+    expect(other.output().stderr).toContain("WORKSPACE_NOT_INCLUDED");
+  });
   it("supports no-write dry run", async () => {
     const root = await temp();
     const c = capture(root);
