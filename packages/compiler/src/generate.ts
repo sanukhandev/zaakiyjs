@@ -23,6 +23,33 @@ function isJsx(node: ts.Node): node is ts.JsxElement | ts.JsxSelfClosingElement 
 
 const jsLiteral = (value: string): string => JSON.stringify(value);
 
+/**
+ * A keyed component may receive a stable zero-argument accessor to the
+ * current item, not a one-time item snapshot. Only plain identifier/property
+ * reads are accepted; arbitrary calls and block bodies are not auto-authorized.
+ * The component can use computed(() => props.live().field) to subscribe.
+ */
+function isLazyItemGetter(source: string): boolean {
+  const file = ts.createSourceFile("__zaakiy_getter.ts", "const x = (" + source + ");",
+    ts.ScriptTarget.ES2022, true, ts.ScriptKind.TS);
+  const statement = file.statements[0];
+  const init = statement && ts.isVariableStatement(statement)
+    ? statement.declarationList.declarations[0]?.initializer : undefined;
+  if (!init || (file as ts.SourceFile & { parseDiagnostics?: readonly ts.Diagnostic[] }).parseDiagnostics?.length) {
+    return false;
+  }
+  const unwrap = (node: ts.Expression): ts.Expression =>
+    ts.isParenthesizedExpression(node) ? unwrap(node.expression) : node;
+  const arrow = unwrap(init);
+  if (!ts.isArrowFunction(arrow) || arrow.parameters.length !== 0 || !ts.isExpression(arrow.body)) {
+    return false;
+  }
+  let body = unwrap(arrow.body);
+  while (ts.isPropertyAccessExpression(body)) body = body.expression;
+  return ts.isIdentifier(body);
+}
+
+
 interface AbiAliases {
   readonly createElement: string;
   readonly createText: string;
@@ -266,8 +293,9 @@ class Builder {
         name = this.variable("component");
         const props = node.props.map(prop => {
           const mapped = this.resolveExpression(prop.expression.source, prop.expression.reactive);
-          if (this.itemContexts.length && mapped.reactive) {
-            throw new Error("ZC2206: keyed component props require a stable signal-aware prop contract");
+          if (this.itemContexts.length && mapped.reactive &&
+              !isLazyItemGetter(prop.expression.source)) {
+            throw new Error("ZC2206: keyed component item props must be stable zero-argument accessors (e.g. live={() => item}); the component must track the getter with computed.");
           }
           return jsLiteral(prop.name) + ": (" + mapped.source + ")";
         }).join(", ");
