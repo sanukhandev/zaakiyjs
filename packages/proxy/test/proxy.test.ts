@@ -69,6 +69,31 @@ describe("route config and fail-closed boundary", () => {
     expect((await router.handle(request("GET", "/api/items/a"))).status).toBe(403);
     expect((await router.handle(request("POST", "/api/items/a"))).status).toBe(405);
   });
+  it("fails startup on public routes with ignored authorization or unsafe identity policies", () => {
+    const upstreams = config(1).upstreams;
+    expect(() => createProxyRouter({ upstreams, routes: [{
+      id: "open", path: "/open", upstream: "main", methods: ["GET"], access: "public",
+      authorize: () => false
+    }] })).toThrow("Public routes cannot silently ignore authorization");
+    expect(() => createProxyRouter({ upstreams, routes: [{
+      id: "limited", path: "/open", upstream: "main", methods: ["GET"], access: "public",
+      rateLimit: { max: 2, windowMs: 1_000, by: "tenant" }
+    }] })).toThrow("Public rate limiting requires trusted peer-address identity");
+  });
+  it("refuses request bodies on GET and HEAD at the proxy boundary", async () => {
+    const proxy = createProxyRouter(config(1));
+    const body = (async function* () { yield Buffer.from("payload"); })();
+    for (const input of [
+      request("GET", "/api/items/test", { "content-length": "7" }),
+      request("GET", "/api/items/test", { "transfer-encoding": "chunked" }),
+      request("GET", "/api/items/test", {}, body),
+      request("HEAD", "/api/items/test", { "content-length": "7" })
+    ]) {
+      const response = await proxy.handle(input);
+      expect(response.status).toBe(400);
+      await drain(response);
+    }
+  });
   it("refuses route shadowing regardless of access priority", () => {
     expect(() => createProxyRouter(config(1, { routes: [
       { id: "open", path: "/api/*", upstream: "main", methods: ["GET"], access: "public" },
