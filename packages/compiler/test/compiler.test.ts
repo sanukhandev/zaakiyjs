@@ -591,6 +591,31 @@ describe("typed Show/For compiler intrinsics", () => {
     expect(noImport.js).toEqual([]);
   });
 
+
+  it("never rewrites a locally shadowed core intrinsic import", () => {
+    const source = [
+      'import {Show} from "@zaakiyjs/core";',
+      'function App(Show: typeof import("@zaakiyjs/core").Show) {',
+      '  return <main><Show when={true}><p>local call</p></Show></main>; }'
+    ].join("\n");
+    const result = compile({fileName, source});
+    expect(result.js).toEqual([]);
+    expect(result.diagnostics.some(d => d.code === "ZC2102")).toBe(true);
+  });
+
+  it("rejects side-effectful key selector factory evaluation", () => {
+    const source = [
+      'import {For} from "@zaakiyjs/core";',
+      'const items = [{id: 1}];',
+      'const keyFactory = () => (row: {id:number}) => row.id;',
+      'function App(){ return <ul><For each={items} by={keyFactory()}>',
+      '  {row => <li>{row.id}</li>}</For></ul>; }'
+    ].join("\n");
+    const result = compile({fileName, source});
+    expect(result.js).toEqual([]);
+    expect(result.diagnostics.some(d => d.code === "ZC2405")).toBe(true);
+  });
+
   it("keeps generated assets deterministic and rejects invalid key types", () => {
     const source = [
       prelude,
