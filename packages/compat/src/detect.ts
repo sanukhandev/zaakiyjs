@@ -23,13 +23,25 @@ export function detectSourceFeatures(input: SourceInput): DetectionResult {
   const sf = ts.createSourceFile(input.fileName, input.source, ts.ScriptTarget.Latest, true, kind);
   const requirements: FeatureRequirement[] = [];
   const diagnostics: CompatibilityDiagnostic[] = [];
-  const report = (id: string, node: ts.Node): void => {
-    requirements.push({ id, reference: at(input.fileName, sf, node) });
+  const report = (id: string, node: ts.Node, usage: "direct" | "scoped-helper" = "direct"): void => {
+    requirements.push({ id, reference: at(input.fileName, sf, node), usage });
   };
   const uncertain = (message: string, node: ts.Node): void => {
     diagnostics.push({ code: "ZK2102", severity: "warning", message, reference: at(input.fileName, sf, node) });
   };
   const abortVariables = new Set<string>();
+  const helpers = new Map<string, "web.abort-signal-any" | "web.abort-signal-timeout">();
+  for (const statement of sf.statements) {
+    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) ||
+        statement.moduleSpecifier.text !== "@zaakiyjs/compat/abort") continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) continue;
+    for (const element of bindings.elements) {
+      const imported = element.propertyName?.text ?? element.name.text;
+      if (imported === "composeAbortSignals") helpers.set(element.name.text, "web.abort-signal-any");
+      if (imported === "scopedTimeoutSignal") helpers.set(element.name.text, "web.abort-signal-timeout");
+    }
+  }
   function findControllers(node: ts.Node): void {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer &&
       ts.isNewExpression(node.initializer) && ts.isIdentifier(node.initializer.expression) &&
@@ -63,6 +75,12 @@ export function detectSourceFeatures(input: SourceInput): DetectionResult {
       if (node.questionDotToken) report("js.optional-chaining", node);
       if (node.expression.kind === ts.SyntaxKind.ImportKeyword) report("module.dynamic-import", node);
       if (ts.isIdentifier(node.expression)) {
+        const helper = helpers.get(node.expression.text);
+        if (helper) {
+          report(helper, node, "scoped-helper");
+          report("web.abort-controller", node);
+          report("web.abort-reason", node);
+        }
         if (node.expression.text === "fetch") report("web.fetch", node);
         if (node.expression.text === "structuredClone") report("web.structured-clone", node);
       }
