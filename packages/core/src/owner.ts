@@ -59,9 +59,18 @@ class Scope implements OwnerScope {
     if (this.state !== "created" && this.state !== "initialized") {
       throw new Error("Owner can only mount once");
     }
-    this.state = "mounted";
-    const callbacks = this.mountCallbacks.splice(0);
     try {
+      // Mount descendants before ancestors, after the DOM subtree has been inserted.
+      // Dynamic owners created later must be mounted explicitly by the DOM adapter.
+      for (const child of [...this.children]) {
+        if (child.disposed) continue;
+        if (child.state === "created" || child.state === "initialized") {
+          child.mount();
+        }
+        if (this.disposed) return;
+      }
+      this.state = "mounted";
+      const callbacks = this.mountCallbacks.splice(0);
       for (const callback of callbacks) {
         runWithOwner(this, callback);
         if (this.disposed) return;
