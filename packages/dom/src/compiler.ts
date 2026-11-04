@@ -44,6 +44,9 @@ function assertSafeUrl(value: unknown, name: string, base: string): void {
     throw new TypeError("Control characters in URL binding: " + name);
   }
   const trimmed = input.trim();
+  // A plain relative URL is safe without resolving against about:blank documents.
+  // A scheme or protocol-relative URL must still pass the protocol allowlist.
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed) && !trimmed.startsWith("//")) return;
   // srcset is a URL list; a scalar URL parser is not an adequate validator.
   if (name.toLowerCase() === "srcset") {
     throw new TypeError("srcset requires a separately approved URL-list policy");
@@ -89,13 +92,20 @@ export function setProperty(target: Element, name: string, value: unknown): void
   if (UNSAFE_PROPERTIES.has(name.toLowerCase()) || name.toLowerCase() === "srcset") {
     throw new TypeError("Unsafe or unsupported DOM property: " + name);
   }
-  if (value == null && URL_NAMES.has(name.toLowerCase())) {
-    if (target.hasAttribute(name)) target.removeAttribute(name);
+  const record = target as unknown as Record<string, unknown>;
+  if (URL_NAMES.has(name.toLowerCase())) {
+    if (value == null) {
+      if (target.hasAttribute(name)) target.removeAttribute(name);
+      return;
+    }
+    // Coerce exactly once: untrusted objects must not change between policy
+    // validation and the browser's property assignment.
+    const safeUrl = String(value);
+    assertSafeUrl(safeUrl, name, target.ownerDocument.baseURI);
+    if (!Object.is(record[name], safeUrl)) record[name] = safeUrl;
     return;
   }
-  validateValue(target, name, value);
   // The equality guard preserves native focus, text selection and input state.
-  const record = target as unknown as Record<string, unknown>;
   if (!Object.is(record[name], value)) record[name] = value;
 }
 

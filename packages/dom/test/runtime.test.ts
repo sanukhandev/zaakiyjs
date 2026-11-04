@@ -131,6 +131,15 @@ describe("compiler-lowered native DOM runtime", () => {
     expect(() => setAttribute(el, "srcset", "https://example.com/a 1x")).toThrow();
     setAttribute(el, "href", "/safe");
     expect(el.getAttribute("href")).toBe("/safe");
+    let calls = 0;
+    setProperty(el, "href", {
+      toString() {
+        calls++;
+        return calls === 1 ? "https://safe.example/" : "javascript:alert(1)";
+      }
+    });
+    expect(calls).toBe(1);
+    expect(el.href).toBe("https://safe.example/");
   });
 
   it("creates SVG namespaces and preserves static subtree source", () => {
