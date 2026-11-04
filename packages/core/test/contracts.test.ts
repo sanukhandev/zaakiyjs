@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { foundationStatus } from "../src/index";
+import { createOwner, foundationStatus } from "../src/index.js";
 
-describe("@zaakiyjs/core M0 contract", () => {
-  it("clearly reports that framework behavior is unimplemented", () => {
-    expect(foundationStatus).toEqual({ package: "@zaakiyjs/core", implemented: false });
+describe("@zaakiyjs/core executable export contract", () => {
+  it("reports that the ownership runtime is implemented", () => {
+    expect(foundationStatus).toEqual({ package: "@zaakiyjs/core", implemented: true });
+  });
+  it("exposes callable owner primitives without DOM or compiler imports", () => {
+    const owner = createOwner();
+    expect(owner.state).toBe("created");
+    owner.dispose();
+    expect(owner.disposed).toBe(true);
   });
 });
