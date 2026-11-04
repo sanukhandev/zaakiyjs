@@ -246,7 +246,8 @@ export function typeDiagnostics(request: CompileRequest, analysis: Analysis): Co
   const targetName = ts.sys.resolvePath(request.fileName);
   host.readFile = path => ts.sys.resolvePath(path) === targetName ? request.source : originalRead(path);
   host.getSourceFile = (path, language, onError, shouldCreate) =>
-    ts.sys.resolvePath(path) === targetName ? analysis.sourceFile :
+    ts.sys.resolvePath(path) === targetName ?
+      ts.createSourceFile(path, request.source, language, true, ts.ScriptKind.TSX) :
       originalGet(path, language, onError, shouldCreate);
   const program = ts.createProgram([request.fileName], options, host);
   return ts.getPreEmitDiagnostics(program)
