@@ -88,6 +88,12 @@ The public DOM package's `mount(factory, container)` creates a separate applicat
 
 The host server/CDN must serve the application's entry document for deep links and browser refreshes (SPA fallback), while preserving real asset files and HTTP status/SEO routes. Router alone cannot provide server-side 404 or SSR/SEO metadata responses.
 
+## Review acceptance matrix
+
+The dedicated [Router Browser Acceptance workflow](../../.github/workflows/router-browser-matrix.yml) scaffolds a real CLI consumer, registers `@zaakiyjs/router`, compiles [the TSX fixture](./test/browser/App.tsx) and its dynamically imported page through the production Vite plugin, then runs [browser scenarios](./test/browser/acceptance.py) against the production preview in Chromium, Firefox and WebKit. The matrix covers typed link generation, route ranking, native History/popstate, guards/redirects, retained layout and hash focus identity, async loader supersession, lazy page owner cleanup, safe text interpolation, deep-link reload, and total disposal. It is a merge gate, **not** an alternative test-only renderer.
+
+Reviewers should additionally verify the root Quality, generated CLI app and existing M1/Compat browser checks on the **same latest PR commit**. A passing foundational browser matrix alone does not substitute for Router-specific acceptance. Changes to server-side SPA fallback, SSR and publication are not part of this client-only PR.
+
 ## Development
 
 ```sh
