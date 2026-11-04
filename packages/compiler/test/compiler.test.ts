@@ -248,6 +248,49 @@ describe("TSX-to-DOM compiler safe vertical slice", () => {
     expect(typed.diagnostics.some(d => d.code === "ZCTS2322")).toBe(true);
   });
 
+
+  it("tracks aliased signal reads and nested signal props, without reinitializing components", () => {
+    const aliases = [
+      signalDecl,
+      "function App() { const count = signal(1); const alias = count;",
+      'return <main><span>{alias.value}</span><button onClick={() => count.value++}>+</button></main>; }'
+    ].join("\n");
+    const one = execute(aliases, "App");
+    const span = one.elements.find(e => e.tag === "span");
+    one.elements.find(e => e.tag === "button")?.listeners.click?.({});
+    expect(span && allText(span)).toBe("2");
+    const nested = [
+      signalDecl,
+      "function Label(props: { state: { value: number } }) { return <span>{props.state.value}</span>; }",
+      "function App() { const state = signal(3);",
+      'return <main><Label state={state} /><button onClick={() => state.value++}>+</button></main>; }'
+    ].join("\n");
+    const two = execute(nested, "App");
+    const label = two.elements.find(e => e.tag === "span");
+    two.elements.find(e => e.tag === "button")?.listeners.click?.({});
+    expect(label && allText(label)).toBe("4");
+    expect(two.elements.filter(e => e.tag === "span")).toHaveLength(1);
+  });
+
+  it("fails closed on JSX embedded in an unsupported expression", () => {
+    const source = "function App() { return <main>{[<span>one</span>, <span>two</span>]}</main>; }";
+    const result = compile({ fileName, source });
+    expect(result.js).toEqual([]);
+    expect(result.diagnostics.some(d => d.code === "ZC2108")).toBe(true);
+  });
+
+  it("validates deeply malformed IR with actionable diagnostics", () => {
+    const base = parseToIR({ fileName, source: "function App(){return <main>x</main>;}" }).document;
+    const broken = JSON.parse(JSON.stringify(base)) as {
+      irVersion: number; nodes: Array<{ span?: unknown; children?: Array<{ expression?: unknown }> }>;
+    };
+    broken.nodes[0]!.span = { start: { line: -1, column: 0, offset: -4 } };
+    expect(validateIR(broken).some(d => d.code === "ZC3004")).toBe(true);
+    const badChild = JSON.parse(JSON.stringify(base)) as typeof broken;
+    badChild.nodes[0]!.children![0]!.expression = { source: 10, reactive: "yes" };
+    expect(validateIR(badChild).some(d => d.code === "ZC3004")).toBe(true);
+  });
+
   it("validates versioned IR and returns deterministic output hashes", () => {
     const request = { fileName, source: counterSource };
     const began = performance.now();
