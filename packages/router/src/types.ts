@@ -168,6 +168,20 @@ export interface RouterOptions {
 }
 export class RouteConfigurationError extends Error { override name = "RouteConfigurationError"; }
 export class RouteNotFoundError extends Error { override name = "RouteNotFoundError"; }
+export class RouteModuleLoadError extends Error {
+  override name = "RouteModuleLoadError";
+  constructor(readonly routeId: string, cause: unknown) {
+    super("Lazy route module failed for " + routeId + ": " +
+      (cause instanceof Error ? cause.message : String(cause)), { cause });
+  }
+}
+export class RouteLoaderError extends Error {
+  override name = "RouteLoaderError";
+  constructor(readonly routeId: string, cause: unknown) {
+    super("Route loader failed for " + routeId + ": " +
+      (cause instanceof Error ? cause.message : String(cause)), { cause });
+  }
+}
 export class NavigationDeniedError extends Error { override name = "NavigationDeniedError"; }
 export class NavigationCancelledError extends Error {
   override name = "NavigationCancelledError";
