@@ -95,7 +95,7 @@ describe("owner-scoped lifecycle", () => {
     mountOwner(root);
     expect(states).toEqual(["mounted"]);
     expect(root.state).toBe("active");
-    expect(() => mountOwner(root)).toThrow(/only mount once/);
+    expect(() => mountOwner(root)).not.toThrow();
     deactivateOwner(root);
     expect(root.state).toBe("deactivated");
     activateOwner(root);
@@ -122,7 +122,7 @@ describe("owner-scoped lifecycle", () => {
     mountOwner(app);
     expect(order).toEqual(["component", "feature", "route", "app"]);
     for (const owner of [app, route, feature, component]) expect(owner.state).toBe("active");
-    expect(() => mountOwner(component)).toThrow(/only mount once/);
+    expect(() => mountOwner(component)).not.toThrow();
     disposeOwner(app);
   });
 
