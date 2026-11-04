@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { foundationStatus } from "../src/index";
+import { foundationStatus, zaakiyPlugin } from "../src/index.js";
 
-describe("@zaakiyjs/vite-plugin M0 contract", () => {
-  it("clearly reports that framework behavior is unimplemented", () => {
-    expect(foundationStatus).toEqual({ package: "@zaakiyjs/vite-plugin", implemented: false });
+describe("@zaakiyjs/vite-plugin public contract", () => {
+  it("exports an executable Vite adapter while upstream TSX/CSS integration remains gated", () => {
+    expect(foundationStatus).toEqual({ package: "@zaakiyjs/vite-plugin", implemented: true });
+    expect(zaakiyPlugin().name).toBe("zaakiy:compiler");
   });
 });

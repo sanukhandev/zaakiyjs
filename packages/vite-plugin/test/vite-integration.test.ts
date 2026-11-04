@@ -1,0 +1,239 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { build, createServer, type ViteDevServer, type RollupOutput } from "vite";
+import { fileURLToPath } from "node:url";
+import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { hasCompiler, hasStyles } from "../src/bridge.js";
+import { zaakiyPlugin } from "../src/index.js";
+
+const fixtureRoot = fileURLToPath(new URL("./fixtures/basic/", import.meta.url));
+const brandRoot = fileURLToPath(new URL("./fixtures/bad-brand/", import.meta.url));
+const plainRoot = fileURLToPath(new URL("./fixtures/plain/", import.meta.url));
+const forbiddenRoot = fileURLToPath(new URL("./fixtures/forbidden/", import.meta.url));
+const brandOnlyRoot = fileURLToPath(new URL("./fixtures/brand-only/", import.meta.url));
+let server: ViteDevServer | undefined;
+
+afterEach(async () => {
+  if (server) {
+    await server.close();
+    server = undefined;
+  }
+});
+
+describe("real Vite integration (M0 prerequisite checks)", () => {
+  it("starts an actual development server without compiling unrelated JavaScript", async () => {
+    server = await createServer({
+      configFile: false,
+      root: fixtureRoot,
+      plugins: [zaakiyPlugin()],
+      server: { middlewareMode: true, hmr: false }
+    });
+    expect(server.moduleGraph).toBeDefined();
+    expect(await server.transformRequest("/src/ordinary.js")).toMatchObject({
+      code: expect.stringContaining("not compiled by Zaakiy")
+    });
+  });
+
+  it("fails unsupported SSR TSX transforms rather than delegating to a different JSX runtime", async () => {
+    server = await createServer({
+      configFile: false,
+      root: fixtureRoot,
+      plugins: [zaakiyPlugin()],
+      server: { middlewareMode: true, hmr: false }
+    });
+    await expect(server.transformRequest("/src/main.tsx", { ssr: true })).rejects.toThrow("ZV1008");
+  });
+
+  it("builds a non-TSX entry through Vite, emits CSS/manifest, and links stylesheet in HTML", async () => {
+    const result = await build({
+      configFile: false,
+      root: plainRoot,
+      plugins: [zaakiyPlugin({ cssFileName: "assets/theme.css" })],
+      logLevel: "silent",
+      build: { write: false, emptyOutDir: false }
+    });
+    const output = Array.isArray(result) ? result[0] : result;
+    expect(output).toBeDefined();
+    const assets = (output as RollupOutput).output.filter(e => e.type === "asset");
+    const css = assets.find(e => e.fileName === "assets/theme.css");
+    expect(css?.source).toBe("");
+    const html = assets.find(e => e.fileName === "index.html");
+    expect(String(html?.source)).toContain('href="/assets/theme.css"');
+    const manifest = assets.find(e => e.fileName === "zaakiy-assets.json");
+    expect(manifest).toBeDefined();
+    const parsed = JSON.parse(String(manifest?.source)) as {
+      schemaVersion: number;
+      assets: { fileName: string; sourceFile?: string }[];
+    };
+    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.assets.map(a => a.fileName)).toContain("assets/theme.css");
+    expect(parsed.assets.filter(a => a.fileName.endsWith(".js")).length).toBeGreaterThanOrEqual(2);
+    // HTML entry chunks can have virtual proxy facades. Such IDs must be omitted,
+    // rather than inventing an app source path from their generated chunk name.
+    expect(parsed.assets.every(a =>
+      !a.sourceFile || (!a.sourceFile.startsWith("/") &&
+        !a.sourceFile.includes("\\") && !a.sourceFile.includes("../"))
+    )).toBe(true);
+  });
+
+  it("uses Vite's actual watcher to trigger a full reload for changed TSX, never silent owner reuse", async () => {
+    server = await createServer({
+      configFile: false,
+      root: fixtureRoot,
+      plugins: [zaakiyPlugin()],
+      server: { middlewareMode: true }
+    });
+    const socketSpy = vi.spyOn(server.ws, "send");
+    const changed = fileURLToPath(new URL("./fixtures/basic/src/main.tsx", import.meta.url));
+    server.watcher.emit("change", changed);
+    await vi.waitFor(() => {
+      expect(socketSpy).toHaveBeenCalledWith({ type: "full-reload", path: "*" });
+    }, { timeout: 3000, interval: 50 });
+  });
+
+  it("invalidates the brand configuration through Vite's real file watcher", async () => {
+    server = await createServer({
+      configFile: false,
+      root: brandOnlyRoot,
+      plugins: [zaakiyPlugin({ configFile: "zaakiy.config.ts" })],
+      server: { middlewareMode: true }
+    });
+    const socketSpy = vi.spyOn(server.ws, "send");
+    const config = fileURLToPath(new URL("./fixtures/brand-only/zaakiy.config.ts", import.meta.url));
+    server.watcher.emit("change", config);
+    await vi.waitFor(() => {
+      expect(socketSpy).toHaveBeenCalledWith({ type: "full-reload", path: "*" });
+    }, { timeout: 3000, interval: 50 });
+  });
+
+  it("rejects a forbidden build-time import from a plain JavaScript browser entry", async () => {
+    await expect(build({
+      configFile: false,
+      root: forbiddenRoot,
+      plugins: [zaakiyPlugin()],
+      logLevel: "silent",
+      build: { write: false, emptyOutDir: false }
+    })).rejects.toThrow("ZV3001");
+  });
+
+  it("produces identical asset names and contents for repeated pinned Vite inputs", async () => {
+    const compile = async (): Promise<readonly { fileName: string; body: string }[]> => {
+      const built = await build({
+        configFile: false,
+        root: plainRoot,
+        plugins: [zaakiyPlugin()],
+        logLevel: "silent",
+        build: { write: false, emptyOutDir: false }
+      });
+      const result = Array.isArray(built) ? built[0] : built;
+      return (result as RollupOutput).output.map((item) => ({
+        fileName: item.fileName,
+        body: item.type === "chunk" ? item.code : String(item.source)
+      })).sort((a, b) => a.fileName.localeCompare(b.fileName));
+    };
+    const first = await compile();
+    expect(first.length).toBeGreaterThanOrEqual(4);
+    expect(await compile()).toEqual(first);
+  });
+
+  it("produces the same manifest bytes in two independently located checkouts", async () => {
+    const sandbox = mkdtempSync(join(tmpdir(), "zaakiy-vite-manifest-"));
+    try {
+      const manifests: string[] = [];
+      for (const name of ["machine-a", "machine-b"]) {
+        const root = join(sandbox, name);
+        cpSync(plainRoot, root, { recursive: true });
+        const built = await build({
+          configFile: false,
+          root,
+          plugins: [zaakiyPlugin()],
+          logLevel: "silent",
+          build: { write: false, emptyOutDir: false }
+        });
+        const output = Array.isArray(built) ? built[0] : built;
+        const manifest = (output as RollupOutput).output.find(
+          item => item.type === "asset" && item.fileName === "zaakiy-assets.json"
+        );
+        expect(manifest?.type).toBe("asset");
+        manifests.push(String(manifest?.type === "asset" ? manifest.source : ""));
+      }
+      expect(manifests[0]).toBe(manifests[1]);
+      expect(manifests[0]).not.toContain(sandbox.replaceAll("\\", "/"));
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  it("does not silently fall back to another JSX transform when compiler is missing", async () => {
+    if (hasCompiler()) return;
+    server = await createServer({
+      configFile: false,
+      root: fixtureRoot,
+      plugins: [zaakiyPlugin()],
+      server: { middlewareMode: true, hmr: false }
+    });
+    await expect(server.transformRequest("/src/main.tsx")).rejects.toThrow("ZV1001");
+  });
+
+  it("rejects an executable production build until the real compiler exists", async () => {
+    if (hasCompiler()) return;
+    await expect(build({
+      configFile: false,
+      root: fixtureRoot,
+      plugins: [zaakiyPlugin()],
+      logLevel: "silent",
+      build: { write: false, emptyOutDir: false }
+    })).rejects.toThrow("ZV1001");
+  });
+
+  it("reports brand configuration errors rather than swallowing them", async () => {
+    await expect(createServer({
+      configFile: false,
+      root: brandRoot,
+      plugins: [zaakiyPlugin({ configFile: "zaakiy.config.ts" })],
+      logLevel: "silent",
+      server: { middlewareMode: true, hmr: false }
+    })).rejects.toThrow("ZV2006");
+  });
+
+  it("generates CSS from brand and safelist without any TSX source", async () => {
+    expect(hasStyles()).toBe(true);
+    const result = await build({
+      configFile: false,
+      root: brandOnlyRoot,
+      plugins: [zaakiyPlugin({ configFile: "zaakiy.config.ts" })],
+      logLevel: "silent",
+      build: { write: false, emptyOutDir: false }
+    });
+    const output = Array.isArray(result) ? result[0] : result;
+    const css = (output as RollupOutput).output.find(
+      item => item.type === "asset" && item.fileName === "assets/zaakiy-styles.css"
+    );
+    expect(css?.type).toBe("asset");
+    expect(String(css?.type === "asset" ? css.source : "")).toContain("bg-primary");
+  });
+
+  it("compiles real TSX and generated CSS using merged compiler and styles", async () => {
+      expect(hasCompiler()).toBe(true);
+      expect(hasStyles()).toBe(true);
+      const result = await build({
+        configFile: false,
+        root: fixtureRoot,
+        plugins: [zaakiyPlugin()],
+        logLevel: "silent",
+        build: { write: false, emptyOutDir: false, sourcemap: true }
+      });
+      expect(result).toBeDefined();
+      const output = Array.isArray(result) ? result[0] : result;
+      const assets = (output as RollupOutput).output;
+      const js = assets.filter(item => item.type === "chunk");
+      const css = assets.find(item => item.type === "asset" && item.fileName === "assets/zaakiy-styles.css");
+      const manifest = assets.find(item => item.type === "asset" && item.fileName === "zaakiy-assets.json");
+      expect(js.length).toBeGreaterThan(0);
+      expect(css).toBeDefined();
+      expect(String(css?.source)).toContain("flex");
+      expect(manifest).toBeDefined();
+      expect(js.every(chunk => !/@zaakiyjs\/(?:ai|proxy|compiler|styles|vite-plugin)/.test(chunk.type === "chunk" ? chunk.code : ""))).toBe(true);
+  });
+});
