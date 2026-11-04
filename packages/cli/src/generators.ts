@@ -92,19 +92,20 @@ export function generatorPlan(type: string, name: string, architecture?: string,
       ].join("\n"))];
     case "provider":
       return [file(at(n.camel + "Provider.ts"), [
-        "// Application adapters choose the lifetime and owner scope of this provider.",
-        "export interface " + entity + "Dependencies {readonly service: unknown}",
-        "export function create" + entity + "Provider<T extends " + entity + "Dependencies>(dependencies: T) {",
-        "  return {dependencies};",
+        "import {provide, type ContextToken, type OwnerScope} from \"@zaakiyjs/core\";",
+        "// Register a value in the requested application/feature owner, never process-global.",
+        "export function register" + entity + "Provider<T>(owner: OwnerScope, token: ContextToken<T>, value: T): void {",
+        "  provide(owner, token, value);",
         "}",
         ""
       ].join("\n"))];
     case "context":
       return [file(at(n.camel + "Context.ts"), [
-        "// Typed context value only; registration uses the approved core owner API.",
-        "export interface " + entity + "Context<T> {readonly value: T}",
-        "export function create" + entity + "Context<T>(value: T): " + entity + "Context<T> {",
-        "  return {value};",
+        "import {createContext, requireContext, type OwnerScope} from \"@zaakiyjs/core\";",
+        "export interface " + entity + "ContextValue {readonly service: unknown}",
+        "export const " + entity + "Context = createContext<" + entity + "ContextValue>(\"" + entity + "\");",
+        "export function use" + entity + "Context(owner: OwnerScope): " + entity + "ContextValue {",
+        "  return requireContext(owner, " + entity + "Context);",
         "}",
         ""
       ].join("\n"))];
@@ -116,22 +117,37 @@ export function generatorPlan(type: string, name: string, architecture?: string,
       return [
         file(base + "/model/" + n.kebab + ".ts", [
           "export interface " + item + " {readonly id: string; readonly label: string}",
-          "export interface " + repository + " {list(): Promise<readonly " + item + "[]>}",
+          "export interface " + repository + " {list(signal: AbortSignal): Promise<readonly " + item + "[]>}",
           ""
         ].join("\n")),
         file(base + "/viewmodel/create" + entity + "ViewModel.ts", [
+          "import {onCleanup} from \"@zaakiyjs/core\";",
           "import {signal} from \"@zaakiyjs/signals\";",
           "import type {" + item + ", " + repository + "} from \"../model/" + n.kebab + "\";",
+          "// Construct this ViewModel inside a feature/component owner.",
           "export function create" + entity + "ViewModel(repository: " + repository + ") {",
           "  const items = signal<readonly " + item + "[]>([]);",
           "  const loading = signal(false);",
           "  const error = signal<string | null>(null);",
+          "  let pending: AbortController | null = null;",
+          "  let disposed = false;",
+          "  onCleanup(() => {disposed = true; pending?.abort(); pending = null;});",
           "  async function load(): Promise<void> {",
+          "    if (disposed) return;",
+          "    pending?.abort();",
+          "    const controller = new AbortController();",
+          "    pending = controller;",
           "    loading.value = true;",
           "    error.value = null;",
-          "    try {items.value = await repository.list();}",
-          "    catch (cause: unknown) {error.value = cause instanceof Error ? cause.message : String(cause);}",
-          "    finally {loading.value = false;}",
+          "    try {",
+          "      const next = await repository.list(controller.signal);",
+          "      if (!disposed && !controller.signal.aborted && pending === controller) items.value = next;",
+          "    } catch (cause: unknown) {",
+          "      if (!disposed && !controller.signal.aborted && pending === controller)",
+          "        error.value = cause instanceof Error ? cause.message : String(cause);",
+          "    } finally {",
+          "      if (!disposed && pending === controller) {pending = null; loading.value = false;}",
+          "    }",
           "  }",
           "  return {items, loading, error, load};",
           "}",
@@ -151,17 +167,18 @@ export function generatorPlan(type: string, name: string, architecture?: string,
         ].join("\n")),
         file(base + "/services/create" + entity + "Repository.ts", [
           "import type {" + item + ", " + repository + "} from \"../model/" + n.kebab + "\";",
-          "export interface " + entity + "Gateway {list(): Promise<readonly " + item + "[]>}",
+          "export interface " + entity + "Gateway {list(signal: AbortSignal): Promise<readonly " + item + "[]>}",
           "export function create" + entity + "Repository(gateway: " + entity + "Gateway): " + repository + " {",
-          "  return {list: () => gateway.list()};",
+          "  return {list: (signal: AbortSignal) => gateway.list(signal)};",
           "}",
           ""
         ].join("\n")),
         file(base + "/adapters/create" + entity + "Adapter.ts", [
+          "import {runWithOwner, type OwnerScope} from \"@zaakiyjs/core\";",
           "import type {" + repository + "} from \"../model/" + n.kebab + "\";",
           "import {create" + entity + "ViewModel} from \"../viewmodel/create" + entity + "ViewModel\";",
-          "export function create" + entity + "Adapter(repository: " + repository + ") {",
-          "  return create" + entity + "ViewModel(repository);",
+          "export function create" + entity + "Adapter(owner: OwnerScope, repository: " + repository + ") {",
+          "  return runWithOwner(owner, () => create" + entity + "ViewModel(repository));",
           "}",
           ""
         ].join("\n"))

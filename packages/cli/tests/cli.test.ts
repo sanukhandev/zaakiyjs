@@ -105,8 +105,15 @@ describe("generators", () => {
     expect(vm).toContain('@zaakiyjs/signals');
     expect(vm).not.toContain('from "@zaakiyjs/core"');
     expect(vm).not.toContain("/services/");
+    expect(vm).toContain("AbortController");
+    expect(vm).toContain("onCleanup");
+    expect(vm).toContain("pending === controller");
     expect(view).toContain("ProductsViewModel");
+    const adapter = files.find(file => file.path.includes("/adapters/"))?.content ?? "";
+    expect(adapter).toContain("runWithOwner");
     expect(generatorPlan("viewmodel","Cart")[0]?.content).toContain('@zaakiyjs/signals');
+    expect(generatorPlan("context","Session")[0]?.content).toContain("createContext");
+    expect(generatorPlan("provider","Session")[0]?.content).toContain("provide");
   });
   it("handles component generation, conflicts, overrides, and idempotent dry-run", async () => {
     const root = await temp();
