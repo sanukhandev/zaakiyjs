@@ -25,6 +25,7 @@ export function createPresence(element: Element, options: PresenceOptions = {}):
   let active: MotionHandle | null = null;
   let pendingFrame: number | null = null;
   const owner = options.owner ?? getOwner();
+  let clearOwnerCell: (() => void) | null = null;
 
   const cancel = (): void => {
     generation++;
@@ -73,12 +74,14 @@ export function createPresence(element: Element, options: PresenceOptions = {}):
       if (state === "disposed") return;
       cancel();
       state = "disposed";
+      clearOwnerCell?.();
+      clearOwnerCell = null;
     }
   };
   if (owner) {
     const cell: { close: (() => void) | null } = { close: () => controller.dispose() };
     runWithOwner(owner, () => onCleanup(() => cell.close?.()));
-    // The Core owner retains only a mutable cell, not a new ownership tree.
+    clearOwnerCell = () => { cell.close = null; };
   }
   return controller;
 }
