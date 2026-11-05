@@ -24,7 +24,7 @@ export const templateAssetChecksums: Readonly<Record<string,Readonly<Record<stri
     "src/base.css": "f636ec42701d906ee42501d7ca50f86f68b0a074880d5d651bf105f8c675093c",
     "src/features/products/adapters/createProductPage.ts": "3f7eeeef38398f0bc4ac457b4b3ac9c0a74e0e791b77f1617d7aea2fe7c9e197",
     "src/features/products/models/product.ts": "8e457450eb6e249f08a47d09aa2bca2e32e72d860f3e4881aeac863f7286655b",
-    "src/features/products/services/productRepository.ts": "793eaf4d7a1ae63736011a1b1ab8eee2ff1ecc2a9a3f71a91c9b2739fbbe5bfc",
+    "src/features/products/services/productRepository.ts": "f7eacb5f15ac8d5f2c0059c6cd2c732e3dc79e799201e3f73869a0c6090fff0f",
     "src/features/products/viewmodels/createProductViewModel.ts": "0ad637ed0e0e1df0f92cf28898c639b5f0b9b4919d55f96928373648b739a331",
     "src/features/products/views/ProductView.tsx": "1bb276abaa6f5dd2a8e6c6387046dd5e00c44c8db76b0f8f7e2499c94f4330f9",
     "src/main.tsx": "95e254ac62c65e3d462b8b500c66ed7887e3899472cba3a6904dd1c5254cde1c",
