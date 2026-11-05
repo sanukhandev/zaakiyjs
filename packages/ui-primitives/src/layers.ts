@@ -1,0 +1,106 @@
+import type { OwnerScope } from "@zaakiyjs/core";
+import { listen, own } from "./lifecycle.js";
+import type { PrimitiveHandle } from "./lifecycle.js";
+
+export type DismissReason = "escape" | "outside-pointer";
+export interface DismissEvent {
+  readonly reason: DismissReason;
+  readonly originalEvent: Event;
+}
+export interface LayerOptions {
+  readonly element: HTMLElement;
+  readonly modal?: boolean;
+  readonly dismissOnEscape?: boolean;
+  readonly dismissOnOutsidePointer?: boolean;
+  readonly onDismiss?: (event: DismissEvent) => void;
+}
+export interface OverlayManager extends PrimitiveHandle {
+  add(options: LayerOptions): PrimitiveHandle;
+  top(): HTMLElement | null;
+  containsTop(node: Node): boolean;
+}
+export interface OverlayManagerOptions {
+  readonly root: HTMLElement;
+  readonly host: HTMLElement;
+  readonly owner: OwnerScope;
+}
+/** Explicit per-application overlay stack, without a shared global registry. */
+export function createOverlayManager({ root, host, owner }: OverlayManagerOptions): OverlayManager {
+  if (root.ownerDocument !== host.ownerDocument) throw new Error("Overlay root and host must share a document");
+  const doc = host.ownerDocument;
+  type Entry = LayerOptions & { readonly id: number };
+  const layers: Entry[] = [];
+  let sequence = 0;
+  let disposed = false;
+  const originalInert = new Map<Element, boolean>();
+  const restoreInert = () => {
+    for (const [node, initial] of originalInert) {
+      if (initial) node.setAttribute("inert", "");
+      else node.removeAttribute("inert");
+    }
+    originalInert.clear();
+  };
+  const inertOutside = (target: HTMLElement) => {
+    for (let cursor: Element | null = target; cursor?.parentElement; cursor = cursor.parentElement) {
+      for (const sibling of Array.from(cursor.parentElement.children)) {
+        if (sibling === cursor) continue;
+        if (!originalInert.has(sibling)) originalInert.set(sibling, sibling.hasAttribute("inert"));
+        sibling.setAttribute("inert", "");
+      }
+      if (cursor.parentElement === doc.body) break;
+    }
+  };
+  const syncInert = () => {
+    restoreInert();
+    const modal = [...layers].reverse().find(layer => layer.modal);
+    if (modal && modal.element.isConnected) inertOutside(modal.element);
+  };
+  const top = () => layers.at(-1) ?? null;
+  const withinApp = (target: EventTarget | null): target is Node =>
+    target instanceof Node && (root.contains(target) || host.contains(target));
+  const keydown = listen(doc, "keydown", (event: Event) => {
+    if (!(event instanceof KeyboardEvent) || event.key !== "Escape" || event.isComposing) return;
+    const active = top();
+    if (!active?.dismissOnEscape || !withinApp(event.target)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    active.onDismiss?.({ reason: "escape", originalEvent: event });
+  }, owner, { capture: true });
+  const pointer = listen(doc, "pointerdown", (event: Event) => {
+    const active = top();
+    if (!active?.dismissOnOutsidePointer || !withinApp(event.target)) return;
+    const path = event.composedPath();
+    if (path.includes(active.element)) return;
+    active.onDismiss?.({ reason: "outside-pointer", originalEvent: event });
+  }, owner, { capture: true });
+  const lifecycle = own(() => {
+    if (disposed) return;
+    disposed = true;
+    layers.length = 0;
+    restoreInert();
+    keydown.dispose();
+    pointer.dispose();
+  }, owner);
+  return {
+    dispose: () => lifecycle.dispose(),
+    top: () => top()?.element ?? null,
+    containsTop: (node: Node) => !!top()?.element.contains(node),
+    add(options) {
+      if (disposed || owner.disposed) throw new Error("Overlay manager is disposed");
+      if (options.element.ownerDocument !== doc || !host.contains(options.element)) {
+        throw new Error("Overlay element must be inside the explicit application host");
+      }
+      const entry: Entry = { ...options, id: ++sequence };
+      layers.push(entry);
+      options.element.dataset.zaakiyLayer = String(entry.id);
+      syncInert();
+      return own(() => {
+        const index = layers.indexOf(entry);
+        if (index < 0) return;
+        layers.splice(index, 1);
+        delete options.element.dataset.zaakiyLayer;
+        syncInert();
+      }, owner);
+    }
+  };
+}
