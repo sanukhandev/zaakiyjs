@@ -11,8 +11,12 @@ export function animateElement(element: Element, options: ElementAnimationOption
   const control = createControlledHandle(options);
   if (control.handle.status !== "idle") return control.handle;
 
-  if (control.reduced || duration === 0) {
+  if (control.reduced) {
     control.settle({ status: "skipped", reason: "reduced-motion" });
+    return control.handle;
+  }
+  if (duration === 0) {
+    control.settle({ status: "finished" });
     return control.handle;
   }
   if (typeof element.animate !== "function") {
