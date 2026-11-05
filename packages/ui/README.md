@@ -1,6 +1,6 @@
 # @zaakiyjs/ui — P2 source-only implementation
 
-The canonical review integration is PR #49 (stacked on the verified UI Primitives integration PR #45). PR #38 remains source-only and is not independently mergeable until its dependency and workspace lockfile integration lands.
+The canonical full-workspace review is PR #49, rebased on `main` after UI Primitives PR #45 merged. PR #38 is the source-only implementation branch; PR #49 additionally contains the required lockfile, workspace verifier and CI integration. Review and merge PR #49 rather than trying to merge the incomplete workspace wiring in PR #38.
 
 ## Rendering model
 
@@ -52,4 +52,4 @@ The visual subset supports explicit typed text/data props; claiming parity with 
 
 ## Testing and release
 
-PR #49 is the integration validation branch with frozen pnpm importer, CI verifier registration and complete workspace CI. Source PR #38 alone does not meet integration constraints. The implementation is not a published npm release; npm scope ownership, license, non-placeholder version and independent package installation require approval. Do not merge either PR without verifying current checks, real compiled browser acceptance, and manual accessibility review.
+PR #49 targets `main` and includes the frozen pnpm importer, CI verifier registration and complete workspace CI. All eight workflows passed for the earlier validated stacked commit; revalidate the final main-based review SHA before approving. Source PR #38 alone does not meet integration constraints. The implementation is not a published npm release; npm scope ownership, license, non-placeholder version and independent package installation require approval. Do not merge either PR without verifying current checks, real compiled browser acceptance, and manual accessibility review.
