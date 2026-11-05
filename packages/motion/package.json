@@ -19,6 +19,6 @@
     "pack:check": "npm pack --dry-run --json"
   },
   "publishConfig": { "access": "public" },
-  "dependencies": { "@zaakiyjs/core": "workspace:^" },
+  "dependencies": { "@zaakiyjs/core": "workspace:^", "@zaakiyjs/signals": "workspace:^" },
   "devDependencies": { "jsdom": "^26.1.0" }
 }
