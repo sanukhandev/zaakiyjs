@@ -1,0 +1,54 @@
+import { getOwner, onCleanup, runWithOwner } from "@zaakiyjs/core";
+import type { MotionScopeOptions } from "./types.js";
+
+interface NativeViewTransition {
+  readonly updateCallbackDone: Promise<void>;
+  readonly finished: Promise<void>;
+  skipTransition(): void;
+}
+interface ViewDocument extends Document {
+  startViewTransition?: (update: () => Promise<void>) => NativeViewTransition;
+}
+export interface RouteTransitionOptions extends MotionScopeOptions {
+  readonly document?: Document;
+}
+export interface RouteTransitionResult { readonly animated: boolean }
+
+/**
+ * Call ONLY at Router's authorized DOM-commit boundary after guards and
+ * loaders succeed. Router currently has no public commit interception hook.
+ * This helper does not navigate or dispose any page owner.
+ */
+export async function runRouteTransition(
+  commit: () => void | Promise<void>,
+  options: RouteTransitionOptions = {}
+): Promise<RouteTransitionResult> {
+  if (options.signal?.aborted) throw new Error("Route transition aborted before commit");
+  const doc = (options.document ?? (typeof document !== "undefined" ? document : undefined)) as ViewDocument | undefined;
+  const media = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
+  const reduce = options.reducedMotion === "disable" ||
+    ((options.reducedMotion ?? "respect") !== "force" && !!media?.matches);
+  if (reduce || !doc?.startViewTransition) {
+    await commit();
+    return { animated: false };
+  }
+  const transition = doc.startViewTransition(async () => {
+    if (options.signal?.aborted) throw new Error("Route transition aborted before commit");
+    await commit();
+  });
+  const owner = options.owner ?? getOwner();
+  if (owner) runWithOwner(owner, () => onCleanup(() => transition.skipTransition()));
+  const abort = (): void => transition.skipTransition();
+  options.signal?.addEventListener("abort", abort, { once: true });
+  try {
+    // A failed commit propagates; animation never reports false navigation success.
+    await transition.updateCallbackDone;
+    await transition.finished.catch(() => undefined);
+    return { animated: true };
+  } catch (error) {
+    transition.skipTransition();
+    throw error;
+  } finally {
+    options.signal?.removeEventListener("abort", abort);
+  }
+}
