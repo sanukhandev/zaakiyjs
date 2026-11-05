@@ -21,7 +21,9 @@ const ror=(x:number,n:number):number => (x>>>n)|(x<<(32-n));
 function encodeUtf8(input:string):number[] {
   const result:number[]=[];
   for(const value of input) {
-    const cp=value.codePointAt(0)!;
+    // Match TextEncoder/Node UTF-8: isolated UTF-16 surrogates encode as U+FFFD.
+    const raw=value.codePointAt(0)!;
+    const cp=raw>=0xd800 && raw<=0xdfff ? 0xfffd : raw;
     if (cp<0x80) result.push(cp);
     else if (cp<0x800) result.push(0xc0|(cp>>6),0x80|(cp&63));
     else if (cp<0x10000) result.push(0xe0|(cp>>12),0x80|((cp>>6)&63),0x80|(cp&63));
