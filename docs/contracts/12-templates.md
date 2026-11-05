@@ -47,6 +47,7 @@ export interface PlanRequest {
   readonly targetDirectory: string;
   readonly variables: Readonly<Record<string, string>>;
   readonly existingPaths: readonly string[];
+  readonly authorizedReplacements?: Readonly<Record<string, string>>; // path -> expected current SHA-256
   readonly overwrite?: "error" | "skip"; // never implicit force
 }
 export interface PlannedWrite {
@@ -70,7 +71,7 @@ export interface TemplateFilePlan {
 }
 ~~~
 
-Reserved `validateTemplate(manifest, assets): readonly PlanDiagnostic[]` and `planTemplate(request): TemplateFilePlan` are pure and deterministic. `applyTemplatePlan(plan, fsAdapter)` is a **separate explicit Node adapter**; no filesystem writes occur in `planTemplate`, no implicit install, script execution, network calls or AI generation. Dry-run is simply rendering the plan. A privileged `--force` workflow requires a new explicit policy, not a hidden meaning of `overwrite`.
+Reserved `validateTemplate(manifest, assets): readonly PlanDiagnostic[]` and `planTemplate(request): TemplateFilePlan` are pure and deterministic. `applyTemplatePlan(plan, fsAdapter)` is a **separate explicit Node adapter**; no filesystem writes occur in `planTemplate`, no implicit install, script execution, network calls or AI generation. Dry-run is simply rendering the plan. A `replace` write is permitted only for a path explicitly listed in `authorizedReplacements`, with the supplied existing SHA-256 matching the file at apply time; otherwise collisions error/skip. A privileged `--force` workflow requires a new explicit policy, not a hidden meaning of `overwrite`.
 
 ## Security, reproducibility and portability
 
