@@ -174,7 +174,9 @@ describe("headless accessible patterns", () => {
     const popover = createPopover({ owner: f.owner, trigger, content, overlays: f.overlays });
     trigger.click(); flushSync();
     expect(content.hidden).toBe(false);
-    trigger.dispatchEvent(new Event("pointerdown", { bubbles: true, composed: true }));
+    // The trigger is part of the popover interaction; pointerdown alone should
+    // not close/reopen it. A genuine pointer outside should dismiss.
+    f.root.dispatchEvent(new Event("pointerdown", { bubbles: true, composed: true }));
     flushSync();
     expect(popover.open.value).toBe(false);
     disposeOwner(f.owner);
