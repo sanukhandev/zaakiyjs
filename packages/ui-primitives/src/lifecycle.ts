@@ -1,4 +1,4 @@
-import { getOwner, onCleanup, runWithOwner } from "@zaakiyjs/core";
+import { createOwner, disposeOwner, getOwner, onCleanup, runWithOwner } from "@zaakiyjs/core";
 import type { OwnerScope } from "@zaakiyjs/core";
 
 export interface PrimitiveHandle { dispose(): void }
@@ -58,4 +58,26 @@ export function createIdScope(prefix: string, owner?: OwnerScope): {
       return `${prefix}-${hint}-${++index}`;
     }
   };
+}
+
+/**
+ * Dynamically registered items get removable child owners. Unregistering one
+ * detaches the child from its parent rather than retaining every old cleanup
+ * closure and removed element until the application is unmounted.
+ */
+export function createRegistration(
+  owner: OwnerScope | undefined,
+  setup: (registrationOwner: OwnerScope) => () => void
+): PrimitiveHandle {
+  const parent = owner ?? getOwner();
+  if (!parent || parent.disposed) throw new Error("Registration needs a live Core owner");
+  const registrationOwner = createOwner(parent);
+  try {
+    const tearDown = runWithOwner(registrationOwner, () => setup(registrationOwner));
+    runWithOwner(registrationOwner, () => onCleanup(tearDown));
+  } catch (error) {
+    disposeOwner(registrationOwner);
+    throw error;
+  }
+  return { dispose() { disposeOwner(registrationOwner); } };
 }
