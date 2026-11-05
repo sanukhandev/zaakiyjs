@@ -26,7 +26,7 @@ export function createControlledHandle(options: MotionScopeOptions = {}): Contro
   const media = policy === "respect" || policy === "reduce"
     ? (typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null)
     : null;
-  const reduced = policy === "disable" || (policy !== "force" && !!media?.matches);
+  const reduced = policy === "disable" || (policy === "respect" && !!media?.matches);
 
   const settle = (outcome: MotionOutcome): void => {
     if (settled) return;
@@ -92,7 +92,7 @@ export function createControlledHandle(options: MotionScopeOptions = {}): Contro
       cleanups.push(() => signal.removeEventListener("abort", abort));
     }
   }
-  if (media && !reduced) {
+  if (media && !reduced && !settled) {
     const changed = (): void => {
       if (media.matches && !settled) {
         try { driver.finish?.(); }
