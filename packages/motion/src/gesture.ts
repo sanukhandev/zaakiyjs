@@ -34,7 +34,7 @@ export function createGestures(element: Element, options: GestureOptions): Gestu
   const swipeVelocity = Math.max(0, options.swipeVelocity ?? 0.2);
   const longPress = Math.max(0, options.longPressMs ?? 500);
   let pointer: number | null = null;
-  let startX = 0, startY = 0, lastX = 0, lastY = 0, startTime = 0;
+  let startX = 0, startY = 0, startTime = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let dragged = false, held = false, disposed = false;
   const clear = (): void => {
@@ -57,7 +57,7 @@ export function createGestures(element: Element, options: GestureOptions): Gestu
     const e = event as PointerEvent;
     if (disposed || options.disabled || pointer !== null || (e.pointerType === "mouse" && e.button !== 0)) return;
     pointer = e.pointerId;
-    startX = lastX = e.clientX; startY = lastY = e.clientY;
+    startX = e.clientX; startY = e.clientY;
     startTime = e.timeStamp;
     dragged = held = false;
     try { element.setPointerCapture?.(pointer); } catch { /* disconnected */ }
@@ -80,7 +80,6 @@ export function createGestures(element: Element, options: GestureOptions): Gestu
       if (options.preventScroll && e.cancelable) e.preventDefault();
       options.onDrag?.(snapshot(e));
     }
-    lastX = e.clientX; lastY = e.clientY;
   };
   const up = (event: Event): void => {
     const e = event as PointerEvent;
