@@ -45,6 +45,10 @@ export function createOverlayController(options: OverlayOptions): OverlayControl
     onValueChange: options.open.onValueChange
   });
   let layer: PrimitiveHandle | null = null;
+  const releaseLayer = () => {
+    layer?.dispose();
+    layer = null;
+  };
   let render: PrimitiveHandle;
   try {
     render = effect(() => {
@@ -61,16 +65,16 @@ export function createOverlayController(options: OverlayOptions): OverlayControl
           state.set(false, detail);
         }
       });
-      return () => { layer?.dispose(); layer = null; };
+      return releaseLayer;
     }, { phase: "render" });
   } catch (error) {
-    layer?.dispose();
+    releaseLayer();
     element.hidden = oldHidden;
     throw error;
   }
   const cleanup = own(() => {
     render.dispose();
-    layer?.dispose(); layer = null;
+    releaseLayer();
     element.hidden = oldHidden;
   }, owner);
   return {
