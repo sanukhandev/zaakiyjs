@@ -11,6 +11,13 @@ export function createSpring(options: SpringOptions): AnimationHandle {
   let velocity = finite(options.velocity ?? 0, "velocity", -Number.MAX_VALUE);
   const restSpeed = finite(options.restSpeed ?? 0.01, "restSpeed", Number.EPSILON);
   const restDelta = finite(options.restDelta ?? 0.01, "restDelta", Number.EPSILON);
+  // Semi-implicit integration requires a bounded condition number and finite
+  // values; unbounded user input can otherwise create Infinity/NaN frames.
+  if (Math.abs(position) > 1e9 || Math.abs(target) > 1e9 ||
+      Math.abs(velocity) > 1e6 || stiffness / mass > 1e5 ||
+      damping / mass > 1e3 || restSpeed > 1e6 || restDelta > 1e9) {
+    throw new RangeError("Spring parameters exceed stable scalar limits");
+  }
   const control = createControlledHandle(options);
   if (control.handle.status !== "idle") return control.handle;
 
@@ -39,12 +46,20 @@ export function createSpring(options: SpringOptions): AnimationHandle {
     if (paused || control.handle.status !== "running") return;
     const elapsed = last === null ? 16.667 : Math.max(0, Math.min(64, now - last));
     last = now;
-    const steps = Math.max(1, Math.ceil(elapsed / 8));
+    // Bound each substep by both the natural frequency and damping rate.
+    // This avoids numerical instability under otherwise valid stiff springs.
+    const rate = Math.max(Math.sqrt(stiffness / mass), damping / mass);
+    const maxStepMs = Math.min(8, 250 / rate);
+    const steps = Math.max(1, Math.ceil(elapsed / maxStepMs));
     const dt = elapsed / steps / 1000;
     for (let i = 0; i < steps; i++) {
       const acceleration = (stiffness * (target - position) - damping * velocity) / mass;
       velocity += acceleration * dt;
       position += velocity * dt;
+    }
+    if (!Number.isFinite(position) || !Number.isFinite(velocity)) {
+      control.settle({ status: "failed", reason: "error", error: new RangeError("Spring integration produced a non-finite state") });
+      return;
     }
     const done = Math.abs(velocity) <= restSpeed && Math.abs(target - position) <= restDelta;
     if (done) { position = target; velocity = 0; }
