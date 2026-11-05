@@ -23,7 +23,7 @@ const variables={
 };
 describe("P2 Contract 12 manifests and immutable plans",()=>{
   it("matches Node SHA-256 including Unicode",()=>{
-    for(const text of ["","abc","Éclair — dashboard","🧪"]){
+    for(const text of ["","abc","Éclair — dashboard","🧪","\ud800","\udc00","a\ud800b","\ud800\udc00"]){
       expect(sha256Utf8(text)).toBe(createHash("sha256").update(text,"utf8").digest("hex"));
     }
   });
