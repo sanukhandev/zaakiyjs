@@ -1,6 +1,7 @@
 import {describe,it,expect} from "vitest";
-import {createTemplatePlan,getTemplate,listTemplates,materializeTemplatePlan,
+import {createTemplatePlan,getTemplate,listTemplates,
   safeRelativePath,TemplateError,validateMaterializedFiles} from "../src/index.js";
+import {materializeTemplatePlan} from "../src/node.js";
 describe("template registry",() => {
   it("has four unique typed draft categories",()=>{
     const items=listTemplates();
