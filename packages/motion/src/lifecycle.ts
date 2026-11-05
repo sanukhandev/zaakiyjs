@@ -1,5 +1,5 @@
 import { getOwner, onCleanup, runWithOwner } from "@zaakiyjs/core";
-import type { MotionHandle, MotionOutcome, MotionReason, MotionScopeOptions, MotionStatus } from "./types.js";
+import type { AnimationHandle, MotionOutcome, MotionReason, MotionScopeOptions, MotionStatus } from "./types.js";
 
 export interface Driver {
   stop?(): void;
@@ -8,7 +8,7 @@ export interface Driver {
   resume?(): void;
 }
 export interface ControlledHandle {
-  readonly handle: MotionHandle;
+  readonly handle: AnimationHandle;
   readonly reduced: boolean;
   start(driver: Driver): void;
   settle(outcome: MotionOutcome): void;
@@ -39,7 +39,7 @@ export function createControlledHandle(options: MotionScopeOptions = {}): Contro
   const safeStop = (): void => {
     try { driver.stop?.(); } catch { /* teardown must still settle */ }
   };
-  const handle: MotionHandle = {
+  const handle: AnimationHandle = {
     get finished() { return finished; },
     get status() { return state; },
     cancel(reason: MotionReason = "explicit") {
