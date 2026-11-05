@@ -10,14 +10,18 @@
     "dist",
     "src/styles.css",
     "README.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "src/styles.css.d.ts"
   ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./styles.css": "./src/styles.css"
+    "./styles.css": {
+      "types": "./src/styles.css.d.ts",
+      "import": "./src/styles.css"
+    }
   },
   "types": "./dist/index.d.ts",
   "main": "./dist/index.js",
