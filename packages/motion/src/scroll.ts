@@ -15,6 +15,7 @@ export interface ScrollHandle { dispose(): void }
 export function observeViewport(element: Element, options: ViewportOptions): ScrollHandle {
   let disposed = false;
   let observer: IntersectionObserver | null = null;
+  let releaseAbort: (() => void) | null = null;
   if (typeof IntersectionObserver === "function") {
     observer = new IntersectionObserver(entries => {
       if (disposed || options.owner?.disposed) return;
@@ -37,13 +38,19 @@ export function observeViewport(element: Element, options: ViewportOptions): Scr
       disposed = true;
       observer?.disconnect();
       observer = null;
+      releaseAbort?.();
+      releaseAbort = null;
     }
   };
   const owner = options.owner ?? getOwner();
   if (owner) runWithOwner(owner, () => onCleanup(() => handle.dispose()));
   if (options.signal) {
     if (options.signal.aborted) handle.dispose();
-    else options.signal.addEventListener("abort", () => handle.dispose(), { once: true });
+    else {
+      const abort = (): void => handle.dispose();
+      options.signal.addEventListener("abort", abort, { once: true });
+      releaseAbort = () => options.signal?.removeEventListener("abort", abort);
+    }
   }
   return handle;
 }
@@ -58,6 +65,7 @@ export function observeScrollProgress(element: Element, options: ScrollProgressO
   if (!root || typeof requestAnimationFrame !== "function") return { dispose() {} };
   let disposed = false;
   let frame: number | null = null;
+  let releaseAbort: (() => void) | null = null;
   const update = (): void => {
     frame = null;
     if (disposed) return;
@@ -79,9 +87,19 @@ export function observeScrollProgress(element: Element, options: ScrollProgressO
       root.removeEventListener("scroll", schedule);
       if (typeof window !== "undefined") window.removeEventListener("resize", schedule);
       if (frame !== null) cancelAnimationFrame(frame);
+      releaseAbort?.();
+      releaseAbort = null;
     }
   };
   const owner = options.owner ?? getOwner();
   if (owner) runWithOwner(owner, () => onCleanup(() => handle.dispose()));
+  if (options.signal) {
+    if (options.signal.aborted) handle.dispose();
+    else {
+      const abort = (): void => handle.dispose();
+      options.signal.addEventListener("abort", abort, { once: true });
+      releaseAbort = () => options.signal?.removeEventListener("abort", abort);
+    }
+  }
   return handle;
 }
