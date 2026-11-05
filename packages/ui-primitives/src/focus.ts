@@ -39,8 +39,8 @@ function hiddenOrInert(element: HTMLElement): boolean {
   for (let node: Element | null = element; node; node = node.parentElement) {
     if (node.hasAttribute("hidden") || node.hasAttribute("inert") ||
       node.getAttribute("aria-hidden") === "true") return true;
-    const view = node.ownerDocument.defaultView;
-    const css = view?.getComputedStyle(node);
+    const view: Window | null = node.ownerDocument.defaultView;
+    const css: CSSStyleDeclaration | undefined = view?.getComputedStyle(node);
     if (css?.display === "none" || css?.visibility === "hidden" || css?.visibility === "collapse") return true;
   }
   return false;

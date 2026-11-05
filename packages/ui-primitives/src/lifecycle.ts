@@ -49,7 +49,7 @@ export function createIdScope(prefix: string, owner?: OwnerScope): {
 } {
   if (!/^[A-Za-z][\w-]*$/.test(prefix)) throw new TypeError("Invalid ID prefix");
   let index = 0;
-  const lifetime = own(() => { index = -1; }, owner);
+  own(() => { index = -1; }, owner);
   return {
     prefix,
     next(hint = "id") {
