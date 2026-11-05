@@ -1,4 +1,6 @@
 import type { TemplateId, TemplateManifest, TemplateOptionSpec } from "./types.js";
+import type {TemplateCapability} from "./contracts.js";
+import {templateAssetChecksums} from "./asset-checksums.js";
 const options: readonly TemplateOptionSpec[] = Object.freeze([
   {name:"brandName",type:"string",required:false},
   {name:"primaryColor",type:"color",required:false},
@@ -20,14 +22,28 @@ const define = (id: TemplateId, category: TemplateManifest["category"], name: st
   description: string, packages: readonly string[], features: readonly string[],
   featurePath: string, entity: string, limitations: readonly string[]): TemplateManifest => {
   const requiredPackages = Object.freeze([...packages]);
+  const generatedFiles=Object.freeze([...common,...feature(featurePath,entity)]);
+  const minimumVersions=Object.freeze(Object.fromEntries(requiredPackages.map(pkg => [pkg, "0.0.0"])));
+  const compilerCapabilities=requiredPackages.map(pkg=>pkg.replace("@zaakiyjs/",""))
+    .filter(pkg=>["core","signals","dom","styles","router","forms","async","ui","ui-primitives","motion","http"].includes(pkg)) as TemplateCapability[];
+  const assets=Object.freeze(generatedFiles.map(path=>Object.freeze({
+    path,encoding:"utf-8" as const,mode:"file" as const,
+    contentSha256:templateAssetChecksums[id]?.[path] ?? ""
+  })));
   return Object.freeze({
-    schemaVersion:1, id, name, description, category,
+    schemaVersion:1, id, version:"0.1.0",kind:"project" as const,
+    license:"UNLICENSED",entry:"src/main.tsx",name, description, category,
+    packages:minimumVersions,assets,
+    compatibility:Object.freeze({
+      compiler:"0.0.0",domAbi:1 as const,irSchema:1 as const,
+      requiredFeatures:Object.freeze(compilerCapabilities)
+    }),
     status:"draft" as const,
     requiredPackages,
-    minimumVersions:Object.freeze(Object.fromEntries(requiredPackages.map(pkg => [pkg, "0.0.0"]))),
+    minimumVersions,
     requiredFeatures:Object.freeze([...features]),
     optionSchema:options, featureFlags:Object.freeze({mfa:id==="authentication"}),
-    generatedFiles:Object.freeze([...common,...feature(featurePath,entity)]),
+    generatedFiles,
     limitations:Object.freeze([...limitations])
   });
 };

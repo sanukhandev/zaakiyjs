@@ -2,6 +2,9 @@ import {lstat, readFile} from "node:fs/promises";
 import {resolve, relative, isAbsolute, sep} from "node:path";
 import {fileURLToPath} from "node:url";
 import {TemplateError} from "./types.js";
+import {getTemplate} from "./registry.js";
+import {sha256Utf8} from "./hash.js";
+import {createTemplatePlan} from "./plan.js";
 import {safeRelativePath, validateMaterializedFiles} from "./plan.js";
 import type {MaterializedFile,TemplatePlan} from "./types.js";
 /** Installed package payload: src/ and dist/ are siblings of the templates/ directory. */
@@ -23,6 +26,13 @@ function interpolate(text: string, plan: TemplatePlan): string {
 /** Read only exact registered assets; no scripts, arbitrary templates or project writes. */
 export async function materializeTemplatePlan(plan: TemplatePlan): Promise<readonly MaterializedFile[]> {
   if (plan.schemaVersion !== 1) throw new TemplateError("INVALID_ASSET","Unsupported plan version.");
+  // Revalidate caller-supplied plan; it may have been modified after planning.
+  const baseline=createTemplatePlan({template:plan.template,projectName:plan.projectName,options:plan.options});
+  if(JSON.stringify(baseline.options)!==JSON.stringify(plan.options))throw new TemplateError("INVALID_OPTION","Invalid template options.");
+  const manifest=getTemplate(plan.template);
+  if(!manifest||plan.files.length!==manifest.assets.length)
+    throw new TemplateError("INVALID_ASSET","Plan does not match registered asset inventory.");
+  const planned=new Set<string>();
   const root = resolve(assetRoot);
   const files: MaterializedFile[] = [];
   for (const file of plan.files) {
@@ -30,6 +40,12 @@ export async function materializeTemplatePlan(plan: TemplatePlan): Promise<reado
     if (!asset.startsWith(plan.template+"/")) {
       throw new TemplateError("INVALID_ASSET","Asset does not belong to the planned template.");
     }
+    const relativeAsset=asset.slice(plan.template.length+1);
+    const descriptor=manifest.assets.find(x=>x.path===relativeAsset);
+    if(!descriptor||planned.has(relativeAsset)||(!file.path.endsWith("/"+relativeAsset)&&file.path!==relativeAsset)){
+      throw new TemplateError("INVALID_ASSET","Plan references an unexpected asset or destination.");
+    }
+    planned.add(relativeAsset);
     const target = resolve(root,asset);
     const rel = relative(root,target);
     if (!rel || rel === ".." || rel.startsWith(".."+sep) || isAbsolute(rel)) {
@@ -44,7 +60,10 @@ export async function materializeTemplatePlan(plan: TemplatePlan): Promise<reado
     }
     const info=await lstat(target);
     if (!info.isFile() || info.size > 150_000) throw new TemplateError("INVALID_ASSET","Invalid or oversized template asset.");
-    files.push({path:safeRelativePath(file.path),content:interpolate(await readFile(target,"utf8"),plan)});
+    const raw=await readFile(target,"utf8");
+    if(sha256Utf8(raw)!==descriptor.contentSha256)
+      throw new TemplateError("INVALID_ASSET","Packaged asset SHA-256 integrity check failed: "+relativeAsset);
+    files.push({path:safeRelativePath(file.path),content:interpolate(raw,plan)});
   }
   return Object.freeze([...validateMaterializedFiles(files)]);
 }

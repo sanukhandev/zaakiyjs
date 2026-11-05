@@ -1,3 +1,5 @@
+import type {TemplateManifestV1} from "./contracts.js";
+
 export type TemplateId = "dashboard" | "authentication" | "settings" | "crud";
 export type TemplateStatus = "draft" | "runnable";
 export type TemplateCategory = "dashboard" | "authentication" | "settings" | "data-management";
@@ -15,8 +17,7 @@ export interface TemplateOptionSpec {
   readonly required: boolean;
   readonly values?: readonly string[];
 }
-export interface TemplateManifest {
-  readonly schemaVersion: 1;
+export interface TemplateManifest extends TemplateManifestV1 {
   readonly id: TemplateId;
   readonly name: string;
   readonly description: string;
