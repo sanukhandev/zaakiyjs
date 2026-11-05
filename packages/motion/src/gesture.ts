@@ -37,6 +37,7 @@ export function createGestures(element: Element, options: GestureOptions): Gestu
   let startX = 0, startY = 0, startTime = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let dragged = false, held = false, disposed = false;
+  let releaseAbort: (() => void) | null = null;
   const clear = (): void => {
     if (timer !== null) clearTimeout(timer);
     timer = null;
@@ -118,13 +119,19 @@ export function createGestures(element: Element, options: GestureOptions): Gestu
       element.removeEventListener("pointercancel", clear);
       element.removeEventListener("lostpointercapture", clear);
       element.removeEventListener("keydown", key);
+      releaseAbort?.();
+      releaseAbort = null;
     }
   };
   const owner = options.owner ?? getOwner();
   if (owner) runWithOwner(owner, () => onCleanup(() => controller.dispose()));
   if (options.signal) {
     if (options.signal.aborted) controller.dispose();
-    else options.signal.addEventListener("abort", () => controller.dispose(), { once: true });
+    else {
+      const abort = (): void => controller.dispose();
+      options.signal.addEventListener("abort", abort, { once: true });
+      releaseAbort = () => options.signal?.removeEventListener("abort", abort);
+    }
   }
   return controller;
 }
