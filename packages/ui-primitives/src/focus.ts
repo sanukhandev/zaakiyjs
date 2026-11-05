@@ -111,7 +111,7 @@ export function createFocusScope(options: FocusScopeOptions): FocusScopeHandle {
   manager?.add(handle);
 
   const onKeyDown = (event: Event) => {
-    if (!contain || !entered || !isTop() || !(event instanceof KeyboardEvent) || event.key !== "Tab") return;
+    if (!contain || !entered || !container.isConnected || !isTop() || !(event instanceof KeyboardEvent) || event.key !== "Tab") return;
     const items = focusables(container);
     const current = doc.activeElement;
     if (!items.length) {

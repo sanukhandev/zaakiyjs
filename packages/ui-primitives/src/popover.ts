@@ -30,6 +30,7 @@ export interface PopoverController extends PrimitiveHandle {
 export function createPopover(options: PopoverOptions): PopoverController {
   const { owner, trigger, content } = options;
   if (!content.id) throw new Error("Popover content needs a stable ID");
+  if (!options.overlays.accepts(content)) throw new Error("Popover must belong to its overlay host");
   const prior = {
     hidden: content.hidden, expanded: trigger.getAttribute("aria-expanded"),
     controls: trigger.getAttribute("aria-controls")

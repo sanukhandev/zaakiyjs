@@ -34,6 +34,7 @@ export interface DialogController extends PrimitiveHandle {
 export function createDialog(options: DialogOptions): DialogController {
   const { element, owner, overlays } = options;
   if (owner.disposed) throw new Error("Cannot attach dialog to a disposed owner");
+  if (!overlays.accepts(element)) throw new Error("Dialog must belong to its application overlay host");
   if (!options.ariaLabel && !options.labelledBy &&
     !element.hasAttribute("aria-label") && !element.hasAttribute("aria-labelledby")) {
     throw new Error("Dialog must have an accessible name");
