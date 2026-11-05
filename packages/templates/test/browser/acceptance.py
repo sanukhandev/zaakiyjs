@@ -94,7 +94,13 @@ def main() -> int:
                             try:page.screenshot(path=f"/tmp/zaakiy-templates-{engine_name}-{name}-{width}.png")
                             except Exception:pass
                         finally:context.close()
+                        if failures:
+                            break
+                    if failures:
+                        break
             finally:browser.close()
+            if failures:
+                break
     for engine,name,width,trace,errors in failures:
         print(f"FAILURE {engine}/{name}/{width}: {errors}\n{trace}",file=sys.stderr)
     print(f"Template browser matrix: {passed}/24 passed; {len(failures)} failed",flush=True)
