@@ -13,7 +13,7 @@ export function validateProjectName(value: string): string {
 /** Pure validation: no FS, browser, environment, or network dependency. */
 export function safeRelativePath(value: string): string {
   if (typeof value !== "string" || !value || value.length > 1024 ||
-      value.startsWith("/") || value.startsWith("\\") || /^[a-zA-Z]:/.test(value) ||
+      value.startsWith("/") || value.includes("\\") || /^[a-zA-Z]:/.test(value) ||
       /[\x00-\x1f<>:"|?*]/.test(value)) {
     throw new TemplateError("UNSAFE_PATH","Expected a safe relative project path.");
   }
