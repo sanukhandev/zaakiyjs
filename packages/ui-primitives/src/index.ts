@@ -26,3 +26,5 @@ export { createTooltip } from "./tooltip.js";
 export type { TooltipController, TooltipOptions } from "./tooltip.js";
 export { createPopover } from "./popover.js";
 export type { PopoverController, PopoverOptions } from "./popover.js";
+export { createDismissableLayer, createOverlayController } from "./overlay.js";
+export type { DismissableLayerOptions, OverlayOptions, OverlayController } from "./overlay.js";
