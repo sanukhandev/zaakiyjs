@@ -10,6 +10,10 @@ export interface FocusScopeOptions {
   readonly contain?: boolean;
   readonly restoreFocus?: boolean;
   readonly initialFocus?: HTMLElement | (() => HTMLElement | null);
+  /** A live parent controller owner may permit focus restoration after transient activation disposal. */
+  readonly restoreOwner?: OwnerScope;
+  /** Topmost nonmodal portals logically included inside this modal focus boundary. */
+  readonly additionalContainers?: () => readonly HTMLElement[];
 }
 
 export interface FocusManager {
@@ -93,6 +97,10 @@ export function createFocusScope(options: FocusScopeOptions): FocusScopeHandle {
   let disposed = false;
   let entered = false;
   const isTop = () => !manager || manager.isTop(handle);
+  const containers = () => [container, ...(options.additionalContainers?.() ?? [])]
+    .filter(item => item.isConnected && item.ownerDocument === doc);
+  const includes = (node: Node | null) => !!node && containers().some(item => item.contains(node));
+  const tabbables = () => containers().flatMap(item => focusables(item));
   const initial = () => typeof options.initialFocus === "function" ? options.initialFocus() : options.initialFocus;
   const focusInitial = () => {
     if (disposed || !container.isConnected || !isTop()) return;
@@ -112,7 +120,7 @@ export function createFocusScope(options: FocusScopeOptions): FocusScopeHandle {
 
   const onKeyDown = (event: Event) => {
     if (!contain || !entered || !container.isConnected || !isTop() || !(event instanceof KeyboardEvent) || event.key !== "Tab") return;
-    const items = focusables(container);
+    const items = tabbables();
     const current = doc.activeElement;
     if (!items.length) {
       event.preventDefault();
@@ -121,7 +129,7 @@ export function createFocusScope(options: FocusScopeOptions): FocusScopeHandle {
     }
     const first = items[0]!;
     const last = items.at(-1)!;
-    if (!container.contains(current) || current === container) {
+    if (!includes(current) || current === container) {
       event.preventDefault();
       (event.shiftKey ? last : first).focus();
     } else if (event.shiftKey && current === first) {
@@ -133,8 +141,9 @@ export function createFocusScope(options: FocusScopeOptions): FocusScopeHandle {
   const onFocusIn = (event: Event) => {
     if (!contain || !entered || !isTop() || !container.isConnected) return;
     const target = event.target;
-    if (!(target instanceof Node) || container.contains(target)) return;
-    (focusables(container)[0] ?? container).focus();
+    if (!(target instanceof Node) || includes(target) ||
+      event.composedPath().some(node => node instanceof Node && includes(node))) return;
+    (tabbables()[0] ?? container).focus();
   };
   const key = listen(doc, "keydown", onKeyDown, owner, { capture: true });
   const focus = listen(doc, "focusin", onFocusIn, owner);
@@ -145,7 +154,8 @@ export function createFocusScope(options: FocusScopeOptions): FocusScopeHandle {
     focus.dispose();
     manager?.remove(handle);
     if (addedTabindex) container.removeAttribute("tabindex");
-    if (restoreFocus && !owner.disposed && previous && isFocusable(previous)) previous.focus();
+    if (restoreFocus && !(options.restoreOwner ?? owner).disposed && previous &&
+      isFocusable(previous)) previous.focus();
   }, owner);
   focusInitial();
   return handle;

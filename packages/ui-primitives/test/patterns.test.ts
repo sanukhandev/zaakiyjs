@@ -38,6 +38,21 @@ describe("headless accessible patterns", () => {
     expect(pa.hidden).toBe(true);
     disposeOwner(f.owner);
   });
+  it("registering selected tab after another tab restores the correct keyboard entry", () => {
+    const f = fixture(), list = document.createElement("div");
+    const one = document.createElement("button"), two = document.createElement("button");
+    const p1 = document.createElement("section"), p2 = document.createElement("section");
+    one.id = "first-tab"; two.id = "second-tab"; p1.id = "first-panel"; p2.id = "second-panel";
+    list.append(one, two); f.root.append(list, p1, p2);
+    const value = signal("second");
+    const tabs = createTabs({ list, owner: f.owner, defaultValue: "first", value });
+    tabs.register({ id: "first", tab: one, panel: p1 });
+    tabs.register({ id: "second", tab: two, panel: p2 });
+    expect(two.tabIndex).toBe(0);
+    expect(one.tabIndex).toBe(-1);
+    expect(p2.hidden).toBe(false);
+    disposeOwner(f.owner);
+  });
   it("manual tab activation and RTL navigation preserve selection separately", () => {
     const f = fixture(), list = document.createElement("div");
     f.root.append(list);

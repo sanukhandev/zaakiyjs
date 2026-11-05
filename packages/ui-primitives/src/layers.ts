@@ -27,6 +27,8 @@ export interface OverlayManager extends PrimitiveHandle {
   add(options: LayerOptions): PrimitiveHandle;
   top(): HTMLElement | null;
   containsTop(node: Node): boolean;
+  /** Active layers above this element, for logical focus containment of portalled controls. */
+  above(element: HTMLElement): readonly HTMLElement[];
 }
 export interface OverlayManagerOptions {
   readonly root: HTMLElement;
@@ -110,9 +112,24 @@ export function createOverlayManager(options: OverlayManagerOptions): OverlayMan
     const modal = [...layers].reverse().find(layer => layer.modal && layer.element.isConnected);
     const desired = new Set<Element>();
     if (modal) {
-      for (let cursor: Element | null = modal.element; cursor?.parentElement; cursor = cursor.parentElement) {
-        for (const sibling of cursor.parentElement.children) if (sibling !== cursor) desired.add(sibling);
-        if (cursor.parentElement === doc.body) break;
+      // Sibling-portalled menus/popovers above the modal stay operable, while
+      // background and lower layers remain inert. Mark only nodes outside the
+      // union of all protected ancestor paths.
+      const index = layers.indexOf(modal);
+      const paths = [modal, ...layers.slice(index + 1)]
+        .filter(layer => layer.element.isConnected);
+      const protectedNodes = new Set<Element>();
+      for (const layer of paths) {
+        for (let node: Element | null = layer.element; node; node = node.parentElement) {
+          protectedNodes.add(node);
+          if (node === doc.body) break;
+        }
+      }
+      for (const node of protectedNodes) {
+        if (node === doc.body || !node.parentElement) continue;
+        for (const sibling of node.parentElement.children) {
+          if (!protectedNodes.has(sibling)) desired.add(sibling);
+        }
       }
     }
     for (const node of [...inertHeld]) {
@@ -184,6 +201,11 @@ export function createOverlayManager(options: OverlayManagerOptions): OverlayMan
       element.ownerDocument === doc && host.contains(element); },
     top: () => top()?.element ?? null,
     containsTop: (node: Node) => !!top()?.element.contains(node),
+    above(element) {
+      const index = layers.findIndex(layer => layer.element === element);
+      return index < 0 ? [] : layers.slice(index + 1)
+        .filter(layer => layer.element.isConnected).map(layer => layer.element);
+    },
     add(layerOptions) {
       if (disposed || owner.disposed) throw new Error("Overlay manager is disposed");
       if (layerOptions.element.ownerDocument !== doc || !host.contains(layerOptions.element)) {

@@ -70,9 +70,12 @@ export function createTabs(options: TabsOptions): TabsController {
   }, { phase: "render" });
   const sync = () => {
     const selected = state.value.peek();
+    if (registered.has(selected)) roving.move(selected, false);
     for (const item of registered.values()) {
-      item.tab.setAttribute("aria-selected", String(item.id === selected));
-      item.panel.hidden = item.id !== selected;
+      const active = item.id === selected;
+      item.tab.setAttribute("aria-selected", String(active));
+      item.panel.hidden = !active;
+      item.tab.tabIndex = item.id === roving.activeId && !item.disabled ? 0 : -1;
     }
   };
   const lifecycle = own(() => {
