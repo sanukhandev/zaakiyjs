@@ -38,11 +38,14 @@ const files = await materializeTemplatePlan(plan);
 // A separate atomic CLI adapter must preflight and write files within its approved root.
 ```
 
-**Status:** All four projects typecheck and Vite production-build successfully against
-the current pinned compiler and runtime, and packaged sources pass integrity tests.
-They remain **draft** because browser interaction and template-specific accessibility
-certification, independent npm consumption, and `@zaakiyjs/ui` / CLI integration
-are separate release gates. Contract 12 is frozen and implemented in this package.
+**Status:** All four projects typecheck and Vite production-build against the current
+pinned compiler/runtime. The dedicated generated-app Playwright workflow runs
+Chromium, Firefox and WebKit at 1280px and 390px, exercising real interactions
+and axe-core WCAG 2.0/2.1 A/AA assertions. Packaged source integrity is checked.
+The most recent successful CI run should be checked on the PR before promotion.
+Templates retain the **draft** catalog status until clean external npm consumption,
+published package version compatibility, and CLI/UI integration are certified.
+Contract 12 is frozen and implemented in this package.
 The compiler does not currently lower `htmlFor` to a native label association;
 generated Views use enclosing HTML labels instead of relying on that mapping.
 
@@ -81,8 +84,9 @@ lost updates; CRUD deletion requires confirmation and is never automatically ret
 
 - Frozen P2 Contract 12 is implemented; verify future contract/ABI revisions through tests.
 - Verify generated-app TypeScript/Zaakiy Compiler/Vite build gates remain green in CI.
-- Require template-specific keyboard/focus, mobile layouts and reduced motion in Playwright
-  Chromium/Firefox/WebKit, plus security and stale cancellation flows.
+- Retain the passing generated-app Chromium/Firefox/WebKit matrix with axe,
+  responsive layout, and keyboard tests; expand repository-backed authorization,
+  cancellation-race, CSP and security cases before enabling production presets.
 - Verify clean npm consumption and per-package release, lockfile and packed artifacts.
 
 The generated package manifest uses `workspace:^` intentionally: it requires this
