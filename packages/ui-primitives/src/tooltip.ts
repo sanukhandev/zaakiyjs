@@ -4,7 +4,6 @@ import type { ReadonlySignal } from "@zaakiyjs/signals";
 import type { InteractionDetail, ValueChange, ElementController } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { listen, own } from "./lifecycle.js";
-import type { PrimitiveHandle } from "./lifecycle.js";
 
 export interface TooltipOptions {
   readonly owner: OwnerScope;

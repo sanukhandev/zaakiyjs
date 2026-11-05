@@ -2,7 +2,8 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { gzipSync } from "node:zlib";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, URL } from "node:url";
+import { Buffer } from "node:buffer";
 
 const root = fileURLToPath(new URL("../dist/", import.meta.url));
 const files = [];
