@@ -37,6 +37,13 @@
   },
   "devDependencies": {
     "@types/node": "22.15.30",
-    "@zaakiyjs/compiler": "workspace:^"
+    "@zaakiyjs/compiler": "workspace:^",
+    "@zaakiyjs/core": "workspace:^",
+    "@zaakiyjs/dom": "workspace:^",
+    "@zaakiyjs/signals": "workspace:^",
+    "@zaakiyjs/forms": "workspace:^",
+    "@zaakiyjs/async": "workspace:^",
+    "@zaakiyjs/styles": "workspace:^",
+    "@zaakiyjs/vite-plugin": "workspace:^"
   }
 }

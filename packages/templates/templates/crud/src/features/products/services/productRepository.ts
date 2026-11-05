@@ -1,4 +1,4 @@
-import type {Product,ProductDraft,ProductRepository} from "../models/product";
+import type {Product,ProductRepository} from "../models/product";
 /** In-memory fixture is scoped to this factory, never process-global or production persistent. */
 export function createDemoProductRepository():ProductRepository{
   let next=4;

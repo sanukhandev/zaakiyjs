@@ -14,7 +14,7 @@ export function validateProjectName(value: string): string {
 export function safeRelativePath(value: string): string {
   if (typeof value !== "string" || !value || value.length > 1024 ||
       value.startsWith("/") || value.includes("\\") || /^[a-zA-Z]:/.test(value) ||
-      /[\x00-\x1f<>:"|?*]/.test(value)) {
+      [...value].some(ch => ch.charCodeAt(0) < 32 || /[<>:"|?*]/.test(ch))) {
     throw new TemplateError("UNSAFE_PATH","Expected a safe relative project path.");
   }
   const segments = value.replaceAll("\\","/").split("/");
