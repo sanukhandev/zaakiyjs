@@ -96,9 +96,15 @@ export function createTabs(options: TabsOptions): TabsController {
       item.panel.setAttribute("aria-labelledby", item.tab.id);
       item.tab.setAttribute("aria-disabled", String(!!item.disabled));
       const registration = roving.register({ id: item.id, element: item.tab, disabled: item.disabled });
+      const click = listen(item.tab, "click", () => {
+        if (!item.disabled && !item.tab.matches(":disabled")) {
+          roving.move(item.id, false);
+          select(item.id);
+        }
+      }, owner);
       sync();
       return own(() => {
-        registration.dispose(); registered.delete(item.id);
+        click.dispose(); registration.dispose(); registered.delete(item.id);
         item.tab.removeAttribute("role"); item.tab.removeAttribute("aria-selected");
         item.tab.removeAttribute("aria-controls"); item.tab.removeAttribute("aria-disabled");
         item.panel.removeAttribute("role"); item.panel.removeAttribute("aria-labelledby");

@@ -56,7 +56,8 @@ export function createMenu(options: MenuOptions): MenuController {
   }, owner);
   const itemKeys = listen(content, "keydown", (event: Event) => {
     if (!(event instanceof KeyboardEvent) || !["Enter", " "].includes(event.key)) return;
-    const item = [...items.values()].find(x => x.element === event.target);
+    const item = [...items.values()].find(x => x.element === event.target ||
+      (event.target instanceof Node && x.element.contains(event.target)));
     if (!item || item.disabled || item.element.matches(":disabled")) return;
     event.preventDefault();
     item.onSelect?.();

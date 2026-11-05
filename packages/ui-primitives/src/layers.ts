@@ -56,6 +56,15 @@ export function createOverlayManager({ root, host, owner }: OverlayManagerOption
     if (modal && modal.element.isConnected) inertOutside(modal.element);
   };
   const top = () => layers.at(-1) ?? null;
+  // A removed portal host must never leave a permanently inert document.
+  const observer = doc.defaultView?.MutationObserver
+    ? new doc.defaultView.MutationObserver(() => {
+      if (!disposed && !host.isConnected) {
+        layers.length = 0;
+        restoreInert();
+      }
+    }) : null;
+  observer?.observe(doc, { childList: true, subtree: true });
   const withinApp = (target: EventTarget | null): target is Node =>
     target instanceof Node && (root.contains(target) || host.contains(target));
   const keydown = listen(doc, "keydown", (event: Event) => {
@@ -77,6 +86,7 @@ export function createOverlayManager({ root, host, owner }: OverlayManagerOption
     if (disposed) return;
     disposed = true;
     layers.length = 0;
+    observer?.disconnect();
     restoreInert();
     keydown.dispose();
     pointer.dispose();
