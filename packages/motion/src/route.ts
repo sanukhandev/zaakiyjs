@@ -1,14 +1,6 @@
 import { getOwner, onCleanup, runWithOwner } from "@zaakiyjs/core";
 import type { MotionScopeOptions } from "./types.js";
 
-interface NativeViewTransition {
-  readonly updateCallbackDone: Promise<void>;
-  readonly finished: Promise<void>;
-  skipTransition(): void;
-}
-interface ViewDocument extends Document {
-  startViewTransition?: (update: () => Promise<void>) => NativeViewTransition;
-}
 export interface RouteTransitionOptions extends MotionScopeOptions {
   readonly document?: Document;
 }
@@ -24,11 +16,11 @@ export async function runRouteTransition(
   options: RouteTransitionOptions = {}
 ): Promise<RouteTransitionResult> {
   if (options.signal?.aborted) throw new Error("Route transition aborted before commit");
-  const doc = (options.document ?? (typeof document !== "undefined" ? document : undefined)) as ViewDocument | undefined;
+  const doc = options.document ?? (typeof document !== "undefined" ? document : undefined);
   const media = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
   const reduce = options.reducedMotion === "disable" ||
     ((options.reducedMotion ?? "respect") !== "force" && !!media?.matches);
-  if (reduce || !doc?.startViewTransition) {
+  if (reduce || typeof doc?.startViewTransition !== "function") {
     await commit();
     return { animated: false };
   }
