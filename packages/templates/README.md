@@ -4,10 +4,30 @@ Typed, deterministic, **draft** ZaakiyJS source template catalog: dashboard, aut
 settings and product CRUD. Templates are ordinary editable TS/TSX project files, not a CMS,
 runtime HTML interpreter, or a code-execution engine.
 
+## Contract 12 — browser-safe manifests and deterministic plans
+
+`@zaakiyjs/templates` exports browser-safe metadata and pure validation/planning:
+`getTemplate`, `listTemplates`, `validateTemplate`, `planTemplate`,
+`sha256Utf8`, and the convenience `createTemplatePlan`.
+
+Each manifest includes independent version, project/page kind, license policy,
+compiler/DOM ABI/IR compatibility, exact framework packages, and SHA-256 for
+every packaged asset. The raw UTF-8 source asset map is **injected explicitly**
+to `planTemplate` using `assetContents` (a documented additive input to the
+frozen Contract 12 request type); the metadata entrypoint never bundles source
+files, imports Node, accesses the network, or writes the filesystem.
+
+`planTemplate` verifies raw checksums and safe, typed replacement variables.
+Its immutable write plan includes deterministic content SHA-256, sorted paths,
+collision diagnostics, and authorization hashes for any replacements.
+An atomic, symlink-resistant CLI adapter must revalidate authorization hashes
+and the target root before actually writing. No CLI writer runs implicitly.
+
 ## Planning and materialization
 
 ```ts
-import {listTemplates,createTemplatePlan,materializeTemplatePlan} from "@zaakiyjs/templates";
+import {listTemplates,createTemplatePlan} from "@zaakiyjs/templates";
+import {materializeTemplatePlan} from "@zaakiyjs/templates/node";
 const plan = createTemplatePlan({
   template:"dashboard",
   projectName:"my-dashboard",
@@ -22,7 +42,7 @@ const files = await materializeTemplatePlan(plan);
 has been obtained, so they must not be advertised as runnable or installed npm starters.
 The currently checked compiler rejects some TSX forms. The P2 UI/template contract is not
 on main as of this implementation; finalize compatibility and adapter shapes after P2-00.
-No other package files were modified.
+Only integration-required pnpm-lock.yaml, workspace inventory and browser workflow files are modified outside the package.
 
 ## Architecture and integration contract
 
@@ -54,9 +74,9 @@ lost updates; CRUD deletion requires confirmation and is never automatically ret
 
 ## Work still required before making the catalog runnable
 
-- Freeze P2 UI/template contract and verify compiler support with generated-app fixtures.
-- Typecheck/build each generated app with the real Zaakiy Compiler and Vite plugin.
-- Test keyboard/focus, form accessibility, mobile layouts, reduced motion in Playwright
+- Frozen P2 Contract 12 is implemented; verify future contract/ABI revisions through tests.
+- Verify generated-app TypeScript/Zaakiy Compiler/Vite build gates remain green in CI.
+- Require template-specific keyboard/focus, mobile layouts and reduced motion in Playwright
   Chromium/Firefox/WebKit, plus security and stale cancellation flows.
 - Verify clean npm consumption and per-package release, lockfile and packed artifacts.
 
