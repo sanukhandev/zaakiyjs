@@ -15,20 +15,27 @@ export async function runRouteTransition(
   commit: () => void | Promise<void>,
   options: RouteTransitionOptions = {}
 ): Promise<RouteTransitionResult> {
-  if (options.signal?.aborted) throw new Error("Route transition aborted before commit");
+  const owner = options.owner ?? getOwner();
+  const ensureActive = (): void => {
+    if (options.signal?.aborted) throw new Error("Route transition aborted");
+    if (owner?.disposed) throw new Error("Route transition owner has been disposed");
+  };
+  ensureActive();
   const doc = options.document ?? (typeof document !== "undefined" ? document : undefined);
   const media = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
   const reduce = options.reducedMotion === "disable" ||
     ((options.reducedMotion ?? "respect") !== "force" && !!media?.matches);
   if (reduce || typeof doc?.startViewTransition !== "function") {
+    ensureActive();
     await commit();
+    ensureActive();
     return { animated: false };
   }
   const transition = doc.startViewTransition(async () => {
-    if (options.signal?.aborted) throw new Error("Route transition aborted before commit");
+    ensureActive();
     await commit();
+    ensureActive();
   });
-  const owner = options.owner ?? getOwner();
   let releaseOwner: (() => void) | null = null;
   if (owner) {
     const cell: { stop: (() => void) | null } = { stop: () => transition.skipTransition() };
@@ -40,7 +47,9 @@ export async function runRouteTransition(
   try {
     // A failed commit propagates; animation never reports false navigation success.
     await transition.updateCallbackDone;
+    ensureActive();
     await transition.finished.catch(() => undefined);
+    ensureActive();
     return { animated: true };
   } catch (error) {
     transition.skipTransition();
