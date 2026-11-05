@@ -43,8 +43,20 @@ export function createRovingFocus(options: RovingOptions): RovingController {
     if (relation & Node.DOCUMENT_POSITION_PRECEDING) return 1;
     return 0;
   });
-  const available = () => ordered().filter(x => !x.disabled && !x.element.matches(":disabled") &&
-    !x.element.hasAttribute("hidden") && !x.element.closest("[inert]"));
+  const available = () => ordered().filter(item => {
+    const el = item.element;
+    if (item.disabled || el.matches(":disabled") || el.getAttribute("aria-disabled") === "true" ||
+      !el.isConnected || !options.container.contains(el)) return false;
+    for (let ancestor: Element | null = el; ancestor; ancestor = ancestor.parentElement) {
+      if (ancestor.hasAttribute("hidden") || ancestor.hasAttribute("inert") ||
+        ancestor.getAttribute("aria-hidden") === "true") return false;
+      const style = ancestor.ownerDocument.defaultView?.getComputedStyle(ancestor);
+      if (style?.display === "none" || style?.visibility === "hidden" ||
+        style?.visibility === "collapse") return false;
+      if (ancestor === options.container) break;
+    }
+    return true;
+  });
   const sync = () => {
     const viable = available();
     if (!viable.some(x => x.id === selected)) selected = viable[0]?.id ?? null;

@@ -78,7 +78,8 @@ export function createListbox(options: ListboxOptions): ListboxController {
     if (options.selectOnFocus) select(id);
   };
   const keydown = listen(element, "keydown", (event: Event) => {
-    if (!(event instanceof KeyboardEvent) || event.altKey || event.ctrlKey || event.metaKey) return;
+    if (!(event instanceof KeyboardEvent) || event.altKey || event.ctrlKey || event.metaKey ||
+      event.target !== element || event.isComposing) return;
     const all = eligible();
     if (!all.length || options.disabled) return;
     const current = all.findIndex(x => x.id === active);
