@@ -5,6 +5,7 @@ import { own } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
 import { createControlledState } from "./state.js";
 import type { Controllable, ElementController, InteractionDetail } from "./contracts.js";
+import { getOverlayManager } from "./layers.js";
 import type { OverlayManager } from "./layers.js";
 
 /** Explicit per-app manager is required; no implicit document-global stack. */
@@ -13,7 +14,7 @@ export interface DismissableLayerOptions {
   readonly element: HTMLElement;
   readonly trigger?: HTMLElement;
   readonly modal?: boolean;
-  readonly overlays: OverlayManager;
+  readonly overlays?: OverlayManager;
   readonly onDismiss: (detail: InteractionDetail) => void;
 }
 export interface OverlayOptions extends DismissableLayerOptions {
@@ -27,7 +28,9 @@ export interface OverlayController extends ElementController {
 }
 export function createDismissableLayer(options: DismissableLayerOptions): ElementController {
   if (options.owner.disposed) throw new Error("Cannot attach a layer to disposed owner");
-  const layer = options.overlays.add({
+  const overlays = options.overlays ?? getOverlayManager(options.owner);
+  if (!overlays) throw new Error("No overlay manager registered in the application owner tree");
+  const layer = overlays.add({
     element: options.element, trigger: options.trigger, modal: options.modal,
     dismissOnEscape: true, dismissOnOutsidePointer: true,
     onDismiss: e => options.onDismiss({ reason: "dismiss", originalEvent: e.originalEvent })
@@ -35,7 +38,9 @@ export function createDismissableLayer(options: DismissableLayerOptions): Elemen
   return { owner: options.owner, element: options.element, dispose: () => layer.dispose() };
 }
 export function createOverlayController(options: OverlayOptions): OverlayController {
-  const { owner, element, overlays } = options;
+  const { owner, element } = options;
+  const overlays = options.overlays ?? getOverlayManager(owner);
+  if (!overlays) throw new Error("No overlay manager registered in the application owner tree");
   if (owner.disposed) throw new Error("Cannot attach an overlay to disposed owner");
   if (!overlays.accepts(element)) throw new Error("Overlay must belong to its application host");
   const oldHidden = element.hidden;
