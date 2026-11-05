@@ -184,7 +184,8 @@ describe("observers, gestures and route adapter", () => {
     const pointer = (type: string, x: number, time: number) => {
       const event = new Event(type);
       Object.assign(event, { pointerId: 1, pointerType: "touch", button: 0, clientX: x,
-        clientY: 0, timeStamp: time });
+        clientY: 0 });
+      Object.defineProperty(event, "timeStamp", { value: time });
       element.dispatchEvent(event);
     };
     pointer("pointerdown", 0, 0);
