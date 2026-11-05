@@ -46,6 +46,14 @@ async def exercise(browser_name: str, p, base_url: str):
         assert await page.evaluate("document.activeElement.id") == "open-dialog", "dialog restore focus"
         assert await page.locator("#app").get_attribute("inert") is None, "background inertness teardown"
 
+        await page.locator("#open-native").click()
+        await expect(page.locator("#native-dialog")).to_be_visible()
+        assert await page.locator("#native-dialog").evaluate("el => el.open"), "native dialog must be open"
+        assert await page.locator("#native-dialog").evaluate("el => el.matches(':modal')"), "native modal top layer"
+        await page.keyboard.press("Escape")
+        await expect(page.locator("#native-dialog")).to_be_hidden()
+        assert await page.locator("#app").get_attribute("inert") is None, "native modal inert teardown"
+
         await page.locator("#tab-one").focus()
         await page.keyboard.press("ArrowRight")
         await expect(page.locator("#tab-two")).to_have_attribute("aria-selected", "true")

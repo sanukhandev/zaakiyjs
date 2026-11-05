@@ -1,6 +1,6 @@
 import { createOwner, disposeOwner } from "@zaakiyjs/core";
 import {
-  createFocusManager, createOverlayManager, createDialog, createTabs,
+  createOverlayManager, createDialog, createTabs,
   createListbox, createMenu, createTooltip, createPopover, listen
 } from "../../../src/index.ts";
 
@@ -8,7 +8,6 @@ const owner = createOwner();
 const root = document.querySelector<HTMLElement>("#app")!;
 const host = document.querySelector<HTMLElement>("#overlays")!;
 const overlays = createOverlayManager({ owner, root, host });
-const focusManager = createFocusManager(owner);
 const button = (id: string, label: string) => {
   const node = document.createElement("button");
   node.id = id;
@@ -36,7 +35,7 @@ const closeDialog = button("close-dialog", "Close dialog");
 dialog.append(heading, first, openNested, closeDialog);
 host.append(dialog);
 const dialogController = createDialog({
-  owner, element: dialog, overlays, focusManager, labelledBy: heading.id
+  owner, element: dialog, overlays, labelledBy: heading.id
 });
 listen(openDialog, "click", () => dialogController.setOpen(true), owner);
 listen(closeDialog, "click", () => dialogController.setOpen(false), owner);
@@ -51,10 +50,23 @@ const nestedClose = button("nested-close", "Nested close");
 nested.append(nestedHeading, nestedFirst, nestedClose);
 host.append(nested);
 const nestedController = createDialog({
-  owner, element: nested, overlays, focusManager, labelledBy: nestedHeading.id
+  owner, element: nested, overlays, labelledBy: nestedHeading.id
 });
 listen(openNested, "click", () => nestedController.setOpen(true), owner);
 listen(nestedClose, "click", () => nestedController.setOpen(false), owner);
+
+const openNative = button("open-native", "Open native dialog");
+root.append(openNative);
+const nativeDialog = document.createElement("dialog");
+nativeDialog.id = "native-dialog";
+const nativeClose = button("native-close", "Close native dialog");
+nativeDialog.append(nativeClose);
+host.append(nativeDialog);
+const nativeController = createDialog({
+  owner, element: nativeDialog, overlays, ariaLabel: "Native account dialog", modal: true
+});
+listen(openNative, "click", () => nativeController.setOpen(true), owner);
+listen(nativeClose, "click", () => nativeController.setOpen(false), owner);
 
 const list = div("tabs");
 const tabOne = button("tab-one", "Account"), tabTwo = button("tab-two", "Billing");
