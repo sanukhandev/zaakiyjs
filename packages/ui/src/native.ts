@@ -17,7 +17,7 @@ export function nonEmpty(value: string, name: string): string {
   return value;
 }
 export function safeHref(url:string):string {
-  if (!url || /[\u0000-\u001f\u007f]/u.test(url)) throw new TypeError("Invalid URL");
+  if (!url || [...url].some(c => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)) throw new TypeError("Invalid URL");
   const value=url.trim();
   if (!value || value.startsWith("//")) throw new TypeError("Unsafe URL");
   const match=/^([a-z][\w+.-]*):/iu.exec(value);
