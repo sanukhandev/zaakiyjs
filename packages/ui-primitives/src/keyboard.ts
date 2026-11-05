@@ -11,14 +11,18 @@ export interface RovingItem {
 }
 export interface RovingOptions {
   readonly container: HTMLElement;
-  readonly owner?: OwnerScope;
+  readonly owner: OwnerScope;
+  readonly items?: () => readonly HTMLElement[];
   readonly orientation?: Orientation;
   readonly direction?: TextDirection;
   readonly wrap?: boolean;
+  readonly loop?: boolean;
   readonly initialId?: string;
   readonly onActiveChange?: (id: string) => void;
 }
 export interface RovingController extends PrimitiveHandle {
+  readonly owner: OwnerScope;
+  readonly element: HTMLElement;
   register(item: RovingItem): PrimitiveHandle;
   readonly activeId: string | null;
   move(id: string, focus?: boolean): void;
@@ -26,6 +30,7 @@ export interface RovingController extends PrimitiveHandle {
 }
 
 export function createRovingFocus(options: RovingOptions): RovingController {
+  if (!options.owner || options.owner.disposed) throw new Error("Roving focus needs a live Core owner");
   const map = new Map<string, RovingItem>();
   const registrations = createRegistrationGroup(options.owner);
   let selected: string | null = options.initialId ?? null;
@@ -47,6 +52,8 @@ export function createRovingFocus(options: RovingOptions): RovingController {
     }
   };
   const controller: RovingController = {
+    owner: options.owner,
+    element: options.container,
     get activeId() { return selected; },
     items: ordered,
     register(item) {
@@ -82,7 +89,8 @@ export function createRovingFocus(options: RovingOptions): RovingController {
     if (!(event instanceof KeyboardEvent) || event.altKey || event.metaKey || event.ctrlKey) return;
     const items = available();
     if (!items.length) return;
-    const current = items.findIndex(x => x.element === event.target || x.id === selected);
+    const current = items.findIndex(x => x.element === event.target);
+    if (current < 0) return; // Ignore keyboard input outside registered active items.
     const orientation = options.orientation ?? "horizontal";
     const reverse = options.direction === "rtl" ? -1 : 1;
     let shift = 0;
@@ -94,12 +102,16 @@ export function createRovingFocus(options: RovingOptions): RovingController {
     else if (event.key === "ArrowUp" && orientation !== "horizontal") shift = -1;
     else return;
     event.preventDefault();
-    const wrap = options.wrap ?? true;
+    const wrap = options.loop ?? options.wrap ?? true;
     let index = shift === Infinity ? items.length - 1 : shift === -Infinity ? 0 : current + shift;
     if (wrap) index = ((index % items.length) + items.length) % items.length;
     else index = Math.max(0, Math.min(items.length - 1, index));
     controller.move(items[index]!.id);
   };
+  for (const element of options.items?.() ?? []) {
+    if (!element.id) throw new Error("Roving items() entries need stable DOM IDs");
+    controller.register({ id: element.id, element });
+  }
   const listener = listen(options.container, "keydown", onKey, options.owner);
   const cleanup = own(() => {
     if (closed) return;

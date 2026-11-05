@@ -47,13 +47,13 @@ export function createPopover(options: PopoverOptions): PopoverController {
     trigger.setAttribute("aria-expanded", String(open));
     if (open) {
       layer = options.overlays.add({
-        element: content,
+        element: content, trigger,
         dismissOnEscape: options.dismissOnEscape ?? true,
         dismissOnOutsidePointer: options.dismissOnOutsidePointer ?? true,
         onDismiss: () => setOpen(false)
       });
       if (options.autoFocus) focusScope = createFocusScope({
-        container: content, owner, manager: options.focusManager,
+        container: content, owner, manager: options.focusManager ?? options.overlays.focusManager,
         contain: false, restoreFocus: false
       });
     }

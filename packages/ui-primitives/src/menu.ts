@@ -71,7 +71,7 @@ export function createMenu(options: MenuOptions): MenuController {
     trigger.setAttribute("aria-expanded", String(opened));
     if (opened) {
       layer = options.overlays.add({
-        element: content, dismissOnEscape: true, dismissOnOutsidePointer: true,
+        element: content, trigger, dismissOnEscape: true, dismissOnOutsidePointer: true,
         onDismiss: () => setOpen(false)
       });
       const first = roving.items().find(x => !x.disabled && !x.element.matches(":disabled"));
