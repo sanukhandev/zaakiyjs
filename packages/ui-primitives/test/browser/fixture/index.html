@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ZaakiyJS UI Primitives Browser Acceptance</title>
+    <style>
+      [hidden] { display: none !important; }
+      [inert] { pointer-events: none; }
+      [role="dialog"] { border: 2px solid; padding: 1rem; background: Canvas; color: CanvasText; }
+      :focus-visible { outline: 3px solid Highlight; outline-offset: 2px; }
+      #overlays { position: relative; isolation: isolate; }
+      #subdialog { position: absolute; z-index: 2; inset: 0 auto auto 1rem; }
+    </style>
+  </head>
+  <body>
+    <main id="app"></main>
+    <div id="overlays"></div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
