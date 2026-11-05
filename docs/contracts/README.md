@@ -46,3 +46,14 @@ Arrows point from dependencies to consumers. `compiler` and `styles` are build-o
 ## M0 scope and verification
 
 At M0, root `pnpm lint`, `pnpm typecheck`, `pnpm build`, `pnpm test` and frozen install validated metadata and type-only contract stubs. Later implementation PRs added executable compilation, real DOM updates, generated app/build tests, and a Chromium Counter smoke. The packages still use independent versioning (`fixed: []`, `linked: []`) and unpublished `0.0.0` source manifests; publishing remains blocked pending scope, license, browser matrix and artifact review.
+
+## P2 contract-only frozen design (2026-11-05)
+
+The documents below describe **reserved interfaces for future implementations**, not present package exports. They must be read with the [P2 boundary ADR](../adr/0007-p2-ui-contract-boundaries.md) and current compiler restrictions. Follow-up compiler/DOM integrations are tracked in [issue #37](https://github.com/sanukhandev/zaakiyjs/issues/37).
+
+9. [Headless UI primitives](09-ui-primitives.md) — native elements, focus, overlay/portal ownership and controlled state.
+10. [Typed UI components](10-ui.md) — TSX composition constraints, brand tokens, recipes and typed actions.
+11. [Motion and presence](11-motion.md) — WAAPI/CSS-first cleanup, abort and deferred exit integration.
+12. [Templates and generators](12-templates.md) — portable editable source, metadata and deterministic file plans.
+
+There are no implementation packages, API/IR changes, or npm releases in P2-00.
