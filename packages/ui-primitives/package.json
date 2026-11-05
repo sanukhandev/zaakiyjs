@@ -4,8 +4,17 @@
   "description": "Owner-scoped, accessible native DOM behavior controllers for ZaakiyJS",
   "type": "module",
   "sideEffects": false,
-  "files": ["dist", "README.md", "CHANGELOG.md"],
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "types": "./dist/index.d.ts",
   "main": "./dist/index.js",
   "scripts": {
@@ -13,12 +22,17 @@
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "build": "tsc --project tsconfig.build.json",
     "test": "vitest run test",
-    "pack:check": "npm pack --dry-run --json"
+    "pack:check": "npm pack --dry-run --json",
+    "test:browser": "python3 test/browser/acceptance.py"
   },
-  "publishConfig": { "access": "public" },
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@zaakiyjs/core": "workspace:^",
     "@zaakiyjs/signals": "workspace:^"
   },
-  "devDependencies": { "jsdom": "^26.1.0" }
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
 }
