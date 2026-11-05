@@ -1,7 +1,16 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { compile } from "@zaakiyjs/compiler";
 
 describe("current TSX compiler integration boundary", () => {
+  it("compiles the multi-component showcase using the actual Zaakiy compiler", () => {
+    const source = readFileSync(new URL("./fixtures/showcase.tsx", import.meta.url), "utf8");
+    const result = compile({ fileName: "showcase.tsx", source });
+    expect(result.diagnostics.filter(x => x.severity === "error")).toEqual([]);
+    expect(result.js).toHaveLength(1);
+    expect(result.js[0]?.code).toContain("initializeOwnedComponent");
+  });
+
   it("lowers an explicit-prop UI component call without a JSX runtime", () => {
     const source = [
       'declare function Button(props: { label: string }): JSX.Element;',
