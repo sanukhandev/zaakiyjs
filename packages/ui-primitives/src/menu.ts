@@ -33,6 +33,7 @@ export interface MenuController extends PrimitiveHandle {
 export function createMenu(options: MenuOptions): MenuController {
   const { owner, trigger, content } = options;
   if (!content.id) throw new Error("Menu requires a content ID");
+  if (!options.overlays.accepts(content)) throw new Error("Menu must belong to its overlay host");
   const former = {
     role: content.getAttribute("role"), hidden: content.hidden,
     expanded: trigger.getAttribute("aria-expanded"),

@@ -37,6 +37,7 @@ export function createDismissableLayer(options: DismissableLayerOptions): Elemen
 export function createOverlayController(options: OverlayOptions): OverlayController {
   const { owner, element, overlays } = options;
   if (owner.disposed) throw new Error("Cannot attach an overlay to disposed owner");
+  if (!overlays.accepts(element)) throw new Error("Overlay must belong to its application host");
   const oldHidden = element.hidden;
   const state = createControlledState({
     owner,
