@@ -26,7 +26,13 @@ export function createAuthViewModel(repository:AuthRepository){
   const signInPassword=signInForm.field("password",{required:"Password is required"});
   const signInFields={email:signInEmail,password:signInPassword};
   onCleanup(()=>{disposed=true;active?.abort();signInForm.dispose();challengeId=null;});
-  function setScreen(next:AuthScreen):void{if(disposed)return;active?.abort();active=null;pending.value=false;generation++;message.value="";screen.value=next;}
+  function setScreen(next:AuthScreen):void{
+    if(disposed)return;
+    active?.abort();active=null;signInForm.abortSubmit();pending.value=false;generation++;
+    signInForm.setValue("password","");password.value="";confirm.value="";mfaCode.value="";
+    if(next!=="mfa")challengeId=null;
+    message.value="";screen.value=next;
+  }
   async function run<T>(action:(signal:AbortSignal)=>Promise<T>):Promise<T|undefined>{
     if(disposed)return;
     active?.abort();
@@ -48,8 +54,9 @@ export function createAuthViewModel(repository:AuthRepository){
   async function signIn():Promise<void>{
     if(disposed)return;
     message.value="";
+    const current=++generation;
     const result=await signInForm.submit();
-    if(disposed)return;
+    if(disposed||current!==generation)return;
     if(result.status==="invalid"){message.value="Correct the highlighted sign-in fields.";return;}
     if(result.status==="failed"){message.value="Sign-in failed. Try again.";return;}
     if(result.status==="success"){

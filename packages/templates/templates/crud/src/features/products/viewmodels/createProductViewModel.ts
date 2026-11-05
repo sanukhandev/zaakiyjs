@@ -19,7 +19,7 @@ export function createProductViewModel(repository:ProductRepository){
     eager:false,keepPreviousData:true
   });
   const totalPages=computed(()=>Math.max(1,Math.ceil((list.data.value?.total ?? 0)/pageSize)));
-  let active:AbortController|null=null,disposed=false,requestId=0;
+  let active:AbortController|null=null,disposed=false,requestId=0,saveGeneration=0;
   const form=createForm<ProductDraft,Product>({
     initialValues:{name:"",sku:"",priceCents:0},
     onSubmit:async(values,{signal})=>{
@@ -40,18 +40,19 @@ export function createProductViewModel(repository:ProductRepository){
     if(!Number.isSafeInteger(to)||to<1||to>totalPages.value)return;
     page.value=to;refresh();
   }
-  function create():void{selected.value=null;form.reset({name:"",sku:"",priceCents:0});mode.value="create";notice.value="";}
+  function create():void{saveGeneration++;form.abortSubmit();selected.value=null;form.reset({name:"",sku:"",priceCents:0});mode.value="create";notice.value="";}
   function edit(item:Product):void{
-    selected.value=item;form.reset({name:item.name,sku:item.sku,priceCents:item.priceCents});
+    saveGeneration++;form.abortSubmit();selected.value=item;form.reset({name:item.name,sku:item.sku,priceCents:item.priceCents});
     mode.value="edit";notice.value="";
   }
-  function view(item:Product):void{selected.value=item;mode.value="detail";}
-  function back():void{mode.value="list";pendingDelete.value=null;}
+  function view(item:Product):void{saveGeneration++;form.abortSubmit();selected.value=item;mode.value="detail";}
+  function back():void{saveGeneration++;form.abortSubmit();mode.value="list";pendingDelete.value=null;}
   async function submit():Promise<void>{
     if(disposed||busy.value)return;busy.value=true;error.value="";
+    const current=++saveGeneration;
     try {
       const result=await form.submit();
-      if(disposed)return;
+      if(disposed||current!==saveGeneration)return;
       if(result.status==="success"){
         notice.value=`Saved ${result.value.name}.`;mode.value="list";selected.value=null;refresh();
       } else if(result.status==="invalid"){error.value="Correct the product fields.";}

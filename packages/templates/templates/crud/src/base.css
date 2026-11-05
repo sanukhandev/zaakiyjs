@@ -15,3 +15,6 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{ou
 .visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
 @media(max-width:48rem){.shell{display:block}.shell nav{padding:1rem;border-bottom:1px solid var(--z-color-border)}.shell>main{padding:1rem}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:0ms!important;animation-duration:0ms!important}}
+
+dialog{max-width:min(32rem,calc(100vw - 2rem));border:0;border-radius:var(--z-radius-md);padding:0;color:var(--z-color-foreground);background:var(--z-color-surface)}
+dialog::backdrop{background:rgb(0 0 0 / .55)}

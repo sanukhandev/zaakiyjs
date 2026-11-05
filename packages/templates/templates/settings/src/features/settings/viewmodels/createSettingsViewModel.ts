@@ -51,12 +51,18 @@ export function createSettingsViewModel(repository:SettingsRepository){
     error.value="";notice.value="";
     const expected=version.peek();
     if(!expected){error.value="Load your settings before saving.";return;}
+    const submitted=JSON.stringify(form.values.peek());
     const result=await form.submit();
     if(disposed)return;
     if(result.status==="success"){
       if(version.peek()!==expected){conflict.value=true;error.value="Server data changed during save.";return;}
-      version.value=result.value.version;form.reset({...result.value.settings});
-      notice.value="Saved by server.";conflict.value=false;
+      version.value=result.value.version;
+      if(JSON.stringify(form.values.peek())===submitted){
+        form.reset({...result.value.settings});notice.value="Saved by server.";
+      }else{
+        notice.value="Earlier settings saved; newer edits remain unsaved.";
+      }
+      conflict.value=false;
     }else if(result.status==="invalid"){error.value="Review the invalid settings fields.";}
     else if(result.status==="failed"){conflict.value=true;error.value="Save failed or server version changed. Reload before retrying.";}
   }

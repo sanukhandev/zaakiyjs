@@ -23,7 +23,7 @@ export function ProductView({vm}:{readonly vm:ProductViewModel}){
             <span>{item.priceCents} cents</span>
             <button type="button" onClick={()=>vm.view(item)}>Details</button>
             <button type="button" onClick={()=>vm.edit(item)}>Edit</button>
-            <button type="button" onClick={()=>vm.requestDelete(item)}>Delete</button>
+            <button type="button" onClick={event=>{vm.requestDelete(item);const dialog=(event.currentTarget as Element).closest("main")?.querySelector("dialog[data-product-delete]");dialog?.showModal();}}>Delete</button>
           </li>
         }</For></ul>
         <nav aria-label="Product pagination" class="inline">
@@ -57,13 +57,19 @@ export function ProductView({vm}:{readonly vm:ProductViewModel}){
         </form>
       </section>
     </Show>
-    <Show when={vm.pendingDelete.value!==null}>
-      <section role="group" aria-labelledby="confirm-delete-title" aria-describedby="confirm-delete-message" class="surface stack">
+    <dialog data-product-delete="true" aria-labelledby="confirm-delete-title"
+      aria-describedby="confirm-delete-message"
+      onKeyDown={event=>{if(event.key==="Escape")vm.cancelDelete();}}>
+      <section class="surface stack">
         <h2 id="confirm-delete-title">Confirm deletion</h2>
         <p id="confirm-delete-message">Permanently delete {vm.pendingDelete.value?.name ?? "this product"}?</p>
-        <div class="inline"><button type="button" onClick={()=>{void vm.confirmDelete();}}>Confirm delete</button>
-          <button type="button" onClick={()=>vm.cancelDelete()}>Keep product</button></div>
+        <div class="inline">
+          <button type="button" disabled={vm.busy.value}
+            onClick={event=>{void vm.confirmDelete();(event.currentTarget as Element).closest("dialog")?.close();}}>Confirm delete</button>
+          <button type="button"
+            onClick={event=>{vm.cancelDelete();(event.currentTarget as Element).closest("dialog")?.close();}}>Keep product</button>
+        </div>
       </section>
-    </Show>
+    </dialog>
   </main>;
 }
