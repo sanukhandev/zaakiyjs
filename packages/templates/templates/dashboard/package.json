@@ -1,0 +1,23 @@
+{
+  "name": "__PROJECT_NAME__",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@zaakiyjs/core": "workspace:^",
+    "@zaakiyjs/dom": "workspace:^",
+    "@zaakiyjs/signals": "workspace:^",
+    "@zaakiyjs/async": "workspace:^"
+  },
+  "devDependencies": {
+    "@zaakiyjs/styles": "workspace:^",
+    "@zaakiyjs/vite-plugin": "workspace:^",
+    "typescript": "5.9.3",
+    "vite": "6.4.5"
+  }
+}

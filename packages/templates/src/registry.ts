@@ -1,0 +1,67 @@
+import type { TemplateId, TemplateManifest, TemplateOptionSpec } from "./types.js";
+const options: readonly TemplateOptionSpec[] = Object.freeze([
+  {name:"brandName",type:"string",required:false},
+  {name:"primaryColor",type:"color",required:false},
+  {name:"appearance",type:"enum",required:false,values:["system","light","dark"]},
+  {name:"radius",type:"enum",required:false,values:["sm","md","lg"]}
+]);
+const common = [
+  "README.md","package.json","index.html","tsconfig.json","vite.config.ts",
+  "zaakiy.config.ts","src/main.tsx","src/App.tsx","src/base.css"
+] as const;
+const feature = (name: string, entity: string): readonly string[] => [
+  `src/features/${name}/models/${entity}.ts`,
+  `src/features/${name}/services/${entity}Repository.ts`,
+  `src/features/${name}/viewmodels/create${entity[0]?.toUpperCase() ?? ""}${entity.slice(1)}ViewModel.ts`,
+  `src/features/${name}/views/${entity[0]?.toUpperCase() ?? ""}${entity.slice(1)}View.tsx`,
+  `src/features/${name}/adapters/create${entity[0]?.toUpperCase() ?? ""}${entity.slice(1)}Page.ts`
+];
+const define = (id: TemplateId, category: TemplateManifest["category"], name: string,
+  description: string, packages: readonly string[], features: readonly string[],
+  featurePath: string, entity: string, limitations: readonly string[]): TemplateManifest => {
+  const requiredPackages = Object.freeze([...packages]);
+  return Object.freeze({
+    schemaVersion:1, id, name, description, category,
+    status:"draft" as const,
+    requiredPackages,
+    minimumVersions:Object.freeze(Object.fromEntries(requiredPackages.map(pkg => [pkg, "0.0.0"]))),
+    requiredFeatures:Object.freeze([...features]),
+    optionSchema:options, featureFlags:Object.freeze({mfa:id==="authentication"}),
+    generatedFiles:Object.freeze([...common,...feature(featurePath,entity)]),
+    limitations:Object.freeze([...limitations])
+  });
+};
+const commonLimitations = [
+  "Full clean-room compiler, Vite, accessibility and browser gates not yet evidenced.",
+  "Generated dependencies use workspace:^ and require a local ZaakiyJS monorepo; not a published npm starter.",
+  "CLI registry adapter is not merged; this package only returns immutable plans and materialized source."
+] as const;
+const registry: Readonly<Record<TemplateId, TemplateManifest>> = Object.freeze({
+  dashboard:define("dashboard","dashboard","Operations dashboard",
+    "Responsive KPI overview with accessible activity, filters and fixture repository.",
+    ["@zaakiyjs/core","@zaakiyjs/dom","@zaakiyjs/signals","@zaakiyjs/async","@zaakiyjs/styles","@zaakiyjs/vite-plugin"],
+    ["signals","owner-cleanup","resource-cancellation","keyed-loops","brand-tokens"],
+    "dashboard","dashboard",[...commonLimitations,"Chart integration deliberately omitted."]),
+  authentication:define("authentication","authentication","Authentication flows",
+    "Sign-in, sign-up, recovery, reset and session expiry; backend required for identity.",
+    ["@zaakiyjs/core","@zaakiyjs/dom","@zaakiyjs/signals","@zaakiyjs/forms","@zaakiyjs/styles","@zaakiyjs/vite-plugin"],
+    ["forms","verified-server-auth","csrf-session-security","brand-tokens"],
+    "auth","auth",[...commonLimitations,"No default production authentication implementation."]),
+  settings:define("settings","settings","Account settings",
+    "Typed profile, appearance, notifications, accessibility and optimistic concurrency.",
+    ["@zaakiyjs/core","@zaakiyjs/dom","@zaakiyjs/signals","@zaakiyjs/forms","@zaakiyjs/styles","@zaakiyjs/vite-plugin"],
+    ["forms","versioned-repository","owner-cleanup","brand-tokens"],
+    "settings","settings",commonLimitations),
+  crud:define("crud","data-management","Product management",
+    "Typed list, detail, create, edit, deletion confirmation and cancellable repository access.",
+    ["@zaakiyjs/core","@zaakiyjs/dom","@zaakiyjs/signals","@zaakiyjs/forms","@zaakiyjs/async","@zaakiyjs/styles","@zaakiyjs/vite-plugin"],
+    ["forms","resource-cancellation","keyed-loops","mutation-confirmation","brand-tokens"],
+    "products","product",commonLimitations)
+});
+/** Stable alphabetical catalog, detached immutable descriptors. */
+export function listTemplates(): readonly TemplateManifest[] {
+  return Object.freeze(Object.keys(registry).sort().map(id => registry[id as TemplateId]));
+}
+export function getTemplate(id: TemplateId): TemplateManifest | undefined {
+  return Object.hasOwn(registry,id) ? registry[id] : undefined;
+}
