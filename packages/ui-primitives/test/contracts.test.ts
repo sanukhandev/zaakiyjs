@@ -4,7 +4,7 @@ import { createOwner, disposeOwner } from "@zaakiyjs/core";
 import { flushSync, signal } from "@zaakiyjs/signals";
 import {
   createFocusScope, createOverlayManager, createRovingFocus, createPortal,
-  createDismissableLayer, createOverlayController, createPopover
+  createDismissableLayer, createOverlayController, createPopover, createDialog, createListbox
 } from "../src/index.js";
 
 function fixture() {
@@ -134,6 +134,86 @@ describe("P2 Contract 09 compatibility and regressions", () => {
     expect(popup.open.value).toBe(true);
     trigger.click(); flushSync();
     expect(content.hidden).toBe(true);
+    disposeOwner(f.owner);
+  });
+});
+
+describe("modal resource locks, detached overlays and readonly state", () => {
+  it("reference-counts inert and scroll locks across application managers", () => {
+    const first = fixture();
+    const second = fixture();
+    const a = document.createElement("section"), b = document.createElement("section");
+    first.host.append(a); second.host.append(b);
+    document.documentElement.style.setProperty("overflow", "auto", "important");
+    const one = first.overlays.add({ element: a, modal: true });
+    const two = second.overlays.add({ element: b, modal: true });
+    expect(document.documentElement.style.getPropertyValue("overflow")).toBe("hidden");
+    one.dispose();
+    expect(document.documentElement.style.getPropertyValue("overflow")).toBe("hidden");
+    two.dispose();
+    expect(document.documentElement.style.getPropertyValue("overflow")).toBe("auto");
+    expect(document.documentElement.style.getPropertyPriority("overflow")).toBe("important");
+    disposeOwner(first.owner); disposeOwner(second.owner);
+    document.documentElement.style.removeProperty("overflow");
+  });
+
+  it("releases inertness and scroll locks when one active modal node is removed", async () => {
+    const f = fixture();
+    const modal = document.createElement("section");
+    f.host.append(modal);
+    const handle = f.overlays.add({ element: modal, modal: true });
+    expect(f.root.hasAttribute("inert")).toBe(true);
+    expect(document.documentElement.style.overflow).toBe("hidden");
+    modal.remove();
+    await Promise.resolve();
+    expect(f.overlays.top()).toBeNull();
+    expect(f.root.hasAttribute("inert")).toBe(false);
+    expect(document.documentElement.style.overflow).not.toBe("hidden");
+    handle.dispose();
+    disposeOwner(f.owner);
+  });
+
+  it("does not mutate inaccessible dialogs attached outside the explicit host", () => {
+    const f = fixture();
+    const element = document.createElement("section");
+    f.root.append(element);
+    expect(() => createDialog({
+      owner: f.owner, element, overlays: f.overlays,
+      ariaLabel: "Should never attach", defaultOpen: true
+    })).toThrow(/host/);
+    expect(element.hasAttribute("role")).toBe(false);
+    expect(element.hasAttribute("aria-modal")).toBe(false);
+    disposeOwner(f.owner);
+  });
+
+  it("lets consumers cancel Escape dismissal before the layer mutates state", () => {
+    const f = fixture();
+    const modal = document.createElement("section"); f.host.append(modal);
+    const onDismiss = vi.fn();
+    const layer = f.overlays.add({
+      element: modal, dismissOnEscape: true, onDismiss,
+      onEscapeKeyDown: event => event.preventDefault()
+    });
+    const event = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    modal.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(onDismiss).not.toHaveBeenCalled();
+    layer.dispose(); disposeOwner(f.owner);
+  });
+
+  it("supports readonly listbox activation without selection mutation", () => {
+    const f = fixture();
+    const list = document.createElement("div"), option = document.createElement("div");
+    option.id = "ro-option"; list.append(option); f.root.append(list);
+    const cb = vi.fn();
+    const controller = createListbox({
+      owner: f.owner, element: list, readonly: true, onSelectionChange: cb
+    });
+    controller.register({ id: "ro-option", element: option });
+    list.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    option.click(); flushSync();
+    expect(controller.selected.value).toBeNull();
+    expect(cb).not.toHaveBeenCalled();
     disposeOwner(f.owner);
   });
 });
