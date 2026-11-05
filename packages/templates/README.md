@@ -38,11 +38,16 @@ const files = await materializeTemplatePlan(plan);
 // A separate atomic CLI adapter must preflight and write files within its approved root.
 ```
 
-**Status:** All templates are `draft`. No complete generated-app Vite/Playwright validation
-has been obtained, so they must not be advertised as runnable or installed npm starters.
-The currently checked compiler rejects some TSX forms. The P2 UI/template contract is not
-on main as of this implementation; finalize compatibility and adapter shapes after P2-00.
-Only integration-required pnpm-lock.yaml, workspace inventory and browser workflow files are modified outside the package.
+**Status:** All four projects typecheck and Vite production-build successfully against
+the current pinned compiler and runtime, and packaged sources pass integrity tests.
+They remain **draft** because browser interaction and template-specific accessibility
+certification, independent npm consumption, and `@zaakiyjs/ui` / CLI integration
+are separate release gates. Contract 12 is frozen and implemented in this package.
+The compiler does not currently lower `htmlFor` to a native label association;
+generated Views use enclosing HTML labels instead of relying on that mapping.
+
+Only integration-required `pnpm-lock.yaml`, workspace package validation and the
+dedicated browser workflow are modified outside `packages/templates`.
 
 ## Architecture and integration contract
 
