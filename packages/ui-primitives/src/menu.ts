@@ -3,7 +3,7 @@ import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
 import { createControlledState } from "./state.js";
 import { createRovingFocus } from "./keyboard.js";
-import { listen, own } from "./lifecycle.js";
+import { listen, own, createRegistrationGroup } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
 import type { OverlayManager } from "./layers.js";
 
@@ -41,6 +41,7 @@ export function createMenu(options: MenuOptions): MenuController {
   trigger.setAttribute("aria-haspopup", "menu");
   trigger.setAttribute("aria-controls", content.id);
   const items = new Map<string, MenuItem>();
+  const registrations = createRegistrationGroup(owner);
   const state = createControlledState({
     owner, value: options.open, defaultValue: options.defaultOpen ?? false,
     onChange: next => options.onOpenChange?.(next)
@@ -84,7 +85,7 @@ export function createMenu(options: MenuOptions): MenuController {
     };
   }, { phase: "render" });
   const cleanup = own(() => {
-    rendering.dispose(); roving.dispose();
+    rendering.dispose(); registrations.dispose(); roving.dispose();
     itemKeys.dispose(); triggerKeys.dispose(); triggerClick.dispose();
     for (const item of items.values()) {
       item.element.removeAttribute("role"); item.element.removeAttribute("aria-disabled");
@@ -102,20 +103,22 @@ export function createMenu(options: MenuOptions): MenuController {
     open: state.value, setOpen, dispose: () => cleanup.dispose(),
     register(item) {
       if (items.has(item.id)) throw new Error("Duplicate menu item ID");
-      items.set(item.id, item);
-      item.element.setAttribute("role", "menuitem");
-      item.element.setAttribute("aria-disabled", String(!!item.disabled));
-      const itemRoving = roving.register({ id: item.id, element: item.element, disabled: item.disabled });
-      const click = listen(item.element, "click", (event: Event) => {
-        if (item.disabled || item.element.matches(":disabled")) {
-          event.preventDefault(); return;
-        }
-        item.onSelect?.(); setOpen(false);
-      }, owner);
-      return own(() => {
-        click.dispose(); itemRoving.dispose(); items.delete(item.id);
-        item.element.removeAttribute("role"); item.element.removeAttribute("aria-disabled");
-      }, owner);
+      return registrations.add(registrationOwner => {
+        items.set(item.id, item);
+        item.element.setAttribute("role", "menuitem");
+        item.element.setAttribute("aria-disabled", String(!!item.disabled));
+        const itemRoving = roving.register({ id: item.id, element: item.element, disabled: item.disabled });
+        const click = listen(item.element, "click", (event: Event) => {
+          if (item.disabled || item.element.matches(":disabled")) {
+            event.preventDefault(); return;
+          }
+          item.onSelect?.(); setOpen(false);
+        }, registrationOwner);
+        return () => {
+          click.dispose(); itemRoving.dispose(); items.delete(item.id);
+          item.element.removeAttribute("role"); item.element.removeAttribute("aria-disabled");
+        };
+      });
     }
   };
 }

@@ -3,6 +3,7 @@ import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
 import { createControlledState } from "./state.js";
 import { listen, own } from "./lifecycle.js";
+import type { PrimitiveHandle } from "./lifecycle.js";
 
 export interface TooltipOptions {
   readonly owner: OwnerScope;

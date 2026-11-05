@@ -81,3 +81,36 @@ export function createRegistration(
   }
   return { dispose() { disposeOwner(registrationOwner); } };
 }
+
+/** Removable dynamic entries; disposing their parent controller clears all children. */
+export function createRegistrationGroup(owner?: OwnerScope): {
+  add(setup: (registrationOwner: OwnerScope) => () => void): PrimitiveHandle;
+  dispose(): void;
+} {
+  const parent = owner ?? getOwner();
+  if (!parent || parent.disposed) throw new Error("Registration group needs a live Core owner");
+  const handles = new Set<PrimitiveHandle>();
+  let closed = false;
+  return {
+    add(setup) {
+      if (closed || parent.disposed) throw new Error("Registration group disposed");
+      const entry = createRegistration(parent, setup);
+      let ended = false;
+      const handle: PrimitiveHandle = {
+        dispose() {
+          if (ended) return;
+          ended = true;
+          handles.delete(handle);
+          entry.dispose();
+        }
+      };
+      handles.add(handle);
+      return handle;
+    },
+    dispose() {
+      if (closed) return;
+      closed = true;
+      for (const entry of [...handles]) entry.dispose();
+    }
+  };
+}

@@ -1,5 +1,5 @@
 import type { OwnerScope } from "@zaakiyjs/core";
-import { listen, own } from "./lifecycle.js";
+import { listen, own, createRegistrationGroup } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
 
 export type DismissReason = "escape" | "outside-pointer";
@@ -30,6 +30,7 @@ export function createOverlayManager({ root, host, owner }: OverlayManagerOption
   const doc = host.ownerDocument;
   type Entry = LayerOptions & { readonly id: number };
   const layers: Entry[] = [];
+  const registrations = createRegistrationGroup(owner);
   let sequence = 0;
   let disposed = false;
   const originalInert = new Map<Element, boolean>();
@@ -60,6 +61,7 @@ export function createOverlayManager({ root, host, owner }: OverlayManagerOption
   const observer = doc.defaultView?.MutationObserver
     ? new doc.defaultView.MutationObserver(() => {
       if (!disposed && !host.isConnected) {
+        registrations.dispose();
         layers.length = 0;
         restoreInert();
       }
@@ -85,6 +87,7 @@ export function createOverlayManager({ root, host, owner }: OverlayManagerOption
   const lifecycle = own(() => {
     if (disposed) return;
     disposed = true;
+    registrations.dispose();
     layers.length = 0;
     observer?.disconnect();
     restoreInert();
@@ -101,16 +104,18 @@ export function createOverlayManager({ root, host, owner }: OverlayManagerOption
         throw new Error("Overlay element must be inside the explicit application host");
       }
       const entry: Entry = { ...options, id: ++sequence };
-      layers.push(entry);
-      options.element.dataset.zaakiyLayer = String(entry.id);
-      syncInert();
-      return own(() => {
-        const index = layers.indexOf(entry);
-        if (index < 0) return;
-        layers.splice(index, 1);
-        delete options.element.dataset.zaakiyLayer;
+      return registrations.add(() => {
+        layers.push(entry);
+        options.element.dataset.zaakiyLayer = String(entry.id);
         syncInert();
-      }, owner);
+        return () => {
+          const index = layers.indexOf(entry);
+          if (index < 0) return;
+          layers.splice(index, 1);
+          delete options.element.dataset.zaakiyLayer;
+          syncInert();
+        };
+      });
     }
   };
 }
