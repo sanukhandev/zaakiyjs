@@ -163,7 +163,9 @@ describe("observers, gestures and route adapter", () => {
     const disconnect = vi.fn();
     const observe = vi.fn();
     class Observer {
-      constructor(_cb: IntersectionObserverCallback, _opts: IntersectionObserverInit) {}
+      constructor(callback: IntersectionObserverCallback, options: IntersectionObserverInit) {
+        void callback; void options;
+      }
       observe = observe;
       disconnect = disconnect;
     }
