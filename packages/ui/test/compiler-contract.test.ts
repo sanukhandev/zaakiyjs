@@ -1,11 +1,13 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { compile } from "@zaakiyjs/compiler";
 
 describe("current TSX compiler integration boundary", () => {
   it("compiles the multi-component showcase using the actual Zaakiy compiler", () => {
-    const source = readFileSync(new URL("./fixtures/showcase.tsx", import.meta.url), "utf8");
-    const result = compile({ fileName: "showcase.tsx", source });
+    const fileName = fileURLToPath(new URL("./fixtures/showcase.tsx", import.meta.url));
+    const source = readFileSync(fileName, "utf8");
+    const result = compile({ fileName, source });
     expect(result.diagnostics.filter(x => x.severity === "error")).toEqual([]);
     expect(result.js).toHaveLength(1);
     expect(result.js[0]?.code).toContain("initializeOwnedComponent");
@@ -13,10 +15,11 @@ describe("current TSX compiler integration boundary", () => {
 
   it("lowers an explicit-prop UI component call without a JSX runtime", () => {
     const source = [
+      'import type { JSX } from "@zaakiyjs/core/jsx-runtime";',
       'declare function Button(props: { label: string }): JSX.Element;',
       'function App() { return <main><Button label="Save" /></main>; }'
     ].join("\n");
-    const result = compile({ fileName: "showcase.tsx", source });
+    const result = compile({ fileName: "packages/ui/test/explicit-props.tsx", source });
     expect(result.diagnostics.filter(x => x.severity === "error")).toEqual([]);
     expect(result.js[0]?.code).toContain("initializeOwnedComponent");
     expect(result.js[0]?.code).not.toContain("jsx-runtime");
