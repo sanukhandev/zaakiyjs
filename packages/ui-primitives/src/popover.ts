@@ -1,0 +1,75 @@
+import type { OwnerScope } from "@zaakiyjs/core";
+import { effect } from "@zaakiyjs/signals";
+import type { ReadonlySignal } from "@zaakiyjs/signals";
+import { createControlledState } from "./state.js";
+import { createFocusScope } from "./focus.js";
+import type { FocusManager, FocusScopeHandle } from "./focus.js";
+import { listen, own } from "./lifecycle.js";
+import type { PrimitiveHandle } from "./lifecycle.js";
+import type { OverlayManager } from "./layers.js";
+
+export interface PopoverOptions {
+  readonly owner: OwnerScope;
+  readonly trigger: HTMLElement;
+  readonly content: HTMLElement;
+  readonly overlays: OverlayManager;
+  readonly focusManager?: FocusManager;
+  readonly open?: ReadonlySignal<boolean>;
+  readonly defaultOpen?: boolean;
+  readonly onOpenChange?: (open: boolean) => void;
+  readonly autoFocus?: boolean;
+  readonly dismissOnOutsidePointer?: boolean;
+  readonly dismissOnEscape?: boolean;
+}
+export interface PopoverController extends PrimitiveHandle {
+  readonly open: ReadonlySignal<boolean>;
+  setOpen(open: boolean): void;
+}
+export function createPopover(options: PopoverOptions): PopoverController {
+  const { owner, trigger, content } = options;
+  if (!content.id) throw new Error("Popover content needs a stable ID");
+  const prior = {
+    hidden: content.hidden, expanded: trigger.getAttribute("aria-expanded"),
+    controls: trigger.getAttribute("aria-controls")
+  };
+  trigger.setAttribute("aria-controls", content.id);
+  const state = createControlledState({
+    owner, value: options.open, defaultValue: options.defaultOpen ?? false,
+    onChange: next => options.onOpenChange?.(next)
+  });
+  const setOpen = (next: boolean) => state.set(next);
+  const click = listen(trigger, "click", () => setOpen(!state.value.peek()), owner);
+  let layer: PrimitiveHandle | null = null;
+  let focusScope: FocusScopeHandle | null = null;
+  const render = effect(() => {
+    const open = state.value.value;
+    content.hidden = !open;
+    trigger.setAttribute("aria-expanded", String(open));
+    if (open) {
+      layer = options.overlays.add({
+        element: content,
+        dismissOnEscape: options.dismissOnEscape ?? true,
+        dismissOnOutsidePointer: options.dismissOnOutsidePointer ?? true,
+        onDismiss: () => setOpen(false)
+      });
+      if (options.autoFocus) focusScope = createFocusScope({
+        container: content, owner, manager: options.focusManager,
+        contain: false, restoreFocus: false
+      });
+    }
+    return () => {
+      layer?.dispose(); layer = null;
+      focusScope?.dispose(); focusScope = null;
+      if (content.contains(content.ownerDocument.activeElement) && trigger.isConnected && !owner.disposed) trigger.focus();
+    };
+  }, { phase: "render" });
+  const lifecycle = own(() => {
+    render.dispose(); click.dispose();
+    content.hidden = prior.hidden;
+    if (prior.expanded === null) trigger.removeAttribute("aria-expanded");
+    else trigger.setAttribute("aria-expanded", prior.expanded);
+    if (prior.controls === null) trigger.removeAttribute("aria-controls");
+    else trigger.setAttribute("aria-controls", prior.controls);
+  }, owner);
+  return { open: state.value, setOpen, dispose: () => lifecycle.dispose() };
+}
