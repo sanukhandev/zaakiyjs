@@ -26,15 +26,31 @@ export function RadioGroup(props:RadioGroupProps):ViewNode {
   const root=native("fieldset") as HTMLFieldSetElement;
   root.className="zui-radio-group";root.disabled=props.disabled??false;
   const legend=native("legend");legend.textContent=nonEmpty(props.legend,"legend");root.appendChild(legend);
+  const radios: HTMLInputElement[] = [];
+  // Native radios switch before firing "change". In controlled mode a rejected
+  // state request must not leave the DOM/form submission disagreeing with the signal.
+  const reconcileControlledSelection = (): void => {
+    if (!props.value) return;
+    const selected = state.value.peek();
+    for (const item of radios) item.checked = item.value === selected;
+  };
   for(const option of props.options){
     const label=native("label");label.className="zui-check-label";
     const radio=native("input") as HTMLInputElement;
     radio.type="radio";radio.name=props.name;radio.value=option.value;
     radio.required=props.required??false;radio.disabled=option.disabled??false;
+    radios.push(radio);
     bindProperty(owner,radio,"checked",()=>state.value.value===option.value);
-    listen(owner,radio,"change",event=>{if(radio.checked)state.set(option.value,{
-      reason:event instanceof MouseEvent?"pointer":"keyboard",originalEvent:event
-    });});
+    listen(owner,radio,"change",event=>{
+      if (!radio.checked) return;
+      try {
+        state.set(option.value,{
+          reason:event instanceof MouseEvent?"pointer":"keyboard",originalEvent:event
+        });
+      } finally {
+        reconcileControlledSelection();
+      }
+    });
     const text=native("span");text.textContent=option.label;
     label.append(radio,text);root.appendChild(label);
   }

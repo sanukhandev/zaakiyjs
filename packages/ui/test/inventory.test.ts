@@ -78,6 +78,41 @@ describe("P2 native UI component inventory",()=>{
     expect(el(pages).textContent).toContain("Page 2 of 3");
     disposeOwner(owner);
   });
+  it("restores a rejected controlled radio selection and keeps native form values consistent",()=>{
+    const selected=signal("one");
+    const requests:string[]=[];
+    const {owner,value}=scoped(()=>RadioGroup({
+      name:"shipping", legend:"Shipping",value:selected,
+      onValueChange:next=>{requests.push(next);},
+      options:[{value:"one",label:"Standard"},{value:"two",label:"Express"}]
+    }));
+    const fieldset=el(value);
+    const form=document.createElement("form");
+    form.appendChild(fieldset);
+    document.body.appendChild(form);
+    try {
+      const [first,second]=[...fieldset.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
+      if (!first||!second) throw Error("Missing radio controls");
+      expect(first.checked).toBe(true);
+      second.click();
+      expect(requests).toEqual(["two"]);
+      expect(selected.value).toBe("one");
+      expect(first.checked).toBe(true);
+      expect(second.checked).toBe(false);
+      expect(new FormData(form).get("shipping")).toBe("one");
+      // A later parent confirmation must still update the exact same inputs.
+      selected.value="two";
+      flushSync();
+      expect(fieldset.querySelectorAll('input[type="radio"]')[1]).toBe(second);
+      expect(first.checked).toBe(false);
+      expect(second.checked).toBe(true);
+      expect(new FormData(form).get("shipping")).toBe("two");
+    } finally {
+      disposeOwner(owner);
+      form.remove();
+    }
+  });
+
   it("renders semantics of layouts, display, breadcrumbs and navigation without unsafe HTML parsing",()=>{
     const {owner}=scoped(()=>Card({title:"Safe",description:"<img src=x onerror=alert(1)>"}));
     const make=<T,>(fn:()=>T)=>el(runWithOwner(owner,fn));
