@@ -1,0 +1,27 @@
+/** Headless native DOM controllers; no runtime renderer or styling dependency. */
+export { own, listen, ownedTimeout, createIdScope } from "./lifecycle.js";
+export type { PrimitiveHandle, OwnedOptions } from "./lifecycle.js";
+export { createControlledState } from "./state.js";
+export type { ControlledState, ControlledStateOptions } from "./state.js";
+export { createFocusManager, createFocusScope, focusables, isFocusable } from "./focus.js";
+export type { FocusManager, FocusScopeHandle, FocusScopeOptions } from "./focus.js";
+export { createPortal } from "./portal.js";
+export type { PortalOptions } from "./portal.js";
+export { createOverlayManager } from "./layers.js";
+export type { OverlayManager, OverlayManagerOptions, LayerOptions, DismissEvent, DismissReason } from "./layers.js";
+export { createRovingFocus } from "./keyboard.js";
+export type { RovingController, RovingOptions, RovingItem, Orientation, TextDirection } from "./keyboard.js";
+export { createDialog } from "./dialog.js";
+export type { DialogController, DialogOptions } from "./dialog.js";
+export { createTabs } from "./tabs.js";
+export type { TabsController, TabsOptions, TabDefinition } from "./tabs.js";
+export { createDisclosure, createAccordion } from "./disclosure.js";
+export type { DisclosureController, DisclosureOptions } from "./disclosure.js";
+export { createMenu } from "./menu.js";
+export type { MenuController, MenuOptions, MenuItem } from "./menu.js";
+export { createListbox } from "./listbox.js";
+export type { ListboxController, ListboxOptions, ListboxOption } from "./listbox.js";
+export { createTooltip } from "./tooltip.js";
+export type { TooltipController, TooltipOptions } from "./tooltip.js";
+export { createPopover } from "./popover.js";
+export type { PopoverController, PopoverOptions } from "./popover.js";
