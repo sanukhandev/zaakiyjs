@@ -4,7 +4,7 @@ import type { ReadonlySignal } from "@zaakiyjs/signals";
 import { createControlledState } from "./state.js";
 import { createRovingFocus } from "./keyboard.js";
 import type { Orientation, TextDirection } from "./keyboard.js";
-import { listen, own } from "./lifecycle.js";
+import { listen, own, createRegistrationGroup } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
 
 export interface TabDefinition {
@@ -37,6 +37,7 @@ export function createTabs(options: TabsOptions): TabsController {
     onChange: next => options.onChange?.(next)
   });
   const registered = new Map<string, TabDefinition>();
+  const registrations = createRegistrationGroup(owner);
   const roving = createRovingFocus({
     container: list, owner, initialId: options.defaultValue,
     orientation: options.orientation ?? "horizontal", direction: options.direction,
@@ -71,7 +72,7 @@ export function createTabs(options: TabsOptions): TabsController {
     }
   };
   const lifecycle = own(() => {
-    rendered.dispose(); keys.dispose(); roving.dispose();
+    rendered.dispose(); keys.dispose(); registrations.dispose(); roving.dispose();
     for (const item of registered.values()) {
       item.tab.removeAttribute("role"); item.tab.removeAttribute("aria-selected");
       item.tab.removeAttribute("aria-controls"); item.panel.removeAttribute("role");
@@ -89,27 +90,29 @@ export function createTabs(options: TabsOptions): TabsController {
       if (!list.contains(item.tab) || !item.tab.id || !item.panel.id) {
         throw new Error("Tab and panel require stable IDs and tablist membership");
       }
-      registered.set(item.id, item);
-      item.tab.setAttribute("role", "tab");
-      item.panel.setAttribute("role", "tabpanel");
-      item.tab.setAttribute("aria-controls", item.panel.id);
-      item.panel.setAttribute("aria-labelledby", item.tab.id);
-      item.tab.setAttribute("aria-disabled", String(!!item.disabled));
-      const registration = roving.register({ id: item.id, element: item.tab, disabled: item.disabled });
-      const click = listen(item.tab, "click", () => {
-        if (!item.disabled && !item.tab.matches(":disabled")) {
-          roving.move(item.id, false);
-          select(item.id);
-        }
-      }, owner);
-      sync();
-      return own(() => {
-        click.dispose(); registration.dispose(); registered.delete(item.id);
-        item.tab.removeAttribute("role"); item.tab.removeAttribute("aria-selected");
-        item.tab.removeAttribute("aria-controls"); item.tab.removeAttribute("aria-disabled");
-        item.panel.removeAttribute("role"); item.panel.removeAttribute("aria-labelledby");
-        item.panel.hidden = false;
-      }, owner);
+      return registrations.add(registrationOwner => {
+        registered.set(item.id, item);
+        item.tab.setAttribute("role", "tab");
+        item.panel.setAttribute("role", "tabpanel");
+        item.tab.setAttribute("aria-controls", item.panel.id);
+        item.panel.setAttribute("aria-labelledby", item.tab.id);
+        item.tab.setAttribute("aria-disabled", String(!!item.disabled));
+        const registration = roving.register({ id: item.id, element: item.tab, disabled: item.disabled });
+        const click = listen(item.tab, "click", () => {
+          if (!item.disabled && !item.tab.matches(":disabled")) {
+            roving.move(item.id, false);
+            select(item.id);
+          }
+        }, registrationOwner);
+        sync();
+        return () => {
+          click.dispose(); registration.dispose(); registered.delete(item.id);
+          item.tab.removeAttribute("role"); item.tab.removeAttribute("aria-selected");
+          item.tab.removeAttribute("aria-controls"); item.tab.removeAttribute("aria-disabled");
+          item.panel.removeAttribute("role"); item.panel.removeAttribute("aria-labelledby");
+          item.panel.hidden = false;
+        };
+      });
     }
   };
 }

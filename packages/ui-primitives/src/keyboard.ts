@@ -1,5 +1,5 @@
 import type { OwnerScope } from "@zaakiyjs/core";
-import { listen, own } from "./lifecycle.js";
+import { listen, own, createRegistrationGroup } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
 
 export type Orientation = "horizontal" | "vertical" | "both";
@@ -27,6 +27,7 @@ export interface RovingController extends PrimitiveHandle {
 
 export function createRovingFocus(options: RovingOptions): RovingController {
   const map = new Map<string, RovingItem>();
+  const registrations = createRegistrationGroup(options.owner);
   let selected: string | null = options.initialId ?? null;
   let closed = false;
   const ordered = () => [...map.values()].sort((a, b) => {
@@ -52,9 +53,17 @@ export function createRovingFocus(options: RovingOptions): RovingController {
       if (closed) throw new Error("Roving controller disposed");
       if (map.has(item.id)) throw new Error("Duplicate item ID: " + item.id);
       if (!options.container.contains(item.element)) throw new Error("Roving item outside container");
-      map.set(item.id, item);
-      sync();
-      return own(() => { if (map.get(item.id) === item) { map.delete(item.id); sync(); } }, options.owner);
+      return registrations.add(() => {
+        map.set(item.id, item);
+        sync();
+        return () => {
+          if (map.get(item.id) === item) {
+            map.delete(item.id);
+            item.element.removeAttribute("tabindex");
+            sync();
+          }
+        };
+      });
     },
     move(id, focus = true) {
       if (closed) return;
@@ -96,6 +105,7 @@ export function createRovingFocus(options: RovingOptions): RovingController {
     if (closed) return;
     closed = true;
     listener.dispose();
+    registrations.dispose();
     for (const item of map.values()) item.element.removeAttribute("tabindex");
     map.clear();
   }, options.owner);

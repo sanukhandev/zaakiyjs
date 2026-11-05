@@ -2,7 +2,7 @@ import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
 import { createControlledState } from "./state.js";
-import { listen, own, ownedTimeout } from "./lifecycle.js";
+import { listen, own } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
 
 export interface TooltipOptions {
@@ -36,12 +36,20 @@ export function createTooltip(options: TooltipOptions): TooltipController {
     owner, value: options.open, defaultValue: options.defaultOpen ?? false,
     onChange: next => options.onOpenChange?.(next)
   });
-  let timer: PrimitiveHandle | null = null;
-  const clearTimer = () => { timer?.dispose(); timer = null; };
+  // A single owner cleanup is registered for the timer slot. Hover churn
+  // must not accumulate retained owner cleanup closures indefinitely.
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const clearTimer = () => {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+  };
   const setOpen = (open: boolean) => { clearTimer(); state.set(open); };
   const show = () => {
     clearTimer();
-    timer = ownedTimeout(() => { timer = null; state.set(true); }, options.delayMs ?? 500, owner);
+    timer = setTimeout(() => {
+      timer = null;
+      if (!owner.disposed) state.set(true);
+    }, Math.max(0, options.delayMs ?? 500));
   };
   const hide = () => setOpen(false);
   const listeners = [

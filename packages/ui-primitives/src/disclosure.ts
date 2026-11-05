@@ -2,7 +2,7 @@ import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
 import { createControlledState } from "./state.js";
-import { listen, own } from "./lifecycle.js";
+import { listen, own, createRegistrationGroup } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
 
 export interface DisclosureOptions {
@@ -70,27 +70,30 @@ export function createAccordion(options: {
   readonly multiple?: boolean;
 }): { add(disclosure: DisclosureController): PrimitiveHandle; dispose(): void } {
   const members = new Map<DisclosureController, PrimitiveHandle>();
+  const registrations = createRegistrationGroup(options.owner);
   let closed = false;
   const cleanup = own(() => {
     closed = true;
-    for (const handle of members.values()) handle.dispose();
+    registrations.dispose();
     members.clear();
   }, options.owner);
   return {
     add(disclosure) {
       if (closed) throw new Error("Accordion disposed");
       if (members.has(disclosure)) throw new Error("Disclosure already registered");
-      const watcher = effect(() => {
-        if (options.multiple || !disclosure.expanded.value || closed) return;
-        for (const other of members.keys()) {
-          if (other !== disclosure && other.expanded.peek()) other.setExpanded(false);
-        }
+      return registrations.add(() => {
+        const watcher = effect(() => {
+          if (options.multiple || !disclosure.expanded.value || closed) return;
+          for (const other of members.keys()) {
+            if (other !== disclosure && other.expanded.peek()) other.setExpanded(false);
+          }
+        });
+        members.set(disclosure, watcher);
+        return () => {
+          watcher.dispose();
+          members.delete(disclosure);
+        };
       });
-      members.set(disclosure, watcher);
-      return own(() => {
-        watcher.dispose();
-        members.delete(disclosure);
-      }, options.owner);
     },
     dispose: () => cleanup.dispose()
   };

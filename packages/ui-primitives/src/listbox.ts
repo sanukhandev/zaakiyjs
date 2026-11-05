@@ -2,7 +2,7 @@ import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
 import { createControlledState } from "./state.js";
-import { listen, own } from "./lifecycle.js";
+import { listen, own, createRegistrationGroup } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
 
 export interface ListboxOption {
@@ -41,6 +41,7 @@ export function createListbox(options: ListboxOptions): ListboxController {
     onChange: next => options.onSelectionChange?.(next)
   });
   const items = new Map<string, ListboxOption>();
+  const registrations = createRegistrationGroup(owner);
   let active: string | null = null;
   let buffer = "";
   let lastType = 0;
@@ -105,7 +106,7 @@ export function createListbox(options: ListboxOptions): ListboxController {
     sync();
   }, { phase: "render" });
   const lifecycle = own(() => {
-    rendering.dispose(); keydown.dispose();
+    rendering.dispose(); keydown.dispose(); registrations.dispose();
     for (const item of items.values()) {
       item.element.removeAttribute("role"); item.element.removeAttribute("aria-selected");
       item.element.removeAttribute("aria-disabled");
@@ -127,21 +128,22 @@ export function createListbox(options: ListboxOptions): ListboxController {
         throw new Error("Listbox options require unique stable DOM and logical IDs");
       }
       if (!element.contains(item.element)) throw new Error("Option outside listbox");
-      items.set(item.id, item);
-      item.element.setAttribute("role", "option");
-      item.element.setAttribute("aria-disabled", String(!!item.disabled));
-      const pointer = listen(item.element, "click", () => {
-        if (item.disabled) return;
-        activate(item.id); select(item.id);
-      }, owner);
-      sync();
-      return own(() => {
-        pointer.dispose();
-        items.delete(item.id);
-        item.element.removeAttribute("role"); item.element.removeAttribute("aria-selected");
-        item.element.removeAttribute("aria-disabled");
+      return registrations.add(registrationOwner => {
+        items.set(item.id, item);
+        item.element.setAttribute("role", "option");
+        item.element.setAttribute("aria-disabled", String(!!item.disabled));
+        const pointer = listen(item.element, "click", () => {
+          if (item.disabled) return;
+          activate(item.id); select(item.id);
+        }, registrationOwner);
         sync();
-      }, owner);
+        return () => {
+          pointer.dispose(); items.delete(item.id);
+          item.element.removeAttribute("role"); item.element.removeAttribute("aria-selected");
+          item.element.removeAttribute("aria-disabled");
+          sync();
+        };
+      });
     }
   };
 }

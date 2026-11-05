@@ -1,4 +1,4 @@
-import { getOwner, onCleanup, runWithOwner } from "@zaakiyjs/core";
+import { createOwner, disposeOwner, getOwner, onCleanup, runWithOwner } from "@zaakiyjs/core";
 import type { OwnerScope } from "@zaakiyjs/core";
 
 export interface PrimitiveHandle { dispose(): void }
@@ -56,6 +56,61 @@ export function createIdScope(prefix: string, owner?: OwnerScope): {
       if (index < 0) throw new Error("ID scope has been disposed");
       if (!/^[A-Za-z][\w-]*$/.test(hint)) throw new TypeError("Invalid ID hint");
       return `${prefix}-${hint}-${++index}`;
+    }
+  };
+}
+
+/**
+ * Dynamically registered items get removable child owners. Unregistering one
+ * detaches the child from its parent rather than retaining every old cleanup
+ * closure and removed element until the application is unmounted.
+ */
+export function createRegistration(
+  owner: OwnerScope | undefined,
+  setup: (registrationOwner: OwnerScope) => () => void
+): PrimitiveHandle {
+  const parent = owner ?? getOwner();
+  if (!parent || parent.disposed) throw new Error("Registration needs a live Core owner");
+  const registrationOwner = createOwner(parent);
+  try {
+    const tearDown = runWithOwner(registrationOwner, () => setup(registrationOwner));
+    runWithOwner(registrationOwner, () => onCleanup(tearDown));
+  } catch (error) {
+    disposeOwner(registrationOwner);
+    throw error;
+  }
+  return { dispose() { disposeOwner(registrationOwner); } };
+}
+
+/** Removable dynamic entries; disposing their parent controller clears all children. */
+export function createRegistrationGroup(owner?: OwnerScope): {
+  add(setup: (registrationOwner: OwnerScope) => () => void): PrimitiveHandle;
+  dispose(): void;
+} {
+  const parent = owner ?? getOwner();
+  if (!parent || parent.disposed) throw new Error("Registration group needs a live Core owner");
+  const handles = new Set<PrimitiveHandle>();
+  let closed = false;
+  return {
+    add(setup) {
+      if (closed || parent.disposed) throw new Error("Registration group disposed");
+      const entry = createRegistration(parent, setup);
+      let ended = false;
+      const handle: PrimitiveHandle = {
+        dispose() {
+          if (ended) return;
+          ended = true;
+          handles.delete(handle);
+          entry.dispose();
+        }
+      };
+      handles.add(handle);
+      return handle;
+    },
+    dispose() {
+      if (closed) return;
+      closed = true;
+      for (const entry of [...handles]) entry.dispose();
     }
   };
 }
