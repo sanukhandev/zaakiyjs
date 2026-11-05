@@ -88,7 +88,7 @@ export function animateOwned(options: MotionOptions): MotionHandle {
     () => control.settle({ status: "finished" }),
     () => {
       if (control.handle.status === "running" || control.handle.status === "paused") {
-        control.settle({ status: "cancelled", reason: "aborted" as MotionReason });
+        control.settle({ status: "cancelled", reason: "signal" });
       }
     }
   );
