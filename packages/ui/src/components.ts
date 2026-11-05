@@ -3,7 +3,7 @@ import type { OwnerScope, ViewNode } from "@zaakiyjs/core";
 import { bindProperty, createElement, listen } from "@zaakiyjs/dom/compiler";
 import type { WritableSignal } from "@zaakiyjs/signals";
 import { badgeClasses, buttonClasses } from "./recipes.js";
-import type { BadgeVariant, ButtonSize, ButtonVariant } from "./recipes.js";
+import type { BadgeVariant, UiAppearance, UiSize, UiTone } from "./recipes.js";
 
 /**
  * This draft implementation produces native nodes directly, while the existing
@@ -27,44 +27,103 @@ function writable<T extends string | boolean>(value: T | WritableSignal<T>): val
   return typeof value === "object" && value !== null && "value" in value;
 }
 
-export interface ButtonProps {
-  readonly label: string;
-  readonly variant?: ButtonVariant;
-  readonly size?: ButtonSize;
-  readonly type?: "button" | "submit" | "reset";
+export interface UiActionDetail { readonly originalEvent: MouseEvent }
+export type UiAction = (detail: UiActionDetail) => void;
+export interface UiBaseProps {
+  readonly id?: string;
+  readonly class?: string;
   readonly disabled?: boolean;
-  readonly loading?: boolean;
-  readonly className?: string;
-  readonly onClick?: (event: MouseEvent) => void;
+  readonly "aria-label"?: string;
 }
-
-/** Label-only until compiled TSX component children are supported. */
+export interface ButtonProps extends UiBaseProps {
+  readonly label: string;
+  readonly type?: "button" | "submit" | "reset";
+  readonly tone?: UiTone;
+  readonly appearance?: UiAppearance;
+  readonly size?: UiSize;
+  readonly loading?: boolean;
+  readonly onPress?: UiAction;
+}
+/** Follows P2 Contract 10: semantic onPress, native button keyboard activation. */
 export function Button(props: ButtonProps): ViewNode {
   const scope = owner();
   const element = createElement("button", "html") as HTMLButtonElement;
   element.type = props.type ?? "button";
   element.textContent = props.label;
-  element.className = buttonClasses(props.variant, props.size, props.className);
+  element.className = buttonClasses(props.tone, props.appearance, props.size, props.class);
+  if (props.id) element.id = props.id;
+  if (props["aria-label"]) element.setAttribute("aria-label", props["aria-label"]);
   element.disabled = Boolean(props.disabled || props.loading);
   if (props.loading) element.setAttribute("aria-busy", "true");
-  if (props.onClick) {
+  if (props.onPress) {
     listen(scope, element, "click", event => {
-      if (!element.disabled) props.onClick?.(event as MouseEvent);
+      if (!element.disabled) props.onPress?.({ originalEvent: event as MouseEvent });
     });
   }
   return asView(element);
 }
 
+export interface IconButtonProps extends Omit<ButtonProps, "label"> {
+  /** Text glyph or visual icon name supplied by the application; never HTML. */
+  readonly icon: string;
+  readonly "aria-label": string;
+}
+export function IconButton(props: IconButtonProps): ViewNode {
+  if (!props["aria-label"].trim()) throw new TypeError("IconButton requires an accessible name");
+  const element = Button({ ...props, label: props.icon }) as unknown as HTMLButtonElement;
+  element.setAttribute("aria-label", props["aria-label"]);
+  const icon = element.ownerDocument.createElement("span");
+  icon.textContent = props.icon;
+  icon.setAttribute("aria-hidden", "true");
+  element.replaceChildren(icon);
+  return asView(element);
+}
+
+export interface LinkButtonProps {
+  readonly href: string;
+  readonly label: string;
+  readonly target?: "_self" | "_blank";
+  readonly class?: string;
+  readonly tone?: UiTone;
+  readonly appearance?: UiAppearance;
+  readonly size?: UiSize;
+}
+/** Always an anchor: does not masquerade as a native submit button. */
+export function LinkButton(props: LinkButtonProps): ViewNode {
+  owner();
+  const element = createElement("a", "html") as HTMLAnchorElement;
+  // setAttribute runs the existing DOM ABI URL policy, including scheme checks.
+  element.setAttribute("href", validateNavigationUrl(props.href));
+  element.textContent = props.label;
+  element.className = buttonClasses(props.tone, props.appearance, props.size, props.class);
+  element.target = props.target ?? "_self";
+  if (props.target === "_blank") element.rel = "noopener noreferrer";
+  return asView(element);
+}
+
+function validateNavigationUrl(value: string): string {
+  if (typeof value !== "string" || !value || /[\u0000-\u001f\u007f]/u.test(value)) {
+    throw new TypeError("Invalid navigation URL");
+  }
+  const candidate = value.trim();
+  if (!candidate || /^(?:javascript|data|vbscript):/iu.test(candidate)) throw new TypeError("Unsafe navigation URL");
+  const scheme = /^([a-z][a-z\d+.-]*):/iu.exec(candidate);
+  if (scheme && !["https","http","mailto","tel"].includes((scheme[1] ?? "").toLowerCase())) {
+    throw new TypeError("Unapproved navigation protocol");
+  }
+  if (candidate.startsWith("//")) throw new TypeError("Protocol-relative URLs are not supported");
+  return candidate;
+}
 export interface BadgeProps {
   readonly label: string;
   readonly variant?: BadgeVariant;
-  readonly className?: string;
+  readonly class?: string;
 }
 
 export function Badge(props: BadgeProps): ViewNode {
   owner();
   const element = createElement("span", "html") as HTMLSpanElement;
-  element.className = badgeClasses(props.variant, props.className);
+  element.className = badgeClasses(props.variant, props.class);
   element.textContent = props.label;
   return asView(element);
 }
@@ -149,6 +208,74 @@ export function Checkbox(props: CheckboxProps): ViewNode {
   caption.textContent = props.label;
   label.append(input, caption);
   return asView(label);
+}
+
+export interface TextareaProps {
+  readonly id: string;
+  readonly label: string;
+  readonly name?: string;
+  readonly value?: string | WritableSignal<string>;
+  readonly rows?: number;
+  readonly disabled?: boolean;
+  readonly required?: boolean;
+  readonly readOnly?: boolean;
+  readonly errorId?: string;
+  readonly onInput?: (value: string, event: Event) => void;
+}
+export function Textarea(props: TextareaProps): ViewNode {
+  const scope=owner();
+  const wrapper=createElement("div","html") as HTMLDivElement;
+  wrapper.className="zui-field";
+  const label=createElement("label","html") as HTMLLabelElement;
+  label.htmlFor=props.id;label.textContent=props.label;label.className="zui-field-label";
+  const control=createElement("textarea","html") as HTMLTextAreaElement;
+  control.id=props.id;control.name=props.name??"";control.className="zui-input";
+  control.rows=props.rows??3;control.disabled=props.disabled??false;
+  control.required=props.required??false;control.readOnly=props.readOnly??false;
+  if(props.errorId)control.setAttribute("aria-describedby",props.errorId);
+  const value=props.value??"";
+  if(writable(value))bindProperty(scope,control,"value",()=>value.value);
+  else control.value=value;
+  if(props.onInput||writable(value))listen(scope,control,"input",event=>{
+    if(writable(value))value.value=control.value;
+    props.onInput?.(control.value,event);
+  });
+  wrapper.append(label,control);return asView(wrapper);
+}
+
+export interface NativeOption { readonly value: string; readonly label: string; readonly disabled?:boolean }
+export interface SelectProps {
+  readonly id:string;readonly label:string;readonly options:readonly NativeOption[];
+  readonly value?:string | WritableSignal<string>;readonly name?:string;
+  readonly required?:boolean;readonly disabled?:boolean;readonly errorId?:string;
+  readonly onChange?:(value:string,event:Event)=>void;
+}
+/** Prefer the accessible native select for ordinary form fields. */
+export function Select(props:SelectProps):ViewNode {
+  const scope=owner();
+  const wrapper=createElement("div","html");
+  wrapper.className="zui-field";
+  const label=createElement("label","html") as HTMLLabelElement;
+  label.htmlFor=props.id;label.textContent=props.label;label.className="zui-field-label";
+  const select=createElement("select","html") as HTMLSelectElement;
+  select.id=props.id;select.name=props.name??"";select.className="zui-input";
+  select.required=props.required??false;select.disabled=props.disabled??false;
+  if(props.errorId)select.setAttribute("aria-describedby",props.errorId);
+  for(const option of props.options){
+    const child=createElement("option","html") as HTMLOptionElement;
+    child.value=option.value;child.textContent=option.label;child.disabled=option.disabled??false;
+    select.appendChild(child);
+  }
+  const value=props.value;
+  if(value!==undefined){
+    if(writable(value))bindProperty(scope,select,"value",()=>value.value);
+    else select.value=value;
+  }
+  if(props.onChange||writable(value??""))listen(scope,select,"change",event=>{
+    if(value!==undefined&&writable(value))value.value=select.value;
+    props.onChange?.(select.value,event);
+  });
+  wrapper.append(label,select);return asView(wrapper);
 }
 
 export interface FieldLabelProps {

@@ -31,7 +31,7 @@
     "@zaakiyjs/core": "workspace:^",
     "@zaakiyjs/dom": "workspace:^",
     "@zaakiyjs/signals": "workspace:^",
-    "@zaakiyjs/styles": "workspace:^"
+    "@zaakiyjs/ui-primitives": "workspace:^"
   },
   "devDependencies": {
     "@zaakiyjs/compiler": "workspace:^",

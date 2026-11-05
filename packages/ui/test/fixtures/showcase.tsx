@@ -10,7 +10,7 @@ export function Showcase() {
   return (
     <main class="mx-auto p-8">
       <h1>Zaakiy UI foundation</h1>
-      <Button label="Save" variant="primary" onClick={() => { name.value = "Saved"; }} />
+      <Button label="Save" tone="primary" onPress={() => { name.value = "Saved"; }} />
       <Badge label="Active" variant="success" />
       <TextField id="name" label="Name" value={name} errorId="name-error" />
       <FieldLabel htmlFor="notes" text="Notes" />

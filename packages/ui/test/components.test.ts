@@ -8,9 +8,9 @@ describe("owner-scoped native UI", () => {
   it("guards disabled/loading actions and releases event listeners on disposal", () => {
     const scope = createOwner();
     let fired = 0;
-    const button = runWithOwner(scope, () => Button({ label: "Save", onClick: () => { fired++; } })) as unknown as HTMLButtonElement;
-    const disabled = runWithOwner(scope, () => Button({ label: "Save", disabled: true, onClick: () => { fired++; } })) as unknown as HTMLButtonElement;
-    const loading = runWithOwner(scope, () => Button({ label: "Save", loading: true, onClick: () => { fired++; } })) as unknown as HTMLButtonElement;
+    const button = runWithOwner(scope, () => Button({ label: "Save", onPress: () => { fired++; } })) as unknown as HTMLButtonElement;
+    const disabled = runWithOwner(scope, () => Button({ label: "Save", disabled: true, onPress: () => { fired++; } })) as unknown as HTMLButtonElement;
+    const loading = runWithOwner(scope, () => Button({ label: "Save", loading: true, onPress: () => { fired++; } })) as unknown as HTMLButtonElement;
     document.body.append(button, disabled, loading);
     disabled.click();
     loading.click();
