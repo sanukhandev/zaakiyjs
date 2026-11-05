@@ -88,6 +88,54 @@ describe("animation ownership and WAAPI", () => {
   });
 });
 
+describe("frozen P2 Contract 11", () => {
+  it("exposes readonly-signal phases and typed completion reasons", async () => {
+    const owner = createOwner();
+    const element = document.createElement("div");
+    document.body.append(element);
+    const { api } = fakeAnimation(element);
+    const handle = animateOwned({
+      owner, element, keyframes: [{ opacity: 0 }, { opacity: 1 }],
+      timing: { duration: 180 }
+    });
+    expect(handle.phase.value).toBe("running");
+    api.finish();
+    expect(await handle.finished).toEqual({ phase: "finished", reason: "completed" });
+    expect(handle.phase.value).toBe("finished");
+    disposeOwner(owner);
+  });
+
+  it("settles the contract with owner-disposed instead of throwing an unhandled cancellation", async () => {
+    const owner = createOwner();
+    const element = document.createElement("div");
+    fakeAnimation(element);
+    const handle = animateOwned({ owner, element, keyframes: [], timing: { duration: 200 } });
+    disposeOwner(owner);
+    expect(await handle.finished).toEqual({ phase: "cancelled", reason: "owner-disposed" });
+  });
+
+  it("reports presence phases and never disposes the owning DOM element", async () => {
+    const owner = createOwner();
+    const element = document.createElement("div");
+    document.body.append(element);
+    const { api } = fakeAnimation(element);
+    const presence = createPresence({
+      owner, element,
+      enter: { keyframes: [{ opacity: 0 }, { opacity: 1 }], timing: { duration: 100 } },
+      exit: { keyframes: [{ opacity: 1 }, { opacity: 0 }], timing: { duration: 100 } }
+    });
+    const entering = presence.enter();
+    expect(presence.phase.value).toBe("entering");
+    api.finish();
+    expect((await entering.finished).reason).toBe("completed");
+    await Promise.resolve();
+    expect(presence.phase.value).toBe("present");
+    expect(element.isConnected).toBe(true);
+    disposeOwner(owner);
+    expect(presence.phase.value).toBe("exited");
+  });
+});
+
 describe("spring, presence and layout", () => {
   it("reaches rest with deterministic frames, and does not schedule another frame", async () => {
     let frameId = 0;
