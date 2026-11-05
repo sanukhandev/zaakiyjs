@@ -1,7 +1,7 @@
 import { createControlledHandle, finite } from "./lifecycle.js";
-import type { ElementAnimationOptions, MotionHandle } from "./types.js";
+import type { ElementAnimationOptions, AnimationHandle } from "./types.js";
 
-export function animateElement(element: Element, options: ElementAnimationOptions): MotionHandle {
+export function animateElement(element: Element, options: ElementAnimationOptions): AnimationHandle {
   const duration = finite(options.duration ?? 200, "duration");
   const delay = finite(options.delay ?? 0, "delay");
   const endDelay = finite(options.endDelay ?? 0, "endDelay");
