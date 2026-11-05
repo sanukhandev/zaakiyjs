@@ -1,5 +1,5 @@
 import {mkdir,rm,writeFile} from "node:fs/promises";
-import {fileURLToPath} from "node:url";
+import {fileURLToPath,URL} from "node:url";
 import {dirname,join} from "node:path";
 import {build} from "vite";
 import {createTemplatePlan} from "../../dist/index.js";

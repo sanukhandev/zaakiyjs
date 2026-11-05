@@ -1,5 +1,4 @@
 import {spawnSync} from "node:child_process";
-import {dirname} from "node:path";
 import {fileURLToPath} from "node:url";
 import {describe,it,expect} from "vitest";
 const packageRoot=fileURLToPath(new URL("../",import.meta.url));
