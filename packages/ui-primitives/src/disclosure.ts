@@ -66,18 +66,32 @@ export function createDisclosure(options: DisclosureOptions): DisclosureControll
 }
 /** Accordion composition: independent disclosure state; no duplicate state scheduler. */
 export function createAccordion(options: {
-  owner: OwnerScope;
+  readonly owner: OwnerScope;
   readonly multiple?: boolean;
 }): { add(disclosure: DisclosureController): PrimitiveHandle; dispose(): void } {
-  const members = new Set<DisclosureController>();
-  // Single-open coordination is intentionally orchestrated by onExpandedChange
-  // in the composing view; controlled state remains parent-owned.
-  const lifecycle = own(() => members.clear(), options.owner);
+  const members = new Map<DisclosureController, PrimitiveHandle>();
+  let closed = false;
+  const cleanup = own(() => {
+    closed = true;
+    for (const handle of members.values()) handle.dispose();
+    members.clear();
+  }, options.owner);
   return {
     add(disclosure) {
-      members.add(disclosure);
-      return own(() => members.delete(disclosure), options.owner);
+      if (closed) throw new Error("Accordion disposed");
+      if (members.has(disclosure)) throw new Error("Disclosure already registered");
+      const watcher = effect(() => {
+        if (options.multiple || !disclosure.expanded.value || closed) return;
+        for (const other of members.keys()) {
+          if (other !== disclosure && other.expanded.peek()) other.setExpanded(false);
+        }
+      });
+      members.set(disclosure, watcher);
+      return own(() => {
+        watcher.dispose();
+        members.delete(disclosure);
+      }, options.owner);
     },
-    dispose: () => lifecycle.dispose()
+    dispose: () => cleanup.dispose()
   };
 }

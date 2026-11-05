@@ -55,6 +55,7 @@ export function createTabs(options: TabsOptions): TabsController {
   }, owner);
   const rendered = effect(() => {
     const selected = state.value.value;
+    if (registered.has(selected)) roving.move(selected, false);
     for (const item of registered.values()) {
       const active = item.id === selected;
       item.tab.setAttribute("aria-selected", String(active));

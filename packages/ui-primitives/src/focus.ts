@@ -59,7 +59,7 @@ export function isFocusable(element: HTMLElement, tabbable = false): boolean {
       element instanceof HTMLTextAreaElement || element instanceof HTMLInputElement) return true;
   if (element.isContentEditable) return true;
   if (element instanceof HTMLAudioElement || element instanceof HTMLVideoElement) return element.hasAttribute("controls");
-  if (element instanceof HTMLIFrameElement || element instanceof HTMLSummaryElement) return true;
+  if (element instanceof HTMLIFrameElement || element.tagName === "SUMMARY") return true;
   return false;
 }
 export function focusables(container: HTMLElement, tabbable = true): HTMLElement[] {
