@@ -22,7 +22,7 @@ export function observeViewport(element: Element, options: ViewportOptions): Scr
       for (const entry of entries) {
         if (entry.isIntersecting) {
           options.onEnter?.(entry);
-          if (options.once) { observer?.disconnect(); observer = null; break; }
+          if (options.once) { handle.dispose(); break; }
         } else options.onLeave?.(entry);
       }
     }, {
