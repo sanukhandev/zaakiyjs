@@ -159,7 +159,7 @@ export function planTemplate(request:PlanRequest):TemplateFilePlan {
     for(const asset of [...request.manifest.assets].sort((a,b)=>a.path.localeCompare(b.path,"en"))) {
       const conflict=existing.find(path=>collision(path,asset.path));
       const authorized=request.authorizedReplacements?.[asset.path];
-      if(conflict && (conflict.toLowerCase()!==asset.path.toLowerCase()||!authorized)){
+      if(conflict && (conflict!==asset.path||!authorized)){
         if(request.overwrite==="skip")continue;
         problems.push(diagnostic("ZT_COLLISION","Existing file or directory collision.",asset.path));
         continue;
