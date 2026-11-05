@@ -88,3 +88,6 @@
 @media(max-width:767px){.zui-sidebar-layout{grid-template-columns:1fr}.zui-navigation-menu ul{flex-direction:column}}
 @media(prefers-reduced-motion:reduce){.zui-button{transition:none}.zui-spinner{animation:none}}
 @media(forced-colors:active){.zui-button,.zui-input,.zui-tab,.zui-menu-item,.zui-card,.zui-dialog{forced-color-adjust:auto;border-color:ButtonText}.zui-badge,.zui-alert{border:1px solid CanvasText}}
+
+.zui-button-group{display:inline-flex;flex-wrap:wrap;align-items:center;gap:var(--z-space-1)}
+.zui-button-group--vertical{display:flex;flex-direction:column;align-items:stretch}

@@ -153,6 +153,12 @@ importers:
       '@zaakiyjs/compiler':
         specifier: workspace:^
         version: link:../compiler
+      '@zaakiyjs/forms':
+        specifier: workspace:^
+        version: link:../forms
+      '@zaakiyjs/vite-plugin':
+        specifier: workspace:^
+        version: link:../vite-plugin
       jsdom:
         specifier: ^26.1.0
         version: 26.1.0

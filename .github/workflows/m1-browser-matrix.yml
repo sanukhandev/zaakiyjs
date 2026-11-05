@@ -72,6 +72,8 @@ jobs:
           python3 tests/browser/m1_acceptance.py --base-url http://127.0.0.1:4188
       - name: Verify headless UI primitives in Chromium, Firefox and WebKit
         run: python3 packages/ui-primitives/test/browser/acceptance.py
+      - name: Exercise compiled UI component library in all three browser engines
+        run: python3 packages/ui/test/browser/acceptance.py
       - name: Assert browser bundle excludes build-only packages
         shell: bash
         run: |
