@@ -23,7 +23,7 @@ export function ProductView({vm}:{readonly vm:ProductViewModel}){
             <span>{item.priceCents} cents</span>
             <button type="button" onClick={()=>vm.view(item)}>Details</button>
             <button type="button" onClick={()=>vm.edit(item)}>Edit</button>
-            <button type="button" onClick={event=>{vm.requestDelete(item);const dialog=(event.currentTarget as Element).closest("main")?.querySelector("dialog[data-product-delete]");dialog?.showModal();}}>Delete</button>
+            <button type="button" onClick={event=>{vm.requestDelete(item);const dialog=(event.currentTarget as Element).closest("main")?.querySelector<HTMLDialogElement>("dialog[data-product-delete]");dialog?.showModal();}}>Delete</button>
           </li>
         }</For></ul>
         <nav aria-label="Product pagination" class="inline">
@@ -65,9 +65,9 @@ export function ProductView({vm}:{readonly vm:ProductViewModel}){
         <p id="confirm-delete-message">Permanently delete {vm.pendingDelete.value?.name ?? "this product"}?</p>
         <div class="inline">
           <button type="button" disabled={vm.busy.value}
-            onClick={event=>{void vm.confirmDelete();(event.currentTarget as Element).closest("dialog")?.close();}}>Confirm delete</button>
+            onClick={event=>{void vm.confirmDelete();((event.currentTarget as Element).closest("dialog") as HTMLDialogElement|null)?.close();}}>Confirm delete</button>
           <button type="button"
-            onClick={event=>{vm.cancelDelete();(event.currentTarget as Element).closest("dialog")?.close();}}>Keep product</button>
+            onClick={event=>{vm.cancelDelete();((event.currentTarget as Element).closest("dialog") as HTMLDialogElement|null)?.close();}}>Keep product</button>
         </div>
       </section>
     </dialog>
