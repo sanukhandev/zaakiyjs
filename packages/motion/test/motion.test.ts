@@ -35,7 +35,8 @@ describe("animation ownership and WAAPI", () => {
     expect(await handle.finished).toEqual({ status: "finished" });
     expect(handle.status).toBe("finished");
     handle.cancel();
-    expect(api.cancel).not.toHaveBeenCalled();
+    // Finished animations must be cancelled to release WAAPI fill/timeline state.
+    expect(api.cancel).toHaveBeenCalledOnce();
   });
 
   it("cancels on owner disposal and settles once", async () => {
@@ -84,7 +85,86 @@ describe("animation ownership and WAAPI", () => {
     const target = document.createElement("div");
     expect(() => animateElement(target, { keyframes: [], duration: -1 })).toThrow(RangeError);
     const zero = animateElement(target, { keyframes: [], duration: 0 });
-    expect((await zero.finished).status).toBe("skipped");
+    expect((await zero.finished).status).toBe("finished");
+  });
+});
+
+describe("motion cleanup regression cases", () => {
+  it("rejects non-finite gesture thresholds and spring instability", () => {
+    const element = document.createElement("div");
+    expect(() => createGestures(element, { dragThreshold: Number.NaN })).toThrow(RangeError);
+    expect(() => createGestures(element, { longPressMs: Infinity })).toThrow(RangeError);
+    expect(() => createSpring({ from: 0, to: 1, stiffness: 1e9, onUpdate: vi.fn() }))
+      .toThrow(RangeError);
+  });
+
+  it("releases pointer capture without reentering release on lostpointercapture", () => {
+    const element = document.createElement("div");
+    const release = vi.fn(() => element.dispatchEvent(new Event("lostpointercapture")));
+    Object.assign(element, {
+      setPointerCapture: vi.fn(),
+      hasPointerCapture: vi.fn(() => true),
+      releasePointerCapture: release
+    });
+    const gestures = createGestures(element, { onTap: vi.fn() });
+    const down = new Event("pointerdown");
+    Object.assign(down, { pointerId: 1, pointerType: "mouse", button: 0, clientX: 0, clientY: 0 });
+    element.dispatchEvent(down);
+    const up = new Event("pointerup");
+    Object.assign(up, { pointerId: 1, pointerType: "mouse", clientX: 0, clientY: 0 });
+    element.dispatchEvent(up);
+    expect(release).toHaveBeenCalledTimes(1);
+    gestures.dispose();
+  });
+
+  it("disconnects once-only viewport observers and releases their AbortSignal listener", () => {
+    let listener!: IntersectionObserverCallback;
+    const disconnect = vi.fn();
+    class Observer {
+      constructor(callback: IntersectionObserverCallback) { listener = callback; }
+      observe() {}
+      disconnect = disconnect;
+    }
+    vi.stubGlobal("IntersectionObserver", Observer);
+    const ac = new AbortController();
+    const add = vi.spyOn(ac.signal, "addEventListener");
+    const remove = vi.spyOn(ac.signal, "removeEventListener");
+    const onEnter = vi.fn();
+    observeViewport(document.createElement("div"), { once: true, signal: ac.signal, onEnter });
+    expect(add).toHaveBeenCalledOnce();
+    listener([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver);
+    expect(onEnter).toHaveBeenCalledOnce();
+    expect(disconnect).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledOnce();
+  });
+
+  it("sets a spring to its target with no RAF support instead of freezing at the start", async () => {
+    vi.stubGlobal("requestAnimationFrame", undefined);
+    const updates: number[] = [];
+    const handle = createSpring({ from: 0, to: 10, onUpdate: value => updates.push(value) });
+    expect(await handle.finished).toEqual({ status: "skipped", reason: "unsupported" });
+    expect(updates).toEqual([0, 10]);
+  });
+
+  it("treats an already-resting spring as complete, not unsupported", async () => {
+    const handle = createSpring({ from: 4, to: 4, onUpdate: vi.fn() });
+    expect(await handle.finished).toEqual({ status: "finished" });
+  });
+
+  it("never mutates after aborting an ongoing spring", async () => {
+    const callbacks = new Map<number, FrameRequestCallback>();
+    let next = 0;
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      const id = ++next; callbacks.set(id, callback); return id;
+    });
+    vi.stubGlobal("cancelAnimationFrame", (id: number) => callbacks.delete(id));
+    const abort = new AbortController();
+    const onUpdate = vi.fn();
+    const handle = createSpring({ from: 0, to: 5, signal: abort.signal, onUpdate });
+    abort.abort();
+    expect((await handle.finished).status).toBe("cancelled");
+    expect(callbacks.size).toBe(0);
+    expect(onUpdate).toHaveBeenCalledTimes(1);
   });
 });
 
