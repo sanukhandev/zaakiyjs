@@ -71,6 +71,33 @@ describe("headless accessible patterns", () => {
     expect(roving.activeId).toBe("a");
     disposeOwner(f.owner);
   });
+  it("roving skips ancestor-hidden, aria-disabled and detached items", () => {
+    const f = fixture(), parent = document.createElement("div");
+    f.root.append(parent);
+    const first = document.createElement("button"), blocked = document.createElement("button");
+    const wrapper = document.createElement("section"), last = document.createElement("button");
+    wrapper.append(blocked);
+    parent.append(first, wrapper, last);
+    const roving = createRovingFocus({ container: parent, owner: f.owner });
+    roving.register({ id: "first", element: first });
+    roving.register({ id: "blocked", element: blocked });
+    roving.register({ id: "last", element: last });
+    wrapper.hidden = true;
+    first.focus();
+    first.dispatchEvent(key("ArrowRight"));
+    expect(document.activeElement).toBe(last);
+    wrapper.hidden = false;
+    blocked.setAttribute("aria-disabled", "true");
+    first.focus();
+    first.dispatchEvent(key("ArrowRight"));
+    expect(document.activeElement).toBe(last);
+    blocked.removeAttribute("aria-disabled");
+    wrapper.remove();
+    first.focus();
+    first.dispatchEvent(key("ArrowRight"));
+    expect(document.activeElement).toBe(last);
+    disposeOwner(f.owner);
+  });
   it("disclosure controls hidden panel with native button semantics", () => {
     const f = fixture(), trigger = document.createElement("button"), panel = document.createElement("div");
     panel.id = "details";
@@ -119,6 +146,20 @@ describe("headless accessible patterns", () => {
     expect(menu.open.value).toBe(false);
     disposeOwner(f.owner);
   });
+  it("opening menu with ArrowUp focuses the final enabled item", () => {
+    const f = fixture(), trigger = document.createElement("button"), content = document.createElement("div");
+    content.id = "actions-up";
+    f.root.append(trigger); f.host.append(content);
+    const first = document.createElement("button"), last = document.createElement("button");
+    content.append(first, last);
+    const menu = createMenu({ trigger, content, owner: f.owner, overlays: f.overlays });
+    menu.register({ id: "first", element: first });
+    menu.register({ id: "last", element: last });
+    trigger.focus(); trigger.dispatchEvent(key("ArrowUp")); flushSync();
+    expect(menu.open.value).toBe(true);
+    expect(document.activeElement).toBe(last);
+    disposeOwner(f.owner);
+  });
   it("listbox supports active descendant, typeahead and explicit selection", () => {
     const f = fixture(), list = document.createElement("div");
     f.root.append(list);
@@ -135,6 +176,19 @@ describe("headless accessible patterns", () => {
     list.dispatchEvent(key("Enter")); flushSync();
     expect(lb.selected.value).toBe("b");
     expect(beta.getAttribute("aria-selected")).toBe("true");
+    disposeOwner(f.owner);
+  });
+  it("listbox never swallows keyboard events from nested editable descendants", () => {
+    const f = fixture(), list = document.createElement("div"), editable = document.createElement("input");
+    const a = document.createElement("div"), b = document.createElement("div");
+    a.id = "choice-a"; b.id = "choice-b";
+    list.append(a, b, editable); f.root.append(list);
+    const box = createListbox({ element: list, owner: f.owner });
+    box.register({ id: "a", element: a }); box.register({ id: "b", element: b });
+    const event = key("ArrowDown");
+    editable.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(box.activeId).toBe("a");
     disposeOwner(f.owner);
   });
   it("controlled listbox keeps external selection immutable", () => {

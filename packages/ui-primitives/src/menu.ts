@@ -58,9 +58,19 @@ export function createMenu(options: MenuOptions): MenuController {
     reason: event instanceof MouseEvent && event.detail === 0 ? "keyboard" : "pointer",
     originalEvent: event
   }), owner);
+  let focusLastOnOpen = false;
   const triggerKeys = listen(trigger, "keydown", (event: Event) => {
     if (!(event instanceof KeyboardEvent) || !["ArrowDown", "ArrowUp"].includes(event.key)) return;
-    event.preventDefault(); setOpen(true, { reason: "keyboard", originalEvent: event });
+    event.preventDefault();
+    focusLastOnOpen = event.key === "ArrowUp";
+    setOpen(true, { reason: "keyboard", originalEvent: event });
+    // When already open, update the active item without waiting for a reactive flush.
+    if (!content.hidden) {
+      const eligible = roving.items().filter(item => !item.disabled && !item.element.matches(":disabled"));
+      const target = focusLastOnOpen ? eligible.at(-1) : eligible[0];
+      if (target) roving.move(target.id);
+      focusLastOnOpen = false;
+    }
   }, owner);
   const itemKeys = listen(content, "keydown", (event: Event) => {
     if (!(event instanceof KeyboardEvent) || !["Enter", " "].includes(event.key)) return;
@@ -81,8 +91,10 @@ export function createMenu(options: MenuOptions): MenuController {
         element: content, trigger, dismissOnEscape: true, dismissOnOutsidePointer: true,
         onDismiss: event => setOpen(false, { reason: "dismiss", originalEvent: event.originalEvent })
       });
-      const first = roving.items().find(x => !x.disabled && !x.element.matches(":disabled"));
-      first?.element.focus();
+      const eligible = roving.items().filter(x => !x.disabled && !x.element.matches(":disabled"));
+      const target = focusLastOnOpen ? eligible.at(-1) : eligible[0];
+      if (target) roving.move(target.id);
+      focusLastOnOpen = false;
     }
     return () => {
       layer?.dispose(); layer = null;
