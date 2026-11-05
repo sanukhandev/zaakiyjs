@@ -54,6 +54,12 @@ jobs:
         run: |
           python3 -m pip install 'playwright==1.64.1'
           python3 -m playwright install --with-deps chromium firefox webkit
+      - name: Pin axe-core 4.14.0 for template accessibility auditing
+        shell: bash
+        run: |
+          npm pack axe-core@4.14.0 --pack-destination "$RUNNER_TEMP" --silent
+          tar -xOzf "$RUNNER_TEMP/axe-core-4.14.0.tgz" package/axe.min.js > "$RUNNER_TEMP/zaakiy-templates-axe.min.js"
+          test -s "$RUNNER_TEMP/zaakiy-templates-axe.min.js"
       - name: Execute generated-app workflows, responsive, keyboard and native dialog checks
         shell: bash
         run: |
@@ -73,7 +79,7 @@ jobs:
             done
             test "$ready" -eq 1
           done
-          python3 packages/templates/test/browser/acceptance.py
+          ZAAKIY_TEMPLATES_AXE_PATH="$RUNNER_TEMP/zaakiy-templates-axe.min.js" python3 packages/templates/test/browser/acceptance.py
       - name: Assert browser payload excludes build-only and alternate framework modules
         run: |
           if grep -RE '(@zaakiyjs/(templates|ai|compiler|vite-plugin)|react-dom|zone\.js|vue-router)' packages/templates/test/.browser-generated/*/dist/assets --include='*.js'; then

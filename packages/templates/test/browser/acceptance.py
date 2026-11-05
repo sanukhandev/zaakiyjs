@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Native Chromium, Firefox and WebKit smoke tests for generated ZaakiyJS apps."""
 from __future__ import annotations
+import os
 import sys
 import traceback
 from playwright.sync_api import sync_playwright, expect, Page
@@ -8,9 +9,23 @@ from playwright.sync_api import sync_playwright, expect, Page
 BASE = "http://127.0.0.1:"
 PORTS = {"dashboard": 4191, "authentication": 4192, "settings": 4193, "crud": 4194}
 
+def audit_accessibility(page: Page) -> None:
+    """Run pinned axe-core WCAG 2.0/2.1 A/AA against the actual generated DOM."""
+    violations = page.evaluate("""async () => {
+      const result=await window.axe.run(document,{
+        runOnly:{type:"tag",values:["wcag2a","wcag2aa","wcag21a","wcag21aa"]}
+      });
+      return result.violations.map(x=>({
+        id:x.id,impact:x.impact,
+        nodes:x.nodes.map(node=>({target:node.target,summary:node.failureSummary}))
+      }));
+    }""")
+    assert not violations, f"Generated application WCAG violations: {violations}"
+
 def start(page: Page, name: str) -> None:
     page.goto(BASE + str(PORTS[name]), wait_until="networkidle", timeout=30000)
     expect(page.locator("main")).to_be_visible(timeout=15000)
+    page.add_script_tag(path=os.environ["ZAAKIY_TEMPLATES_AXE_PATH"])
 
 def dashboard(page: Page) -> None:
     expect(page.get_by_role("heading", name="Operations overview")).to_be_visible()
@@ -83,7 +98,9 @@ def main() -> int:
                         page.on("pageerror",lambda error:errors.append(str(error)))
                         try:
                             start(page,name)
+                            audit_accessibility(page)
                             case(page)
+                            audit_accessibility(page)
                             assert not errors,errors
                             assert page.evaluate("document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2")
                             print(f"PASS {engine_name} {name} {width}",flush=True)
