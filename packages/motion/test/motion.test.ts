@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOwner, disposeOwner } from "@zaakiyjs/core";
 import {
-  animateElement, createSpring, createPresence, captureLayout, animateKeyedMoves,
+  animateElement, animateOwned, createSpring, createStandalonePresence, createPresence, captureLayout, animateKeyedMoves,
   observeViewport, createGestures
 } from "../src/index.js";
 import { runRouteTransition } from "../src/route.js";
@@ -128,7 +128,7 @@ describe("spring, presence and layout", () => {
     document.body.append(element);
     const { api } = fakeAnimation(element);
     const exited = vi.fn();
-    const presence = createPresence(element, {
+    const presence = createStandalonePresence(element, {
       owner, enter: { keyframes: [] }, exit: { keyframes: [] }, onExited: exited
     });
     presence.setPresent(false);
