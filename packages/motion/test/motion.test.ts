@@ -334,6 +334,34 @@ describe("observers, gestures and route adapter", () => {
     expect(onTap).toHaveBeenCalledOnce();
   });
 
+  it("rejects route commits for disposed owners before touching DOM", async () => {
+    const owner = createOwner();
+    const commit = vi.fn();
+    disposeOwner(owner);
+    await expect(runRouteTransition(commit, { owner, document }))
+      .rejects.toThrow("disposed");
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("does not run a delayed native View Transition callback after owner teardown", async () => {
+    const owner = createOwner();
+    const commit = vi.fn();
+    const skipTransition = vi.fn();
+    const fakeDocument = {
+      startViewTransition(update: () => Promise<void>) {
+        const updateCallbackDone = Promise.resolve().then(update);
+        return { updateCallbackDone, finished: updateCallbackDone, skipTransition };
+      }
+    } as unknown as Document;
+    const pending = runRouteTransition(commit, {
+      owner, document: fakeDocument, reducedMotion: "force"
+    });
+    disposeOwner(owner);
+    await expect(pending).rejects.toThrow("disposed");
+    expect(commit).not.toHaveBeenCalled();
+    expect(skipTransition).toHaveBeenCalled();
+  });
+
   it("runs route commit on fallback and propagates failed commits", async () => {
     const commit = vi.fn();
     expect(await runRouteTransition(commit, { document })).toEqual({ animated: false });
