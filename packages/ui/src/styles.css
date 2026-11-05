@@ -1,0 +1,39 @@
+/* Explicit, static UI asset. Import @zaakiyjs/ui/styles.css once at app entry.
+   All brand-dependent values reuse the existing --z-* Zaakiy Styles variables. */
+.zui-button{appearance:none;display:inline-flex;align-items:center;justify-content:center;gap:var(--z-space-2);border:1px solid transparent;border-radius:var(--z-radius-md);font:inherit;font-weight:600;line-height:1.25;cursor:pointer;transition:background-color var(--z-duration-normal) var(--z-easing-standard),color var(--z-duration-normal) var(--z-easing-standard),border-color var(--z-duration-normal) var(--z-easing-standard)}
+.zui-button:focus-visible,.zui-input:focus-visible,.zui-checkbox:focus-visible{outline:2px solid var(--z-color-primary);outline-offset:3px}
+.zui-button:disabled{cursor:not-allowed;opacity:.55}
+.zui-button--sm{padding:var(--z-space-1) var(--z-space-2);font-size:var(--z-font-size-sm)}
+.zui-button--md{padding:var(--z-space-2) var(--z-space-4);font-size:var(--z-font-size-base)}
+.zui-button--lg{padding:var(--z-space-3) var(--z-space-5);font-size:var(--z-font-size-lg)}
+.zui-button--primary{background:var(--z-color-primary);color:white}
+.zui-button--secondary{background:var(--z-color-secondary);color:white}
+.zui-button--danger{background:var(--z-color-danger);color:white}
+.zui-button--outline{background:transparent;color:var(--z-color-foreground);border-color:var(--z-color-border)}
+.zui-button--ghost{background:transparent;color:var(--z-color-foreground)}
+.zui-button--outline:hover:not(:disabled),.zui-button--ghost:hover:not(:disabled){background:var(--z-color-surface)}
+.zui-badge{display:inline-flex;align-items:center;padding:var(--z-space-1) var(--z-space-2);border-radius:var(--z-radius-full);font-size:var(--z-font-size-xs);font-weight:600;line-height:1.25}
+.zui-badge--neutral{background:var(--z-color-surface);color:var(--z-color-foreground)}
+.zui-badge--success{background:var(--z-color-success);color:white}
+.zui-badge--warning{background:var(--z-color-warning);color:white}
+.zui-badge--danger{background:var(--z-color-danger);color:white}
+.zui-field{display:flex;flex-direction:column;gap:var(--z-space-1)}
+.zui-field-label{font:inherit;font-weight:600;font-size:var(--z-font-size-sm);color:var(--z-color-foreground)}
+.zui-input{box-sizing:border-box;width:100%;min-width:0;border:1px solid var(--z-color-border);border-radius:var(--z-radius-md);padding:var(--z-space-2) var(--z-space-3);font:inherit;background:var(--z-color-background);color:var(--z-color-foreground)}
+.zui-input[aria-invalid="true"]{border-color:var(--z-color-danger)}
+.zui-input:disabled{opacity:.6;cursor:not-allowed}
+.zui-field-error{margin:0;color:var(--z-color-danger);font-size:var(--z-font-size-sm)}
+.zui-check-label{display:inline-flex;align-items:center;gap:var(--z-space-2);font:inherit;cursor:pointer;color:var(--z-color-foreground)}
+.zui-checkbox{accent-color:var(--z-color-primary)}
+.zui-progress{display:block;width:100%;accent-color:var(--z-color-primary)}
+.zui-separator{border:0;border-top:1px solid var(--z-color-border);margin:var(--z-space-2) 0}
+.zui-separator--vertical{border:0;border-left:1px solid var(--z-color-border);width:0;min-height:1em;align-self:stretch;margin:0 var(--z-space-2)}
+.zui-alert{border:1px solid var(--z-color-border);border-radius:var(--z-radius-md);padding:var(--z-space-3);color:var(--z-color-foreground);background:var(--z-color-surface)}
+.zui-alert--success{border-color:var(--z-color-success)}
+.zui-alert--warning{border-color:var(--z-color-warning)}
+.zui-alert--danger{border-color:var(--z-color-danger)}
+.zui-alert--info{border-color:var(--z-color-primary)}
+.zui-table{width:100%;border-collapse:collapse;color:var(--z-color-foreground)}
+.zui-table caption{text-align:left;font-weight:600;padding:var(--z-space-2)}
+.zui-table th,.zui-table td{border-bottom:1px solid var(--z-color-border);padding:var(--z-space-2);text-align:left}
+@media (prefers-reduced-motion:reduce){.zui-button{transition:none}}

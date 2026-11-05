@@ -1,0 +1,43 @@
+{
+  "name": "@zaakiyjs/ui",
+  "version": "0.0.0",
+  "description": "ZaakiyJS brand-aware native DOM UI foundation (draft P2 slice)",
+  "type": "module",
+  "sideEffects": [
+    "./src/styles.css"
+  ],
+  "files": [
+    "dist",
+    "src/styles.css",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./styles.css": "./src/styles.css"
+  },
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "scripts": {
+    "lint": "eslint src test",
+    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "build": "tsc --project tsconfig.build.json",
+    "test": "vitest run test"
+  },
+  "dependencies": {
+    "@zaakiyjs/core": "workspace:^",
+    "@zaakiyjs/dom": "workspace:^",
+    "@zaakiyjs/signals": "workspace:^",
+    "@zaakiyjs/styles": "workspace:^"
+  },
+  "devDependencies": {
+    "@zaakiyjs/compiler": "workspace:^",
+    "jsdom": "^26.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
