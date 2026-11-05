@@ -1,0 +1,76 @@
+name: P2 Motion Native Browser
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p2-motion-native-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: motion / native-chromium-firefox-webkit
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Frozen workspace install and ESM build
+        run: pnpm install --frozen-lockfile && pnpm build
+      - name: Typecheck Motion browser fixture and build optimized Vite assets
+        run: |
+          pnpm exec tsc --noEmit --project packages/motion/test/browser/tsconfig.json
+          pnpm exec vite build --config packages/motion/test/browser/vite.config.ts
+      - name: Record opt-in browser code size
+        run: |
+          node --input-type=module -e '
+            import { readdirSync, readFileSync } from "node:fs";
+            import { gzipSync } from "node:zlib";
+            const dir = "packages/motion/test/browser/dist/assets";
+            for (const file of readdirSync(dir).filter(x => x.endsWith(".js"))) {
+              const bytes = readFileSync(dir + "/" + file);
+              console.log("MOTION_BROWSER_BUNDLE", file, "raw", bytes.length, "gzip", gzipSync(bytes).length);
+            }
+          '
+      - name: Install pinned Playwright and Chromium Firefox WebKit
+        run: |
+          python3 -m pip install 'playwright==1.64.1'
+          python3 -m playwright install --with-deps chromium firefox webkit
+      - name: Run native animation, cancellation, gesture, scroll and layout tests in all engines
+        shell: bash
+        run: |
+          pnpm exec vite preview --config packages/motion/test/browser/vite.config.ts --host 127.0.0.1 --port 4195 --strictPort > /tmp/zaakiy-motion-preview.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:4195/ > /dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then cat /tmp/zaakiy-motion-preview.log; exit 1; fi
+          python3 packages/motion/test/browser/motion_acceptance.py --base-url http://127.0.0.1:4195/
+      - name: Upload Motion browser failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: motion-browser-diagnostics
+          path: |
+            /tmp/zaakiy-motion-*.png
+            /tmp/zaakiy-motion-preview.log
+          if-no-files-found: ignore
