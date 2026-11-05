@@ -1,6 +1,7 @@
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
+import type { InteractionDetail, ValueChange } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { createRovingFocus } from "./keyboard.js";
 import { listen, own, createRegistrationGroup } from "./lifecycle.js";
@@ -15,6 +16,7 @@ export interface MenuOptions {
   readonly open?: ReadonlySignal<boolean>;
   readonly defaultOpen?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
+  readonly onValueChange?: ValueChange<boolean>;
   readonly direction?: "ltr" | "rtl";
 }
 export interface MenuItem {
@@ -44,16 +46,20 @@ export function createMenu(options: MenuOptions): MenuController {
   const registrations = createRegistrationGroup(owner);
   const state = createControlledState({
     owner, value: options.open, defaultValue: options.defaultOpen ?? false,
-    onChange: next => options.onOpenChange?.(next)
+    onChange: next => options.onOpenChange?.(next),
+    onValueChange: options.onValueChange
   });
   const roving = createRovingFocus({
     container: content, owner, orientation: "vertical", direction: options.direction
   });
-  const setOpen = (next: boolean) => state.set(next);
-  const triggerClick = listen(trigger, "click", () => setOpen(!state.value.peek()), owner);
+  const setOpen = (next: boolean, detail: InteractionDetail = { reason: "programmatic" }) => state.set(next, detail);
+  const triggerClick = listen(trigger, "click", event => setOpen(!state.value.peek(), {
+    reason: event instanceof MouseEvent && event.detail === 0 ? "keyboard" : "pointer",
+    originalEvent: event
+  }), owner);
   const triggerKeys = listen(trigger, "keydown", (event: Event) => {
     if (!(event instanceof KeyboardEvent) || !["ArrowDown", "ArrowUp"].includes(event.key)) return;
-    event.preventDefault(); setOpen(true);
+    event.preventDefault(); setOpen(true, { reason: "keyboard", originalEvent: event });
   }, owner);
   const itemKeys = listen(content, "keydown", (event: Event) => {
     if (!(event instanceof KeyboardEvent) || !["Enter", " "].includes(event.key)) return;
@@ -62,7 +68,7 @@ export function createMenu(options: MenuOptions): MenuController {
     if (!item || item.disabled || item.element.matches(":disabled")) return;
     event.preventDefault();
     item.onSelect?.();
-    setOpen(false);
+    setOpen(false, { reason: "keyboard", originalEvent: event });
   }, owner);
   let layer: PrimitiveHandle | null = null;
   const rendering = effect(() => {
@@ -72,7 +78,7 @@ export function createMenu(options: MenuOptions): MenuController {
     if (opened) {
       layer = options.overlays.add({
         element: content, trigger, dismissOnEscape: true, dismissOnOutsidePointer: true,
-        onDismiss: () => setOpen(false)
+        onDismiss: event => setOpen(false, { reason: "dismiss", originalEvent: event.originalEvent })
       });
       const first = roving.items().find(x => !x.disabled && !x.element.matches(":disabled"));
       first?.element.focus();
@@ -112,7 +118,7 @@ export function createMenu(options: MenuOptions): MenuController {
           if (item.disabled || item.element.matches(":disabled")) {
             event.preventDefault(); return;
           }
-          item.onSelect?.(); setOpen(false);
+          item.onSelect?.(); setOpen(false, { reason: "pointer", originalEvent: event });
         }, registrationOwner);
         return () => {
           click.dispose(); itemRoving.dispose(); items.delete(item.id);

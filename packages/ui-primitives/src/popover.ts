@@ -1,6 +1,7 @@
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
+import type { InteractionDetail, ValueChange } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { createFocusScope } from "./focus.js";
 import type { FocusManager, FocusScopeHandle } from "./focus.js";
@@ -17,6 +18,7 @@ export interface PopoverOptions {
   readonly open?: ReadonlySignal<boolean>;
   readonly defaultOpen?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
+  readonly onValueChange?: ValueChange<boolean>;
   readonly autoFocus?: boolean;
   readonly dismissOnOutsidePointer?: boolean;
   readonly dismissOnEscape?: boolean;
@@ -35,10 +37,14 @@ export function createPopover(options: PopoverOptions): PopoverController {
   trigger.setAttribute("aria-controls", content.id);
   const state = createControlledState({
     owner, value: options.open, defaultValue: options.defaultOpen ?? false,
-    onChange: next => options.onOpenChange?.(next)
+    onChange: next => options.onOpenChange?.(next),
+    onValueChange: options.onValueChange
   });
-  const setOpen = (next: boolean) => state.set(next);
-  const click = listen(trigger, "click", () => setOpen(!state.value.peek()), owner);
+  const setOpen = (next: boolean, detail: InteractionDetail = { reason: "programmatic" }) => state.set(next, detail);
+  const click = listen(trigger, "click", event => setOpen(!state.value.peek(), {
+    reason: event instanceof MouseEvent && event.detail === 0 ? "keyboard" : "pointer",
+    originalEvent: event
+  }), owner);
   let layer: PrimitiveHandle | null = null;
   let focusScope: FocusScopeHandle | null = null;
   const render = effect(() => {
@@ -50,7 +56,7 @@ export function createPopover(options: PopoverOptions): PopoverController {
         element: content, trigger,
         dismissOnEscape: options.dismissOnEscape ?? true,
         dismissOnOutsidePointer: options.dismissOnOutsidePointer ?? true,
-        onDismiss: () => setOpen(false)
+        onDismiss: event => setOpen(false, { reason: "dismiss", originalEvent: event.originalEvent })
       });
       if (options.autoFocus) focusScope = createFocusScope({
         container: content, owner, manager: options.focusManager ?? options.overlays.focusManager,

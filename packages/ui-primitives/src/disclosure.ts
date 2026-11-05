@@ -1,6 +1,7 @@
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
+import type { InteractionDetail, ValueChange } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { listen, own, createRegistrationGroup } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
@@ -14,6 +15,7 @@ export interface DisclosureOptions {
   readonly disabled?: boolean;
   readonly readonly?: boolean;
   readonly onExpandedChange?: (value: boolean) => void;
+  readonly onValueChange?: ValueChange<boolean>;
 }
 export interface DisclosureController extends PrimitiveHandle {
   readonly expanded: ReadonlySignal<boolean>;
@@ -35,23 +37,27 @@ export function createDisclosure(options: DisclosureOptions): DisclosureControll
   if (options.disabled) trigger.setAttribute("aria-disabled", "true");
   const state = createControlledState({
     owner, value: options.expanded, defaultValue: options.defaultExpanded ?? false,
-    onChange: next => options.onExpandedChange?.(next)
+    onChange: next => options.onExpandedChange?.(next),
+    onValueChange: options.onValueChange
   });
-  const setExpanded = (next: boolean) => {
+  const setExpanded = (next: boolean, detail: InteractionDetail = { reason: "programmatic" }) => {
     if (options.disabled || options.readonly) return;
-    state.set(next);
+    state.set(next, detail);
   };
   const update = effect(() => {
     const expanded = state.value.value;
     trigger.setAttribute("aria-expanded", String(expanded));
     panel.hidden = !expanded;
   }, { phase: "render" });
-  const click = listen(trigger, "click", () => setExpanded(!state.value.peek()), owner);
+  const click = listen(trigger, "click", event => setExpanded(!state.value.peek(), {
+    reason: event instanceof MouseEvent && event.detail === 0 ? "keyboard" : "pointer",
+    originalEvent: event
+  }), owner);
   const key = listen(trigger, "keydown", (event: Event) => {
     if (!(event instanceof KeyboardEvent) || trigger.tagName === "BUTTON" || trigger.tagName === "SUMMARY") return;
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
-    setExpanded(!state.value.peek());
+    setExpanded(!state.value.peek(), { reason: "keyboard", originalEvent: event });
   }, owner);
   const lifecycle = own(() => {
     update.dispose(); click.dispose(); key.dispose();
