@@ -109,6 +109,48 @@ describe("focus, layers, dialogs", () => {
     expect(permanent.hasAttribute("inert")).toBe(true);
     disposeOwner(f.owner);
   });
+  it("keeps a sibling-portalled menu above its modal interactive and contained", () => {
+    const f = tree();
+    const dialog = document.createElement("section");
+    const trigger = document.createElement("button");
+    const outside = document.createElement("section");
+    const menu = document.createElement("section"), item = document.createElement("button");
+    dialog.append(trigger); menu.append(item); f.host.append(dialog, menu, outside);
+    f.launch.focus();
+    const controller = createDialog({
+      owner: f.owner, element: dialog, overlays: f.overlays, ariaLabel: "Modal", defaultOpen: true
+    });
+    flushSync();
+    expect(menu.hasAttribute("inert")).toBe(true);
+    const floating = f.overlays.add({ element: menu, trigger, dismissOnEscape: true });
+    expect(menu.hasAttribute("inert")).toBe(false);
+    expect(outside.hasAttribute("inert")).toBe(true);
+    expect(f.root.hasAttribute("inert")).toBe(true);
+    item.focus();
+    expect(document.activeElement).toBe(item);
+    floating.dispose();
+    expect(menu.hasAttribute("inert")).toBe(true);
+    controller.setOpen(false); flushSync();
+    expect(f.root.hasAttribute("inert")).toBe(false);
+    expect(document.activeElement).toBe(f.launch);
+    disposeOwner(f.owner);
+  });
+  it("repeated dialog activation releases transient child owners and restores focus", () => {
+    const f = tree(), modal = document.createElement("section");
+    const first = document.createElement("button");
+    modal.append(first); f.host.append(modal); f.launch.focus();
+    const dialog = createDialog({ owner: f.owner, element: modal, overlays: f.overlays, ariaLabel: "Repeat" });
+    const scopedChildren = () => (f.owner as unknown as { children: Set<unknown> }).children.size;
+    const baseline = scopedChildren();
+    for (let index = 0; index < 30; index++) {
+      dialog.setOpen(true); flushSync();
+      expect(document.activeElement).toBe(first);
+      dialog.setOpen(false); flushSync();
+      expect(document.activeElement).toBe(f.launch);
+      expect(scopedChildren()).toBe(baseline);
+    }
+    disposeOwner(f.owner);
+  });
   it("only topmost layer receives outside pointer and Escape dismissal", () => {
     const f = tree();
     const first = document.createElement("section"), second = document.createElement("section");

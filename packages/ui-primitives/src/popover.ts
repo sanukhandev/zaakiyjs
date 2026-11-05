@@ -4,8 +4,8 @@ import type { ReadonlySignal } from "@zaakiyjs/signals";
 import type { InteractionDetail, ValueChange, ElementController } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { createFocusScope } from "./focus.js";
-import type { FocusManager, FocusScopeHandle } from "./focus.js";
-import { listen, own } from "./lifecycle.js";
+import type { FocusManager } from "./focus.js";
+import { listen, own, createRegistration } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
 import type { OverlayManager } from "./layers.js";
 
@@ -47,7 +47,7 @@ export function createPopover(options: PopoverOptions): PopoverController {
     originalEvent: event
   }), owner);
   let layer: PrimitiveHandle | null = null;
-  let focusScope: FocusScopeHandle | null = null;
+  let focusRegistration: PrimitiveHandle | null = null;
   const render = effect(() => {
     const open = state.value.value;
     content.hidden = !open;
@@ -59,14 +59,18 @@ export function createPopover(options: PopoverOptions): PopoverController {
         dismissOnOutsidePointer: options.dismissOnOutsidePointer ?? true,
         onDismiss: event => setOpen(false, { reason: "dismiss", originalEvent: event.originalEvent })
       });
-      if (options.autoFocus) focusScope = createFocusScope({
-        container: content, owner, manager: options.focusManager ?? options.overlays.focusManager,
-        contain: false, restoreFocus: false
+      if (options.autoFocus) focusRegistration = createRegistration(owner, activationOwner => {
+        const focusScope = createFocusScope({
+          container: content, owner: activationOwner,
+          manager: options.focusManager ?? options.overlays.focusManager,
+          contain: false, restoreFocus: false
+        });
+        return () => focusScope.dispose();
       });
     }
     return () => {
       layer?.dispose(); layer = null;
-      focusScope?.dispose(); focusScope = null;
+      focusRegistration?.dispose(); focusRegistration = null;
       if (content.contains(content.ownerDocument.activeElement) && trigger.isConnected && !owner.disposed) trigger.focus();
     };
   }, { phase: "render" });

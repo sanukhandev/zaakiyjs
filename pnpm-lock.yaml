@@ -196,6 +196,42 @@ importers:
         specifier: 8.5.32
         version: 8.5.32
 
+  packages/templates:
+    devDependencies:
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite:
+        specifier: 6.4.5
+        version: 6.4.5(@types/node@22.15.30)
+      '@zaakiyjs/vite-plugin':
+        specifier: workspace:^
+        version: link:../vite-plugin
+      '@zaakiyjs/styles':
+        specifier: workspace:^
+        version: link:../styles
+      '@zaakiyjs/async':
+        specifier: workspace:^
+        version: link:../async
+      '@zaakiyjs/forms':
+        specifier: workspace:^
+        version: link:../forms
+      '@zaakiyjs/signals':
+        specifier: workspace:^
+        version: link:../signals
+      '@zaakiyjs/dom':
+        specifier: workspace:^
+        version: link:../dom
+      '@zaakiyjs/core':
+        specifier: workspace:^
+        version: link:../core
+      '@zaakiyjs/compiler':
+        specifier: workspace:^
+        version: link:../compiler
+      '@types/node':
+        specifier: 22.15.30
+        version: 22.15.30
+
   packages/vite-plugin:
     dependencies:
       '@zaakiyjs/compiler':

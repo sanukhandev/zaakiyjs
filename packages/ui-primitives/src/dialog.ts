@@ -4,8 +4,8 @@ import type { ReadonlySignal } from "@zaakiyjs/signals";
 import type { InteractionDetail, ValueChange, ElementController } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { createFocusScope } from "./focus.js";
-import type { FocusManager, FocusScopeHandle } from "./focus.js";
-import { listen, own } from "./lifecycle.js";
+import type { FocusManager } from "./focus.js";
+import { listen, own, createRegistration } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
 import type { OverlayManager, DismissReason } from "./layers.js";
 
@@ -83,12 +83,10 @@ export function createDialog(options: DialogOptions): DialogController {
     if (typeof native.close === "function") native.close();
     else native.removeAttribute("open");
   };
-  let focusScope: FocusScopeHandle | null = null;
-  let layer: PrimitiveHandle | null = null;
+  let activation: PrimitiveHandle | null = null;
   const release = () => {
-    // The top-level inertness is cleared before restoration is attempted.
-    layer?.dispose(); layer = null;
-    focusScope?.dispose(); focusScope = null;
+    // Remove the child owner and all captured focus targets on every close.
+    activation?.dispose(); activation = null;
     hideNative();
   };
   let cancel: PrimitiveHandle | null = null;
@@ -109,16 +107,29 @@ export function createDialog(options: DialogOptions): DialogController {
       element.hidden = false;
       try {
         showNative();
-        layer = overlays.add({
-          element, modal: options.modal ?? true,
-          dismissOnEscape: options.escapeDismiss ?? true,
-          dismissOnOutsidePointer: options.outsidePointerDismiss ?? false,
-          onDismiss: event => setOpen(false, event.reason, event.originalEvent)
-        });
-        focusScope = createFocusScope({
-          owner, container: element, manager: options.focusManager ?? overlays.focusManager,
-          trapFocus: options.modal ?? true, restoreFocus: options.restoreFocus ?? true,
-          initialFocus: options.initialFocus
+        activation = createRegistration(owner, activationOwner => {
+          const layer = overlays.add({
+            element, modal: options.modal ?? true,
+            dismissOnEscape: options.escapeDismiss ?? true,
+            dismissOnOutsidePointer: options.outsidePointerDismiss ?? false,
+            onDismiss: event => setOpen(false, event.reason, event.originalEvent)
+          });
+          try {
+            const focusScope = createFocusScope({
+              owner: activationOwner, restoreOwner: owner, container: element,
+              manager: options.focusManager ?? overlays.focusManager,
+              trapFocus: options.modal ?? true, restoreFocus: options.restoreFocus ?? true,
+              initialFocus: options.initialFocus,
+              additionalContainers: () => overlays.above(element)
+            });
+            return () => {
+              layer.dispose();
+              focusScope.dispose();
+            };
+          } catch (error) {
+            layer.dispose();
+            throw error;
+          }
         });
       } catch (error) {
         release();
