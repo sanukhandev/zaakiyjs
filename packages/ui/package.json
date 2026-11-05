@@ -25,7 +25,9 @@
     "lint": "eslint src test",
     "typecheck": "tsc --noEmit --project tsconfig.json",
     "build": "tsc --project tsconfig.build.json",
-    "test": "vitest run test"
+    "test": "vitest run test",
+    "test:browser": "python3 test/browser/acceptance.py",
+    "pack:check": "npm pack --dry-run --json"
   },
   "dependencies": {
     "@zaakiyjs/core": "workspace:^",
@@ -35,7 +37,9 @@
   },
   "devDependencies": {
     "@zaakiyjs/compiler": "workspace:^",
-    "jsdom": "^26.1.0"
+    "jsdom": "^26.1.0",
+    "@zaakiyjs/forms": "workspace:^",
+    "@zaakiyjs/vite-plugin": "workspace:^"
   },
   "publishConfig": {
     "access": "public"

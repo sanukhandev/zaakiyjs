@@ -40,7 +40,7 @@ function Showcase() {
     <h1>Zaakiy UI browser acceptance</h1>
     <Button id="save" label="Save" onPress={() => {
       submitCount.value++;
-      toasts.announce({ message: "Saved " + submitCount.value, durationMs: 300 });
+      toasts.announce({ message: "Saved " + submitCount.value, durationMs: 2000 });
     }}/>
     <Button id="disabled" label="Disabled" disabled onPress={() => { submitCount.value++; }}/>
     <Button id="loading" label="Loading" loading onPress={() => { submitCount.value++; }}/>
@@ -80,7 +80,7 @@ function Showcase() {
     <Breadcrumbs items={[{label:"Home",href:"/"},{label:"UI"}]}/>
   </main>;
 }
-const handle = mount(() => <Showcase/>, target);
+const handle = mount(() => <div><Showcase/></div>, target);
 (window as unknown as {
   __zaakiyUi?: {
     dispose():void;
