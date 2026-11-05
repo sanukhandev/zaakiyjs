@@ -35,7 +35,15 @@ export function createDismissableLayer(options: DismissableLayerOptions): Elemen
     dismissOnEscape: true, dismissOnOutsidePointer: true,
     onDismiss: e => options.onDismiss({ reason: "dismiss", originalEvent: e.originalEvent })
   });
-  return { owner: options.owner, element: options.element, dispose: () => layer.dispose() };
+  // A manager can outlive a feature/component owner. Releasing that child owner
+  // must still tear down every layer it registered with the application stack.
+  try {
+    const owned = own(() => layer.dispose(), options.owner);
+    return { owner: options.owner, element: options.element, dispose: () => owned.dispose() };
+  } catch (error) {
+    layer.dispose();
+    throw error;
+  }
 }
 export function createOverlayController(options: OverlayOptions): OverlayController {
   const { owner, element } = options;
