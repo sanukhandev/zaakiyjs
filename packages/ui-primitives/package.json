@@ -23,7 +23,8 @@
     "build": "tsc --project tsconfig.build.json",
     "test": "vitest run test",
     "pack:check": "npm pack --dry-run --json",
-    "test:browser": "python3 test/browser/acceptance.py"
+    "test:browser": "python3 test/browser/acceptance.py",
+    "size:report": "node scripts/size.mjs"
   },
   "publishConfig": {
     "access": "public"
