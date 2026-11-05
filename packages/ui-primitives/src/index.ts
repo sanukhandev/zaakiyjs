@@ -1,12 +1,13 @@
 /** Headless native DOM controllers; no runtime renderer or styling dependency. */
 export { own, listen, ownedTimeout, createIdScope } from "./lifecycle.js";
 export type { PrimitiveHandle, OwnedOptions } from "./lifecycle.js";
+export type { DisposableHandle, InteractionReason, InteractionDetail, ValueChange, Controllable, ElementController } from "./contracts.js";
 export { createControlledState } from "./state.js";
 export type { ControlledState, ControlledStateOptions } from "./state.js";
 export { createFocusManager, createFocusScope, focusables, isFocusable } from "./focus.js";
 export type { FocusManager, FocusScopeHandle, FocusScopeOptions } from "./focus.js";
 export { createPortal } from "./portal.js";
-export type { PortalOptions } from "./portal.js";
+export type { PortalOptions, PortalHandle } from "./portal.js";
 export { createOverlayManager } from "./layers.js";
 export type { OverlayManager, OverlayManagerOptions, LayerOptions, DismissEvent, DismissReason } from "./layers.js";
 export { createRovingFocus } from "./keyboard.js";
@@ -25,3 +26,5 @@ export { createTooltip } from "./tooltip.js";
 export type { TooltipController, TooltipOptions } from "./tooltip.js";
 export { createPopover } from "./popover.js";
 export type { PopoverController, PopoverOptions } from "./popover.js";
+export { createDismissableLayer, createOverlayController } from "./overlay.js";
+export type { DismissableLayerOptions, OverlayOptions, OverlayController } from "./overlay.js";

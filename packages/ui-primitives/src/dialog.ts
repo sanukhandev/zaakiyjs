@@ -31,6 +31,7 @@ export interface DialogController extends PrimitiveHandle {
 }
 export function createDialog(options: DialogOptions): DialogController {
   const { element, owner, overlays } = options;
+  if (owner.disposed) throw new Error("Cannot attach dialog to a disposed owner");
   if (!options.ariaLabel && !options.labelledBy &&
     !element.hasAttribute("aria-label") && !element.hasAttribute("aria-labelledby")) {
     throw new Error("Dialog must have an accessible name");
@@ -66,7 +67,7 @@ export function createDialog(options: DialogOptions): DialogController {
         onDismiss: event => setOpen(false, event.reason)
       });
       focusScope = createFocusScope({
-        owner, container: element, manager: options.focusManager,
+        owner, container: element, manager: options.focusManager ?? overlays.focusManager,
         contain: options.modal ?? true, restoreFocus: options.restoreFocus ?? true,
         initialFocus: options.initialFocus
       });

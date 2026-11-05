@@ -4,8 +4,9 @@ import type { PrimitiveHandle } from "./lifecycle.js";
 
 export interface FocusScopeOptions {
   readonly container: HTMLElement;
-  readonly owner?: OwnerScope;
+  readonly owner: OwnerScope;
   readonly manager?: FocusManager;
+  readonly trapFocus?: boolean;
   readonly contain?: boolean;
   readonly restoreFocus?: boolean;
   readonly initialFocus?: HTMLElement | (() => HTMLElement | null);
@@ -17,6 +18,8 @@ export interface FocusManager {
   remove(scope: FocusScopeHandle): void;
 }
 export interface FocusScopeHandle extends PrimitiveHandle {
+  readonly owner: OwnerScope;
+  readonly element: HTMLElement;
   readonly container: HTMLElement;
   focusInitial(): void;
 }
@@ -47,7 +50,11 @@ function hiddenOrInert(element: HTMLElement): boolean {
 }
 export function isFocusable(element: HTMLElement, tabbable = false): boolean {
   if (!element.isConnected || hiddenOrInert(element) || element.matches(":disabled")) return false;
-  if (element.closest("fieldset:disabled") && !element.matches("legend:first-of-type *")) return false;
+  const fieldset = element.closest("fieldset:disabled");
+  if (fieldset) {
+    const firstLegend = [...fieldset.children].find(child => child.tagName === "LEGEND");
+    if (!firstLegend?.contains(element)) return false;
+  }
   if (element instanceof HTMLInputElement && element.type === "hidden") return false;
   const tabIndex = element.getAttribute("tabindex");
   if (tabIndex !== null) {
@@ -69,11 +76,18 @@ export function focusables(container: HTMLElement, tabbable = true): HTMLElement
   while ((node = iterator.nextNode())) {
     if (node instanceof HTMLElement && isFocusable(node, tabbable)) result.push(node);
   }
-  return result;
+  // Positive tabindex precedes DOM-ordered elements with zero tabindex.
+  return tabbable ? result.sort((a, b) => {
+    const aIndex = a.tabIndex > 0 ? a.tabIndex : Infinity;
+    const bIndex = b.tabIndex > 0 ? b.tabIndex : Infinity;
+    return aIndex - bIndex;
+  }) : result;
 }
 
 export function createFocusScope(options: FocusScopeOptions): FocusScopeHandle {
-  const { container, owner, manager, contain = false, restoreFocus = true } = options;
+  const { container, owner, manager, restoreFocus = true } = options;
+  if (!owner || owner.disposed) throw new Error("Focus scope needs a live Core owner");
+  const contain = options.trapFocus ?? options.contain ?? false;
   const doc = container.ownerDocument;
   const previous = doc.activeElement instanceof HTMLElement ? doc.activeElement : null;
   let disposed = false;
@@ -93,11 +107,11 @@ export function createFocusScope(options: FocusScopeOptions): FocusScopeHandle {
     entered = true;
   };
   let addedTabindex = false;
-  const handle: FocusScopeHandle = { container, focusInitial, dispose() { cleanup.dispose(); } };
+  const handle: FocusScopeHandle = { owner, element: container, container, focusInitial, dispose() { cleanup.dispose(); } };
   manager?.add(handle);
 
   const onKeyDown = (event: Event) => {
-    if (!contain || !isTop() || !(event instanceof KeyboardEvent) || event.key !== "Tab") return;
+    if (!contain || !entered || !isTop() || !(event instanceof KeyboardEvent) || event.key !== "Tab") return;
     const items = focusables(container);
     const current = doc.activeElement;
     if (!items.length) {
@@ -131,8 +145,7 @@ export function createFocusScope(options: FocusScopeOptions): FocusScopeHandle {
     focus.dispose();
     manager?.remove(handle);
     if (addedTabindex) container.removeAttribute("tabindex");
-    if (restoreFocus && owner?.disposed !== true && previous?.isConnected &&
-      !hiddenOrInert(previous) && !previous.matches(":disabled")) previous.focus();
+    if (restoreFocus && !owner.disposed && previous && isFocusable(previous)) previous.focus();
   }, owner);
   focusInitial();
   return handle;
