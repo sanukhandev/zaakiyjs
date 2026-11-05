@@ -26,7 +26,7 @@ export function createAuthViewModel(repository:AuthRepository){
   const signInPassword=signInForm.field("password",{required:"Password is required"});
   const signInFields={email:signInEmail,password:signInPassword};
   onCleanup(()=>{disposed=true;active?.abort();signInForm.dispose();challengeId=null;});
-  function setScreen(next:AuthScreen):void{if(disposed)return;active?.abort();generation++;message.value="";screen.value=next;}
+  function setScreen(next:AuthScreen):void{if(disposed)return;active?.abort();active=null;pending.value=false;generation++;message.value="";screen.value=next;}
   async function run<T>(action:(signal:AbortSignal)=>Promise<T>):Promise<T|undefined>{
     if(disposed)return;
     active?.abort();
