@@ -37,4 +37,8 @@ export { Toast, createToastCenter } from "./toast.js";
 export type {
   ToastProps, ToastTone, ToastPayload, ToastCenter, ToastCenterOptions
 } from "./toast.js";
+export { ButtonGroup } from "./button-group.js";
+export type { ButtonGroupProps } from "./button-group.js";
+export { BoundTextField } from "./forms-adapter.js";
+export type { BoundTextFieldProps, TextFieldBinding } from "./forms-adapter.js";
 export const uiStatus = { package:"@zaakiyjs/ui", stage:"p2-implementation" } as const;
