@@ -29,3 +29,7 @@ Gemini may propose brand palettes, CSS recipes, layouts or motion presets under 
 ## Acceptance tests
 
 Snapshot generated CSS deterministically; verify no unused known static utilities, brand overrides without DOM subtree rerender, responsive and dark variants, no forbidden runtime CSS generation, and reduced-motion behavior in real browsers.
+
+## P2 contract freeze: implementation status
+
+[ADR 0007](../adr/0007-p2-ui-contract-boundaries.md) and [contracts 09–12](../contracts/README.md#p2-contract-only-frozen-design-2026-11-05) define future headless UI, visual components, motion and portable templates. These documents add **no browser runtime behavior**. Current compiler restrictions on component children, JSX refs/spreads and reactive class/style binding remain in force; a deferred-exit DOM region requires a separate ABI review in [issue #37](https://github.com/sanukhandev/zaakiyjs/issues/37).

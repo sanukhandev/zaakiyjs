@@ -24,3 +24,9 @@
 ## Terminology
 
 **Agreed direction** is an engineering choice, **reserved API** is explicitly NOT a runtime export, and **release gate** is a requirement, not evidence of a passing workflow. Changes to public APIs/IR/ownership/rendering/security require an ADR. Packages start at an M0 unimplemented baseline, not a release.
+
+## P2 UI architecture freeze (contract-only)
+
+- [ADR 0007 — P2 UI packages and compiler boundaries](adr/0007-p2-ui-contract-boundaries.md).
+- [UI primitives](contracts/09-ui-primitives.md), [UI components](contracts/10-ui.md), [Motion](contracts/11-motion.md), [Templates](contracts/12-templates.md) — future TypeScript contracts, **not implemented exports**.
+- [Issue #37](https://github.com/sanukhandev/zaakiyjs/issues/37) — compiler-native refs/component slots, safe dynamic variants and exit-aware regions are separately gated.
