@@ -179,6 +179,80 @@ CASES = [
     }"""),
 ]
 
+async def check_reduced_motion_change(page) -> None:
+    await page.emulate_media(reduced_motion="no-preference")
+    await page.goto(page.url, wait_until="networkidle")
+    await page.wait_for_function("Boolean(window.motionQA)")
+    await page.evaluate("""() => {
+      const m=window.motionQA, owner=m.createOwner(), el=document.createElement("div");
+      document.body.append(el);
+      const h=m.animateOwned({owner,element:el,keyframes:[{opacity:0},{opacity:1}],timing:{duration:10000}});
+      window.__motionPending={h,owner,el};
+    }""")
+    await page.emulate_media(reduced_motion="reduce")
+    await page.wait_for_function("window.__motionPending.h.phase.value === 'finished'")
+    outcome = await page.evaluate("""async () => {
+      const {h,owner,el}=window.__motionPending;
+      const x=await h.finished, animations=el.getAnimations().length;
+      window.motionQA.disposeOwner(owner); el.remove();
+      return {x,animations};
+    }""")
+    if outcome["x"]["reason"] != "reduced-motion" or outcome["animations"] != 0:
+        raise AssertionError(f"Reduced-motion toggle leaked/failed: {outcome}")
+
+async def check_mouse_drag(page) -> None:
+    await page.emulate_media(reduced_motion="no-preference")
+    await page.goto(page.url, wait_until="networkidle")
+    await page.wait_for_function("Boolean(window.motionQA)")
+    await page.evaluate("""() => {
+      const m=window.motionQA, owner=m.createOwner(), el=document.createElement("div");
+      el.id="gesture-qa"; el.style.cssText="width:160px;height:60px;background:#eee;touch-action:none";
+      document.body.append(el);
+      const counts={tap:0,drag:0,swipe:0};
+      const handle=m.createGestures(el,{owner,swipeDistance:25,swipeVelocity:0,
+        onTap(){counts.tap++},onDrag(){counts.drag++},onSwipe(){counts.swipe++}});
+      window.__gestureQA={counts,owner,el,handle};
+    }""")
+    box = await page.locator("#gesture-qa").bounding_box()
+    if box is None:
+        raise AssertionError("Gesture element unavailable")
+    x,y=box["x"]+20,box["y"]+20
+    await page.mouse.move(x,y)
+    await page.mouse.down()
+    await page.mouse.move(x+70,y,steps=4)
+    await page.mouse.up()
+    result=await page.evaluate("window.__gestureQA.counts")
+    if result["drag"] < 1 or result["swipe"] != 1:
+        raise AssertionError(f"Mouse pointer drag/swipe lost: {result}")
+    await page.evaluate("""() => {
+      const q=window.__gestureQA; window.motionQA.disposeOwner(q.owner); q.el.remove();
+    }""")
+
+async def check_scroll_once(page) -> None:
+    await page.emulate_media(reduced_motion="no-preference")
+    await page.goto(page.url, wait_until="networkidle")
+    await page.wait_for_function("Boolean(window.motionQA)")
+    await page.evaluate("""() => {
+      const m=window.motionQA, owner=m.createOwner(), el=document.createElement("section");
+      el.id="viewport-qa"; el.textContent="Viewport marker";
+      el.style.cssText="display:block;margin-top:1800px;height:80px";
+      document.body.append(el);
+      const state={count:0,owner,el};
+      state.handle=m.observeViewport(el,{owner,once:true,onEnter(){state.count++}});
+      window.__viewportQA=state;
+    }""")
+    await page.locator("#viewport-qa").scroll_into_view_if_needed()
+    await page.wait_for_function("window.__viewportQA.count === 1", timeout=10000)
+    await page.evaluate("window.scrollTo(0,0)")
+    await page.locator("#viewport-qa").scroll_into_view_if_needed()
+    await asyncio.sleep(0.1)
+    count=await page.evaluate("window.__viewportQA.count")
+    if count != 1:
+        raise AssertionError(f"once-only viewport reveal repeated: {count}")
+    await page.evaluate("""() => {
+      const q=window.__viewportQA; window.motionQA.disposeOwner(q.owner); q.el.remove();
+    }""")
+
 async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--base-url", required=True)
@@ -210,10 +284,24 @@ async def main() -> None:
                         except Exception:
                             pass
                         print(f"FAIL {engine}: {title}: {exc}", flush=True)
+                for title, scenario in (
+                    ("dynamic-reduced-motion-toggle", check_reduced_motion_change),
+                    ("real-mouse-drag-swipe", check_mouse_drag),
+                    ("viewport-enter-once", check_scroll_once),
+                ):
+                    page_errors.clear()
+                    try:
+                        await asyncio.wait_for(scenario(page), timeout=20)
+                        if page_errors:
+                            raise RuntimeError("page errors: " + " | ".join(page_errors))
+                        print(f"PASS {engine}: {title}", flush=True)
+                    except Exception as exc:
+                        failures.append(f"{engine}/{title}: {exc}")
+                        print(f"FAIL {engine}: {title}: {exc}", flush=True)
             finally:
                 await context.close()
                 await browser.close()
-    print(f"MOTION_BROWSER_RESULT cases={len(CASES) * 3} failures={len(failures)}", flush=True)
+    print(f"MOTION_BROWSER_RESULT cases={(len(CASES) + 3) * 3} failures={len(failures)}", flush=True)
     if failures:
         raise AssertionError("\n".join(failures))
 
