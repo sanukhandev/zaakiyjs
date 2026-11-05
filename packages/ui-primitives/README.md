@@ -1,6 +1,6 @@
 # @zaakiyjs/ui-primitives
 
-Unstyled, native DOM behavior controllers for owner-scoped ZaakiyJS applications. **Draft P2 implementation. Not published or browser-certified.** The approved P2 API contract was not yet committed to `main` when this implementation branch began. Public API names below must be reconciled with the frozen contract prior to release.
+Unstyled, native DOM behavior controllers for owner-scoped ZaakiyJS applications. **Review candidate; not yet published or manually screen-reader certified.** The frozen P2 Contract 09 and ADR 0007 are present on main; this branch implements compatible headless controllers and a native-node integration adapter.
 
 ## Runtime dependencies
 
@@ -55,8 +55,21 @@ controller.setOpen(true);
 
 ## Verification and release gates
 
-This package requires a reviewed P2 contract, lockfile importer sync, `pnpm` lint/typecheck/build/test, real Chromium/Firefox/WebKit focus/pointer tests, screen reader keyboard review, ESM consumer installation and npm pack verification **before merge and publication**. Source tests are not a substitute for those browser gates. No claim is made that WCAG 2.2 AA certification has occurred.
+The separate integration PR #45 owns frozen lockfile/workspace/browser CI integration. This package requires  `pnpm` lint/typecheck/build/test, real Chromium/Firefox/WebKit focus/pointer tests, screen reader keyboard review, ESM consumer installation and npm pack verification **before merge and publication**. Source tests are not a substitute for those browser gates. No claim is made that WCAG 2.2 AA certification has occurred.
 
 ## Security
 
 No HTML string rendering, unsafe URL handling, model calls, eval, or global event patches. Registrations are explicit and owner-scoped. Caller-provided labels and option text are treated as DOM text, never executable markup.
+
+## Frozen P2 Contract 09 and API compatibility
+
+- The public `InteractionDetail`, `ValueChange<T>`, `Controllable<T>` and `ElementController` types carry typed state transitions. The legacy `onOpenChange` / `onSelectionChange` callbacks remain for older call sites; `onValueChange` reports the interaction reason and native event.
+- `createDismissableLayer` and `createOverlayController` resolve the application manager from the Core owner context, or accept an explicit `overlays` override. No process-global component stack is used. One overlay manager per root owner is the intended default.
+- A supplied native `<dialog>` uses `showModal()` / `show()` when available. An ordinary HTML element uses a role-based accessible adapter with focus/keyboard/inertness management. Controllers must attach to elements in the explicit overlay host.
+- Nested dialogs share their overlay manager's focus stack by default. Plain focus scopes should receive a shared `FocusManager` to support nesting; use `trapFocus` (legacy alias `contain`).
+- Scroll and inert browser resources are reference-counted by document/element and fully restored after modal dismissal or removal. `lockScroll: false` disables document scroll locking. `outsideBoundary: "application"` (default) prevents event leakage into other roots; `"document"` deliberately enables document-wide outside dismissal.
+- Portal nodes must be detached in the same document. Portal handles expose `owner`, `host`, and `nodes`; externally removed hosts trigger cleanup. Moving compiler-owned region nodes into portals is unsupported.
+
+## Size and release evidence
+
+Build with `pnpm --filter @zaakiyjs/ui-primitives build`, then run `pnpm --filter @zaakiyjs/ui-primitives size:report` for aggregated unminified ESM module raw/gzip bytes. This is *not* a minified tree-shaken consumer bundle claim. Runtime dependencies are limited to Core and Signals. Independent npm publication additionally requires an approved root LICENSE, non-placeholder package version, scope ownership and manual keyboard/screen-reader review; the package remains unpublished until explicitly approved.

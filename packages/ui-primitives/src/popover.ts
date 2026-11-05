@@ -1,7 +1,7 @@
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
-import type { InteractionDetail, ValueChange } from "./contracts.js";
+import type { InteractionDetail, ValueChange, ElementController } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { createFocusScope } from "./focus.js";
 import type { FocusManager, FocusScopeHandle } from "./focus.js";
@@ -23,7 +23,7 @@ export interface PopoverOptions {
   readonly dismissOnOutsidePointer?: boolean;
   readonly dismissOnEscape?: boolean;
 }
-export interface PopoverController extends PrimitiveHandle {
+export interface PopoverController extends ElementController {
   readonly open: ReadonlySignal<boolean>;
   setOpen(open: boolean): void;
 }
@@ -78,5 +78,5 @@ export function createPopover(options: PopoverOptions): PopoverController {
     if (prior.controls === null) trigger.removeAttribute("aria-controls");
     else trigger.setAttribute("aria-controls", prior.controls);
   }, owner);
-  return { open: state.value, setOpen, dispose: () => lifecycle.dispose() };
+  return { owner, element: content, open: state.value, setOpen, dispose: () => lifecycle.dispose() };
 }

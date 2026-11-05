@@ -1,3 +1,4 @@
+import { createContext, provide, useContext } from "@zaakiyjs/core";
 import type { OwnerScope } from "@zaakiyjs/core";
 import { listen, own, createRegistrationGroup } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
@@ -35,6 +36,11 @@ export interface OverlayManagerOptions {
   readonly outsideBoundary?: "application" | "document";
   /** Default true. Disables native document-element scroll while a modal is active. */
   readonly lockScroll?: boolean;
+}
+
+const managerContext = createContext<OverlayManager>("ZaakiyJS application overlay manager");
+export function getOverlayManager(owner: OwnerScope): OverlayManager | undefined {
+  return useContext(owner, managerContext);
 }
 
 // These WeakMaps coordinate only shared DOM resources, never component or app state.
@@ -171,7 +177,7 @@ export function createOverlayManager(options: OverlayManagerOptions): OverlayMan
     keydown.dispose();
     pointer.dispose();
   }, owner);
-  return {
+  const manager: OverlayManager = {
     focusManager,
     dispose: () => lifecycle.dispose(),
     accepts(element) { return !disposed && !owner.disposed &&
@@ -201,4 +207,11 @@ export function createOverlayManager(options: OverlayManagerOptions): OverlayMan
       return handle;
     }
   };
+  try {
+    provide(owner, managerContext, manager);
+  } catch (error) {
+    lifecycle.dispose();
+    throw error;
+  }
+  return manager;
 }

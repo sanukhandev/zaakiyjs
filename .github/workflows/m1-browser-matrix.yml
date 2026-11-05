@@ -35,6 +35,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build workspace packages
         run: pnpm build
+      - name: Record UI primitives runtime module sizes
+        run: pnpm --filter @zaakiyjs/ui-primitives size:report
       - name: Scaffold real TypeScript/Vite consumer
         run: node packages/cli/dist/bin.js start --project browser-app --template minimal --workspace --path apps --package-manager pnpm
       - name: Link generated app workspace dependencies

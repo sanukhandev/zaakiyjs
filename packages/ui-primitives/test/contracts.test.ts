@@ -217,3 +217,27 @@ describe("modal resource locks, detached overlays and readonly state", () => {
     disposeOwner(f.owner);
   });
 });
+
+describe("owner-scoped overlay manager lookup", () => {
+  it("resolves the nearest Core provider for a nested owner", () => {
+    const f = fixture();
+    const childOwner = createOwner(f.owner);
+    const panel = document.createElement("section"); f.host.append(panel);
+    const onDismiss = vi.fn();
+    const layer = createDismissableLayer({ owner: childOwner, element: panel, onDismiss });
+    expect(layer.owner).toBe(childOwner);
+    expect(f.overlays.top()).toBe(panel);
+    disposeOwner(childOwner);
+    expect(f.overlays.top()).toBeNull();
+    disposeOwner(f.owner);
+  });
+  it("does not look up an overlay manager from a separate application root", () => {
+    const outsideOwner = createOwner();
+    const panel = document.createElement("section");
+    document.body.append(panel);
+    expect(() => createDismissableLayer({
+      owner: outsideOwner, element: panel, onDismiss: vi.fn()
+    })).toThrow(/overlay manager/);
+    disposeOwner(outsideOwner);
+  });
+});

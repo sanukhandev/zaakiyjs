@@ -1,7 +1,7 @@
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
-import type { InteractionDetail, ValueChange } from "./contracts.js";
+import type { InteractionDetail, ValueChange, ElementController } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { createRovingFocus } from "./keyboard.js";
 import { listen, own, createRegistrationGroup } from "./lifecycle.js";
@@ -25,7 +25,7 @@ export interface MenuItem {
   readonly disabled?: boolean;
   readonly onSelect?: () => void;
 }
-export interface MenuController extends PrimitiveHandle {
+export interface MenuController extends ElementController {
   readonly open: ReadonlySignal<boolean>;
   setOpen(next: boolean): void;
   register(item: MenuItem): PrimitiveHandle;
@@ -107,6 +107,7 @@ export function createMenu(options: MenuOptions): MenuController {
     }
   }, owner);
   return {
+    owner, element: content,
     open: state.value, setOpen, dispose: () => cleanup.dispose(),
     register(item) {
       if (items.has(item.id)) throw new Error("Duplicate menu item ID");

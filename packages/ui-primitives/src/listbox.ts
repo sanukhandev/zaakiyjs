@@ -1,7 +1,7 @@
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
-import type { InteractionDetail, ValueChange } from "./contracts.js";
+import type { InteractionDetail, ValueChange, ElementController } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { listen, own, createRegistrationGroup } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
@@ -24,7 +24,7 @@ export interface ListboxOptions {
   readonly orientation?: "horizontal" | "vertical";
   readonly selectOnFocus?: boolean;
 }
-export interface ListboxController extends PrimitiveHandle {
+export interface ListboxController extends ElementController {
   readonly selected: ReadonlySignal<string | null>;
   readonly activeId: string | null;
   register(option: ListboxOption): PrimitiveHandle;
@@ -125,6 +125,7 @@ export function createListbox(options: ListboxOptions): ListboxController {
     }
   }, owner);
   return {
+    owner, element,
     get activeId() { return active; },
     selected: selection.value, select, activate, dispose: () => lifecycle.dispose(),
     register(item) {
