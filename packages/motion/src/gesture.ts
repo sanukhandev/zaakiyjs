@@ -1,5 +1,6 @@
 import { getOwner, onCleanup, runWithOwner } from "@zaakiyjs/core";
 import type { MotionScopeOptions } from "./types.js";
+import { finite } from "./lifecycle.js";
 
 export interface GestureEvent {
   readonly pointerType: string;
@@ -29,10 +30,10 @@ export interface GestureController { dispose(): void }
 
 /** Element-local pointer capture: no permanent document handlers. */
 export function createGestures(element: Element, options: GestureOptions): GestureController {
-  const threshold = Math.max(0, options.dragThreshold ?? 6);
-  const swipeDistance = Math.max(0, options.swipeDistance ?? 32);
-  const swipeVelocity = Math.max(0, options.swipeVelocity ?? 0.2);
-  const longPress = Math.max(0, options.longPressMs ?? 500);
+  const threshold = finite(options.dragThreshold ?? 6, "dragThreshold");
+  const swipeDistance = finite(options.swipeDistance ?? 32, "swipeDistance");
+  const swipeVelocity = finite(options.swipeVelocity ?? 0.2, "swipeVelocity");
+  const longPress = finite(options.longPressMs ?? 500, "longPressMs");
   let pointer: number | null = null;
   let startX = 0, startY = 0, startTime = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -41,10 +42,13 @@ export function createGestures(element: Element, options: GestureOptions): Gestu
   const clear = (): void => {
     if (timer !== null) clearTimeout(timer);
     timer = null;
-    if (pointer !== null && element.hasPointerCapture?.(pointer)) {
-      try { element.releasePointerCapture(pointer); } catch { /* element detached */ }
-    }
+    // Clear identity *before* releasing capture: lostpointercapture may fire
+    // synchronously and must not recursively try to release it again.
+    const captured = pointer;
     pointer = null;
+    if (captured !== null && element.hasPointerCapture?.(captured)) {
+      try { element.releasePointerCapture(captured); } catch { /* element detached */ }
+    }
   };
   const snapshot = (event: PointerEvent): GestureEvent => {
     const dx = event.clientX - startX, dy = event.clientY - startY;
