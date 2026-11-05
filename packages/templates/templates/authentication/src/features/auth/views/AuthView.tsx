@@ -16,40 +16,40 @@ export function AuthView({vm}:{readonly vm:AuthViewModel}){
       <section class="surface stack" aria-label="Sign in">
         <h2>Sign in</h2>
         <form onSubmit={event=>{event.preventDefault();void vm.signIn();}} class="stack">
-          <div class="field"><label htmlFor="login-email">Email</label><input id="login-email" type="email" required
+          <div class="field"><label>Email<input id="login-email" type="email" required
             autoComplete="email" value={vm.signInFields.email.value.value}
-            onInput={event=>vm.signInForm.setValue("email",(event.currentTarget as HTMLInputElement).value)}/></div>
-          <div class="field"><label htmlFor="login-password">Password</label><input id="login-password" type="password" required
+            onInput={event=>vm.signInForm.setValue("email",(event.currentTarget as HTMLInputElement).value)}/></label></div>
+          <div class="field"><label>Password<input id="login-password" type="password" required
             autoComplete="current-password" value={vm.signInFields.password.value.value}
-            onInput={event=>vm.signInForm.setValue("password",(event.currentTarget as HTMLInputElement).value)}/></div>
+            onInput={event=>vm.signInForm.setValue("password",(event.currentTarget as HTMLInputElement).value)}/></label></div>
           <button type="submit">Sign in securely</button>
         </form>
       </section>
     </Show>
     <Show when={vm.screen.value==="sign-up"}>
       <section class="surface stack"><h2>Create an account</h2>
-        <div class="field"><label htmlFor="signup-email">Email</label><input id="signup-email" type="email" required value={vm.email.value}
-          onInput={event=>{vm.email.value=(event.currentTarget as HTMLInputElement).value;}}/></div>
-        <div class="field"><label htmlFor="signup-password">Password</label><input id="signup-password" type="password" required value={vm.password.value}
-          onInput={event=>{vm.password.value=(event.currentTarget as HTMLInputElement).value;}}/></div>
-        <div class="field"><label htmlFor="signup-confirm">Confirm password</label><input id="signup-confirm" type="password" required value={vm.confirm.value}
-          onInput={event=>{vm.confirm.value=(event.currentTarget as HTMLInputElement).value;}}/></div>
+        <div class="field"><label>Email<input id="signup-email" type="email" required value={vm.email.value}
+          onInput={event=>{vm.email.value=(event.currentTarget as HTMLInputElement).value;}}/></label></div>
+        <div class="field"><label>Password<input id="signup-password" type="password" required value={vm.password.value}
+          onInput={event=>{vm.password.value=(event.currentTarget as HTMLInputElement).value;}}/></label></div>
+        <div class="field"><label>Confirm password<input id="signup-confirm" type="password" required value={vm.confirm.value}
+          onInput={event=>{vm.confirm.value=(event.currentTarget as HTMLInputElement).value;}}/></label></div>
         <button type="button" onClick={()=>{void vm.signUp();}}>Request account</button>
       </section>
     </Show>
     <Show when={vm.screen.value==="forgot"}>
       <section class="surface stack"><h2>Request password recovery</h2>
-        <div class="field"><label htmlFor="recover-email">Email</label><input id="recover-email" type="email" required value={vm.email.value}
-          onInput={event=>{vm.email.value=(event.currentTarget as HTMLInputElement).value;}}/></div>
+        <div class="field"><label>Email<input id="recover-email" type="email" required value={vm.email.value}
+          onInput={event=>{vm.email.value=(event.currentTarget as HTMLInputElement).value;}}/></label></div>
         <button type="button" onClick={()=>{void vm.forgot();}}>Send recovery instructions</button>
       </section>
     </Show>
     <Show when={vm.screen.value==="reset"}>
       <section class="surface stack"><h2>Reset password</h2>
-        <div class="field"><label htmlFor="reset-token">One-time reset token</label><input id="reset-token" type="text" required value={vm.resetToken.value}
-          onInput={event=>{vm.resetToken.value=(event.currentTarget as HTMLInputElement).value;}}/></div>
-        <div class="field"><label htmlFor="reset-password">New password</label><input id="reset-password" type="password" required value={vm.password.value}
-          onInput={event=>{vm.password.value=(event.currentTarget as HTMLInputElement).value;}}/></div>
+        <div class="field"><label>One-time reset token<input id="reset-token" type="text" required value={vm.resetToken.value}
+          onInput={event=>{vm.resetToken.value=(event.currentTarget as HTMLInputElement).value;}}/></label></div>
+        <div class="field"><label>New password<input id="reset-password" type="password" required value={vm.password.value}
+          onInput={event=>{vm.password.value=(event.currentTarget as HTMLInputElement).value;}}/></label></div>
         <button type="button" onClick={()=>{void vm.reset();}}>Confirm reset</button>
       </section>
     </Show>
@@ -60,8 +60,8 @@ export function AuthView({vm}:{readonly vm:AuthViewModel}){
     </Show>
     <Show when={vm.screen.value==="mfa"}>
       <section class="surface stack"><h2>Multifactor verification</h2>
-        <div class="field"><label htmlFor="mfa-code">Security code</label><input id="mfa-code" type="text" autoComplete="one-time-code" required value={vm.mfaCode.value}
-          onInput={event=>{vm.mfaCode.value=(event.currentTarget as HTMLInputElement).value;}}/></div>
+        <div class="field"><label>Security code<input id="mfa-code" type="text" autoComplete="one-time-code" required value={vm.mfaCode.value}
+          onInput={event=>{vm.mfaCode.value=(event.currentTarget as HTMLInputElement).value;}}/></label></div>
         <button type="button" onClick={()=>{void vm.verify();}}>Verify code</button>
       </section>
     </Show>

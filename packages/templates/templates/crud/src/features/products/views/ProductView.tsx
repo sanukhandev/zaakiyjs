@@ -8,9 +8,8 @@ export function ProductView({vm}:{readonly vm:ProductViewModel}){
     <Show when={vm.mode.value==="list"}>
       <section class="stack" aria-label="Product list">
         <div class="inline">
-          <label htmlFor="product-search">Search products</label>
-          <input id="product-search" type="search" value={vm.search.value}
-            onInput={event=>vm.setSearch((event.currentTarget as HTMLInputElement).value)}/>
+          <label>Search products <input id="product-search" type="search" value={vm.search.value}
+            onInput={event=>vm.setSearch((event.currentTarget as HTMLInputElement).value)}/></label>
           <button type="button" onClick={()=>vm.create()}>Create product</button>
           <button type="button" onClick={()=>vm.refresh()}>Refresh</button>
         </div>
@@ -46,12 +45,12 @@ export function ProductView({vm}:{readonly vm:ProductViewModel}){
       <section class="surface stack">
         <h2>{vm.mode.value==="edit"?"Edit product":"Create product"}</h2>
         <form class="stack" onSubmit={event=>{event.preventDefault();void vm.submit();}}>
-          <div class="field"><label htmlFor="product-name">Name</label><input id="product-name" type="text" required
-            value={vm.fields.name.value.value} onInput={event=>vm.form.setValue("name",(event.currentTarget as HTMLInputElement).value)}/></div>
-          <div class="field"><label htmlFor="product-sku">SKU</label><input id="product-sku" type="text" required
-            value={vm.fields.sku.value.value} onInput={event=>vm.form.setValue("sku",(event.currentTarget as HTMLInputElement).value)}/></div>
-          <div class="field"><label htmlFor="product-price">Price in cents</label><input id="product-price" type="number" min="0" required
-            value={vm.fields.priceCents.value.value} onInput={event=>vm.form.setValue("priceCents",Number((event.currentTarget as HTMLInputElement).value))}/></div>
+          <div class="field"><label>Name<input id="product-name" type="text" required
+            value={vm.fields.name.value.value} onInput={event=>vm.form.setValue("name",(event.currentTarget as HTMLInputElement).value)}/></label></div>
+          <div class="field"><label>SKU<input id="product-sku" type="text" required
+            value={vm.fields.sku.value.value} onInput={event=>vm.form.setValue("sku",(event.currentTarget as HTMLInputElement).value)}/></label></div>
+          <div class="field"><label>Price in cents<input id="product-price" type="number" min="0" required
+            value={vm.fields.priceCents.value.value} onInput={event=>vm.form.setValue("priceCents",Number((event.currentTarget as HTMLInputElement).value))}/></label></div>
           <button type="submit">Save product</button>
           <button type="button" onClick={()=>vm.back()}>Cancel</button>
         </form>

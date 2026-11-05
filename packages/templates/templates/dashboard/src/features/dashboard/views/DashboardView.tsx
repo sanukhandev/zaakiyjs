@@ -20,9 +20,10 @@ export function DashboardView({vm}:{readonly vm:DashboardViewModel}){
       </section>
       <section id="activity" class="stack" aria-label="Recent activity">
         <h2>Recent activity</h2>
-        <label class="field" htmlFor="activity-filter">Filter activity</label>
-        <input id="activity-filter" type="search" value={vm.filter.value}
+        <label class="field">Filter activity
+          <input id="activity-filter" type="search" value={vm.filter.value}
           onInput={event=>{vm.filter.value=(event.currentTarget as HTMLInputElement).value;}}/>
+        </label>
         <Show when={vm.activity.value.length===0}><p>No activity matches your filter.</p></Show>
         <ul><For each={vm.activity.value} by={item=>item.id}>{item=>
           <li class="surface"><strong>{item.title}</strong><span> — {item.when}</span></li>
