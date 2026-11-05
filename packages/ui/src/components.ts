@@ -102,7 +102,7 @@ export function LinkButton(props: LinkButtonProps): ViewNode {
 }
 
 function validateNavigationUrl(value: string): string {
-  if (typeof value !== "string" || !value || /[\u0000-\u001f\u007f]/u.test(value)) {
+  if (typeof value !== "string" || !value || [...value].some(c => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127)) {
     throw new TypeError("Invalid navigation URL");
   }
   const candidate = value.trim();

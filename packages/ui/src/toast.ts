@@ -38,16 +38,16 @@ export function createToastCenter(options:ToastCenterOptions):ToastCenter {
       node.setAttribute("aria-live",tone==="danger"?"assertive":"polite");
       node.textContent=toast.message;
       if(mounted.size>=maximum){const oldest=mounted.values().next().value;if(oldest)remove(oldest);}
-      const record:{node:HTMLElement;timer:ReturnType<typeof setTimeout>|null}={node,timer:null};
-      mounted.add(record);host.appendChild(node);
       const duration=toast.durationMs??5000;
       if(!Number.isFinite(duration)||duration<0||duration>120000)throw new RangeError("Invalid toast duration");
+      const record:{node:HTMLElement;timer:ReturnType<typeof setTimeout>|null}={node,timer:null};
+      mounted.add(record);host.appendChild(node);
       if(duration>0)record.timer=setTimeout(()=>{if(!owner.disposed)remove(record);},duration);
     },
     dismissAll,dispose
   };
 }
-export interface ToastProps extends ToastPayload {}
+export type ToastProps = Omit<ToastPayload,"durationMs">;
 /** A standalone announcement. For concurrent toasts, prefer createToastCenter. */
 export function Toast(props:ToastProps):ViewNode {
   currentOwner();

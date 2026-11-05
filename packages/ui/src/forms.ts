@@ -19,7 +19,10 @@ export function RadioGroup(props:RadioGroupProps):ViewNode {
   if(props.value&&!props.onValueChange)throw new TypeError("Controlled RadioGroup requires onValueChange");
   if(!props.options.length||new Set(props.options.map(x=>x.value)).size!==props.options.length)throw new RangeError("Radio values must be unique");
   const state=createControlledState({owner,value:props.value,defaultValue:props.defaultValue??"",
-    onValueChange:props.onValueChange});
+    onValueChange:(next,detail)=>props.onValueChange?.(next,{
+      reason:detail.reason==="pointer"?"pointer":detail.reason==="keyboard"?"keyboard":"programmatic",
+      originalEvent:detail.originalEvent
+    })});
   const root=native("fieldset") as HTMLFieldSetElement;
   root.className="zui-radio-group";root.disabled=props.disabled??false;
   const legend=native("legend");legend.textContent=nonEmpty(props.legend,"legend");root.appendChild(legend);
@@ -45,7 +48,10 @@ export function Switch(props:SwitchProps):ViewNode {
   const owner=currentOwner();
   if(props.value&&!props.onValueChange)throw new TypeError("Controlled Switch requires onValueChange");
   const state=createControlledState({owner,value:props.value,defaultValue:props.defaultValue??false,
-    onValueChange:props.onValueChange});
+    onValueChange:(next,detail)=>props.onValueChange?.(next,{
+      reason:detail.reason==="pointer"?"pointer":detail.reason==="keyboard"?"keyboard":"programmatic",
+      originalEvent:detail.originalEvent
+    })});
   const button=native("button") as HTMLButtonElement;
   button.type="button";button.className="zui-switch";button.setAttribute("role","switch");
   button.textContent=nonEmpty(props.label,"label");button.disabled=props.disabled??false;
