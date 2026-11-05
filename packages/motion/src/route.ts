@@ -37,7 +37,12 @@ export async function runRouteTransition(
     await commit();
   });
   const owner = options.owner ?? getOwner();
-  if (owner) runWithOwner(owner, () => onCleanup(() => transition.skipTransition()));
+  let releaseOwner: (() => void) | null = null;
+  if (owner) {
+    const cell: { stop: (() => void) | null } = { stop: () => transition.skipTransition() };
+    runWithOwner(owner, () => onCleanup(() => cell.stop?.()));
+    releaseOwner = () => { cell.stop = null; };
+  }
   const abort = (): void => transition.skipTransition();
   options.signal?.addEventListener("abort", abort, { once: true });
   try {
@@ -50,5 +55,6 @@ export async function runRouteTransition(
     throw error;
   } finally {
     options.signal?.removeEventListener("abort", abort);
+    releaseOwner?.();
   }
 }
