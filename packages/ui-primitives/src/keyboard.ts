@@ -1,4 +1,5 @@
 import type { OwnerScope } from "@zaakiyjs/core";
+import type { InteractionDetail } from "./contracts.js";
 import { listen, own, createRegistrationGroup } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
 
@@ -18,14 +19,14 @@ export interface RovingOptions {
   readonly wrap?: boolean;
   readonly loop?: boolean;
   readonly initialId?: string;
-  readonly onActiveChange?: (id: string) => void;
+  readonly onActiveChange?: (id: string, detail: InteractionDetail) => void;
 }
 export interface RovingController extends PrimitiveHandle {
   readonly owner: OwnerScope;
   readonly element: HTMLElement;
   register(item: RovingItem): PrimitiveHandle;
   readonly activeId: string | null;
-  move(id: string, focus?: boolean): void;
+  move(id: string, focus?: boolean, detail?: InteractionDetail): void;
   items(): readonly RovingItem[];
 }
 
@@ -72,14 +73,14 @@ export function createRovingFocus(options: RovingOptions): RovingController {
         };
       });
     },
-    move(id, focus = true) {
+    move(id, focus = true, detail = { reason: "programmatic" }) {
       if (closed) return;
       const item = available().find(x => x.id === id);
       if (!item) return;
       if (selected !== id) {
         selected = id;
         sync();
-        options.onActiveChange?.(id);
+        options.onActiveChange?.(id, detail);
       }
       if (focus) item.element.focus();
     },
@@ -106,7 +107,7 @@ export function createRovingFocus(options: RovingOptions): RovingController {
     let index = shift === Infinity ? items.length - 1 : shift === -Infinity ? 0 : current + shift;
     if (wrap) index = ((index % items.length) + items.length) % items.length;
     else index = Math.max(0, Math.min(items.length - 1, index));
-    controller.move(items[index]!.id);
+    controller.move(items[index]!.id, true, { reason: "keyboard", originalEvent: event });
   };
   for (const element of options.items?.() ?? []) {
     if (!element.id) throw new Error("Roving items() entries need stable DOM IDs");
