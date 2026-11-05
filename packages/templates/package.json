@@ -44,6 +44,8 @@
     "@zaakiyjs/forms": "workspace:^",
     "@zaakiyjs/async": "workspace:^",
     "@zaakiyjs/styles": "workspace:^",
-    "@zaakiyjs/vite-plugin": "workspace:^"
+    "@zaakiyjs/vite-plugin": "workspace:^",
+    "typescript": "5.9.3",
+    "vite": "6.4.5"
   }
 }
