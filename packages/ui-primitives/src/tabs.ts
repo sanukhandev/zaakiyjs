@@ -1,7 +1,7 @@
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
-import type { InteractionDetail, ValueChange } from "./contracts.js";
+import type { InteractionDetail, ValueChange, ElementController } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { createRovingFocus } from "./keyboard.js";
 import type { Orientation, TextDirection } from "./keyboard.js";
@@ -26,7 +26,7 @@ export interface TabsOptions {
   readonly orientation?: Exclude<Orientation, "both">;
   readonly direction?: TextDirection;
 }
-export interface TabsController extends PrimitiveHandle {
+export interface TabsController extends ElementController {
   readonly selected: ReadonlySignal<string>;
   register(tab: TabDefinition): PrimitiveHandle;
   select(id: string): void;
@@ -87,6 +87,7 @@ export function createTabs(options: TabsOptions): TabsController {
     list.removeAttribute("role"); list.removeAttribute("aria-orientation");
   }, owner);
   return {
+    owner, element: list,
     selected: state.value, select, dispose: () => lifecycle.dispose(),
     register(item) {
       if (registered.has(item.id) || [...registered.values()].some(x => x.tab === item.tab ||

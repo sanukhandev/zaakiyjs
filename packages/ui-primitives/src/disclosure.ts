@@ -1,7 +1,7 @@
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
-import type { InteractionDetail, ValueChange } from "./contracts.js";
+import type { InteractionDetail, ValueChange, ElementController } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { listen, own, createRegistrationGroup } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
@@ -17,7 +17,7 @@ export interface DisclosureOptions {
   readonly onExpandedChange?: (value: boolean) => void;
   readonly onValueChange?: ValueChange<boolean>;
 }
-export interface DisclosureController extends PrimitiveHandle {
+export interface DisclosureController extends ElementController {
   readonly expanded: ReadonlySignal<boolean>;
   setExpanded(value: boolean): void;
 }
@@ -68,7 +68,7 @@ export function createDisclosure(options: DisclosureOptions): DisclosureControll
     }
     panel.hidden = previous.hidden;
   }, owner);
-  return { expanded: state.value, setExpanded, dispose: () => lifecycle.dispose() };
+  return { owner, element: trigger, expanded: state.value, setExpanded, dispose: () => lifecycle.dispose() };
 }
 /** Accordion composition: independent disclosure state; no duplicate state scheduler. */
 export function createAccordion(options: {

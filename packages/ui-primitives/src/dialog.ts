@@ -1,7 +1,7 @@
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
-import type { InteractionDetail, ValueChange } from "./contracts.js";
+import type { InteractionDetail, ValueChange, ElementController } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { createFocusScope } from "./focus.js";
 import type { FocusManager, FocusScopeHandle } from "./focus.js";
@@ -27,7 +27,7 @@ export interface DialogOptions {
   readonly describedBy?: string;
   readonly ariaLabel?: string;
 }
-export interface DialogController extends PrimitiveHandle {
+export interface DialogController extends ElementController {
   readonly open: ReadonlySignal<boolean>;
   setOpen(value: boolean): void;
 }
@@ -91,5 +91,5 @@ export function createDialog(options: DialogOptions): DialogController {
       else element.setAttribute(name, value);
     }
   }, owner);
-  return { open: state.value, setOpen, dispose: () => lifecycle.dispose() };
+  return { owner, element, open: state.value, setOpen, dispose: () => lifecycle.dispose() };
 }

@@ -1,7 +1,7 @@
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
-import type { InteractionDetail, ValueChange } from "./contracts.js";
+import type { InteractionDetail, ValueChange, ElementController } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { listen, own } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
@@ -16,7 +16,7 @@ export interface TooltipOptions {
   readonly onValueChange?: ValueChange<boolean>;
   readonly delayMs?: number;
 }
-export interface TooltipController extends PrimitiveHandle {
+export interface TooltipController extends ElementController {
   readonly open: ReadonlySignal<boolean>;
   setOpen(open: boolean): void;
 }
@@ -74,5 +74,5 @@ export function createTooltip(options: TooltipOptions): TooltipController {
     else tooltip.setAttribute("role", old.role);
     tooltip.hidden = old.hidden;
   }, owner);
-  return { open: state.value, setOpen, dispose: () => lifecycle.dispose() };
+  return { owner, element: tooltip, open: state.value, setOpen, dispose: () => lifecycle.dispose() };
 }
