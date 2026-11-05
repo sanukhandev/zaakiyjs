@@ -15,7 +15,7 @@ def start(page: Page, name: str) -> None:
 def dashboard(page: Page) -> None:
     expect(page.get_by_role("heading", name="Operations overview")).to_be_visible()
     expect(page.get_by_text("Example onboarding completed")).to_be_visible()
-    page.get_by_role("textbox", name="Filter activity").fill("reviewed")
+    page.get_by_role("searchbox", name="Filter activity").fill("reviewed")
     expect(page.get_by_text("Example request reviewed")).to_be_visible()
     expect(page.get_by_text("Example onboarding completed")).to_have_count(0)
     page.get_by_role("button", name="Refresh report").click()
