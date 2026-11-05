@@ -2,10 +2,10 @@ import type { TemplateId, TemplateManifest, TemplateOptionSpec } from "./types.j
 import type {TemplateCapability} from "./contracts.js";
 import {templateAssetChecksums} from "./asset-checksums.js";
 const options: readonly TemplateOptionSpec[] = Object.freeze([
-  {name:"brandName",type:"string",required:false},
-  {name:"primaryColor",type:"color",required:false},
-  {name:"appearance",type:"enum",required:false,values:["system","light","dark"]},
-  {name:"radius",type:"enum",required:false,values:["sm","md","lg"]}
+  Object.freeze({name:"brandName",type:"string",required:false}),
+  Object.freeze({name:"primaryColor",type:"color",required:false}),
+  Object.freeze({name:"appearance",type:"enum",required:false,values:Object.freeze(["system","light","dark"])}),
+  Object.freeze({name:"radius",type:"enum",required:false,values:Object.freeze(["sm","md","lg"])})
 ]);
 const common = [
   "README.md","package.json","index.html","tsconfig.json","vite.config.ts",
