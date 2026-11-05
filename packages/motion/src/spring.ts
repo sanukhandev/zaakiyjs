@@ -1,8 +1,8 @@
 import { createControlledHandle, finite } from "./lifecycle.js";
-import type { MotionHandle, SpringOptions } from "./types.js";
+import type { AnimationHandle, SpringOptions } from "./types.js";
 
 /** A bounded semi-implicit Euler scalar spring; no global reactive scheduler. */
-export function createSpring(options: SpringOptions): MotionHandle {
+export function createSpring(options: SpringOptions): AnimationHandle {
   let position = finite(options.from, "from", -Number.MAX_VALUE);
   const target = finite(options.to, "to", -Number.MAX_VALUE);
   const stiffness = finite(options.stiffness ?? 170, "stiffness", Number.EPSILON);
