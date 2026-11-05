@@ -1,6 +1,7 @@
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
+import type { InteractionDetail, ValueChange } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { listen, own, createRegistrationGroup } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
@@ -17,6 +18,9 @@ export interface ListboxOptions {
   readonly selected?: ReadonlySignal<string | null>;
   readonly defaultSelected?: string | null;
   readonly onSelectionChange?: (value: string | null) => void;
+  readonly onValueChange?: ValueChange<string | null>;
+  readonly readonly?: boolean;
+  readonly disabled?: boolean;
   readonly orientation?: "horizontal" | "vertical";
   readonly selectOnFocus?: boolean;
 }
@@ -38,7 +42,8 @@ export function createListbox(options: ListboxOptions): ListboxController {
   if (!element.hasAttribute("tabindex")) element.tabIndex = 0;
   const selection = createControlledState({
     owner, value: options.selected, defaultValue: options.defaultSelected ?? null,
-    onChange: next => options.onSelectionChange?.(next)
+    onChange: next => options.onSelectionChange?.(next),
+    onValueChange: options.onValueChange
   });
   const items = new Map<string, ListboxOption>();
   const registrations = createRegistrationGroup(owner);
@@ -61,13 +66,13 @@ export function createListbox(options: ListboxOptions): ListboxController {
     if (current) element.setAttribute("aria-activedescendant", current.element.id);
     else element.removeAttribute("aria-activedescendant");
   };
-  const select = (id: string | null) => {
-    if (id !== null && !eligible().some(x => x.id === id)) return;
-    selection.set(id);
+  const select = (id: string | null, detail: InteractionDetail = { reason: "programmatic" }) => {
+    if (options.readonly || options.disabled || (id !== null && !eligible().some(x => x.id === id))) return;
+    selection.set(id, detail);
     sync();
   };
   const activate = (id: string) => {
-    if (!eligible().some(x => x.id === id)) return;
+    if (options.disabled || !eligible().some(x => x.id === id)) return;
     active = id;
     sync();
     if (options.selectOnFocus) select(id);
@@ -75,7 +80,7 @@ export function createListbox(options: ListboxOptions): ListboxController {
   const keydown = listen(element, "keydown", (event: Event) => {
     if (!(event instanceof KeyboardEvent) || event.altKey || event.ctrlKey || event.metaKey) return;
     const all = eligible();
-    if (!all.length) return;
+    if (!all.length || options.disabled) return;
     const current = all.findIndex(x => x.id === active);
     let next: number | null = null;
     if (event.key === "Home") next = 0;
@@ -89,7 +94,7 @@ export function createListbox(options: ListboxOptions): ListboxController {
     }
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      if (active) select(active);
+      if (active) select(active, { reason: "keyboard", originalEvent: event });
       return;
     }
     if (event.key.length === 1 && /\S/.test(event.key)) {
@@ -134,7 +139,7 @@ export function createListbox(options: ListboxOptions): ListboxController {
         item.element.setAttribute("aria-disabled", String(!!item.disabled));
         const pointer = listen(item.element, "click", () => {
           if (item.disabled) return;
-          activate(item.id); select(item.id);
+          activate(item.id); select(item.id, { reason: "pointer" });
         }, registrationOwner);
         sync();
         return () => {

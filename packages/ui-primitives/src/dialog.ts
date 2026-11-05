@@ -1,6 +1,7 @@
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
+import type { InteractionDetail, ValueChange } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { createFocusScope } from "./focus.js";
 import type { FocusManager, FocusScopeHandle } from "./focus.js";
@@ -17,6 +18,7 @@ export interface DialogOptions {
   readonly open?: ReadonlySignal<boolean>;
   readonly defaultOpen?: boolean;
   readonly onOpenChange?: (open: boolean, reason: "programmatic" | DismissReason) => void;
+  readonly onValueChange?: ValueChange<boolean>;
   readonly escapeDismiss?: boolean;
   readonly outsidePointerDismiss?: boolean;
   readonly restoreFocus?: boolean;
@@ -48,11 +50,13 @@ export function createDialog(options: DialogOptions): DialogController {
   let requestedReason: "programmatic" | DismissReason = "programmatic";
   const state = createControlledState({
     owner, value: options.open, defaultValue: options.defaultOpen ?? false,
-    onChange(next) { options.onOpenChange?.(next, requestedReason); }
+    onChange(next) { options.onOpenChange?.(next, requestedReason); },
+    onValueChange: options.onValueChange
   });
-  const setOpen = (next: boolean, reason: "programmatic" | DismissReason = "programmatic") => {
+  const setOpen = (next: boolean, reason: "programmatic" | DismissReason = "programmatic", originalEvent?: Event) => {
     requestedReason = reason;
-    try { state.set(next); } finally { requestedReason = "programmatic"; }
+    const detail: InteractionDetail = { reason: reason === "programmatic" ? "programmatic" : "dismiss", originalEvent };
+    try { state.set(next, detail); } finally { requestedReason = "programmatic"; }
   };
   let focusScope: FocusScopeHandle | null = null;
   let layer: PrimitiveHandle | null = null;
@@ -64,7 +68,7 @@ export function createDialog(options: DialogOptions): DialogController {
         element, modal: options.modal ?? true,
         dismissOnEscape: options.escapeDismiss ?? true,
         dismissOnOutsidePointer: options.outsidePointerDismiss ?? false,
-        onDismiss: event => setOpen(false, event.reason)
+        onDismiss: event => setOpen(false, event.reason, event.originalEvent)
       });
       focusScope = createFocusScope({
         owner, container: element, manager: options.focusManager ?? overlays.focusManager,

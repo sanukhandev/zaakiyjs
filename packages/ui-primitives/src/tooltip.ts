@@ -1,6 +1,7 @@
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
+import type { InteractionDetail, ValueChange } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { listen, own } from "./lifecycle.js";
 import type { PrimitiveHandle } from "./lifecycle.js";
@@ -12,6 +13,7 @@ export interface TooltipOptions {
   readonly open?: ReadonlySignal<boolean>;
   readonly defaultOpen?: boolean;
   readonly onOpenChange?: (open: boolean) => void;
+  readonly onValueChange?: ValueChange<boolean>;
   readonly delayMs?: number;
 }
 export interface TooltipController extends PrimitiveHandle {
@@ -34,7 +36,8 @@ export function createTooltip(options: TooltipOptions): TooltipController {
   trigger.setAttribute("aria-describedby", [...parts].join(" "));
   const state = createControlledState({
     owner, value: options.open, defaultValue: options.defaultOpen ?? false,
-    onChange: next => options.onOpenChange?.(next)
+    onChange: next => options.onOpenChange?.(next),
+    onValueChange: options.onValueChange
   });
   // A single owner cleanup is registered for the timer slot. Hover churn
   // must not accumulate retained owner cleanup closures indefinitely.
@@ -43,22 +46,22 @@ export function createTooltip(options: TooltipOptions): TooltipController {
     if (timer !== null) clearTimeout(timer);
     timer = null;
   };
-  const setOpen = (open: boolean) => { clearTimer(); state.set(open); };
-  const show = () => {
+  const setOpen = (open: boolean, detail: InteractionDetail = { reason: "programmatic" }) => { clearTimer(); state.set(open, detail); };
+  const show = (event: Event) => {
     clearTimer();
     timer = setTimeout(() => {
       timer = null;
-      if (!owner.disposed) state.set(true);
+      if (!owner.disposed) state.set(true, { reason: event.type === "focusin" ? "focus" : "pointer", originalEvent: event });
     }, Math.max(0, options.delayMs ?? 500));
   };
-  const hide = () => setOpen(false);
+  const hide = (event: Event) => setOpen(false, { reason: event.type === "focusout" ? "focus" : "pointer", originalEvent: event });
   const listeners = [
     listen(trigger, "mouseenter", show, owner),
     listen(trigger, "mouseleave", hide, owner),
     listen(trigger, "focusin", show, owner),
     listen(trigger, "focusout", hide, owner),
     listen(trigger, "keydown", (event: Event) => {
-      if (event instanceof KeyboardEvent && event.key === "Escape") hide();
+      if (event instanceof KeyboardEvent && event.key === "Escape") setOpen(false, { reason: "dismiss", originalEvent: event });
     }, owner)
   ];
   const render = effect(() => { tooltip.hidden = !state.value.value; }, { phase: "render" });

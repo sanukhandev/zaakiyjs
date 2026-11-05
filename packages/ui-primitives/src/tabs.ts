@@ -1,6 +1,7 @@
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
+import type { InteractionDetail, ValueChange } from "./contracts.js";
 import { createControlledState } from "./state.js";
 import { createRovingFocus } from "./keyboard.js";
 import type { Orientation, TextDirection } from "./keyboard.js";
@@ -19,6 +20,8 @@ export interface TabsOptions {
   readonly value?: ReadonlySignal<string>;
   readonly defaultValue: string;
   readonly onChange?: (id: string) => void;
+  readonly onValueChange?: ValueChange<string>;
+  readonly readonly?: boolean;
   readonly activation?: "automatic" | "manual";
   readonly orientation?: Exclude<Orientation, "both">;
   readonly direction?: TextDirection;
@@ -34,25 +37,26 @@ export function createTabs(options: TabsOptions): TabsController {
   list.setAttribute("aria-orientation", options.orientation ?? "horizontal");
   const state = createControlledState({
     owner, value: options.value, defaultValue: options.defaultValue,
-    onChange: next => options.onChange?.(next)
+    onChange: next => options.onChange?.(next),
+    onValueChange: options.onValueChange
   });
   const registered = new Map<string, TabDefinition>();
   const registrations = createRegistrationGroup(owner);
   const roving = createRovingFocus({
     container: list, owner, initialId: options.defaultValue,
     orientation: options.orientation ?? "horizontal", direction: options.direction,
-    onActiveChange: id => { if ((options.activation ?? "automatic") === "automatic") select(id); }
+    onActiveChange: (id, detail) => { if ((options.activation ?? "automatic") === "automatic") select(id, detail); }
   });
-  const select = (id: string) => {
+  const select = (id: string, detail: InteractionDetail = { reason: "programmatic" }) => {
     const item = registered.get(id);
-    if (item && !item.disabled && !item.tab.matches(":disabled")) state.set(id);
+    if (!options.readonly && item && !item.disabled && !item.tab.matches(":disabled")) state.set(id, detail);
   };
   const keys = listen(list, "keydown", (event: Event) => {
     if (!(event instanceof KeyboardEvent) || !["Enter", " "].includes(event.key)) return;
     const current = [...registered.values()].find(x => x.tab === event.target);
     if (!current || current.disabled) return;
     event.preventDefault();
-    select(current.id);
+    select(current.id, { reason: "keyboard", originalEvent: event });
   }, owner);
   const rendered = effect(() => {
     const selected = state.value.value;
@@ -98,10 +102,10 @@ export function createTabs(options: TabsOptions): TabsController {
         item.panel.setAttribute("aria-labelledby", item.tab.id);
         item.tab.setAttribute("aria-disabled", String(!!item.disabled));
         const registration = roving.register({ id: item.id, element: item.tab, disabled: item.disabled });
-        const click = listen(item.tab, "click", () => {
+        const click = listen(item.tab, "click", (event: Event) => {
           if (!item.disabled && !item.tab.matches(":disabled")) {
             roving.move(item.id, false);
-            select(item.id);
+            select(item.id, { reason: event instanceof MouseEvent && event.detail === 0 ? "keyboard" : "pointer", originalEvent: event });
           }
         }, registrationOwner);
         sync();
