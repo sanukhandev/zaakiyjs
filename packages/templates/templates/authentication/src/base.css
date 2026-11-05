@@ -1,0 +1,17 @@
+/* Editable ZaakiyJS app CSS; tokens are emitted by @zaakiyjs/styles. */
+:root{font-family:system-ui,sans-serif;color-scheme:light dark}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--z-color-background);color:var(--z-color-foreground);line-height:1.5}
+button,input,select,textarea{font:inherit}
+button{cursor:pointer;border-radius:var(--z-radius-md);padding:.5rem .75rem}
+input,select,textarea{max-width:100%;padding:.5rem;border:1px solid var(--z-color-border);border-radius:var(--z-radius-md)}
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--z-color-primary);outline-offset:3px}
+.surface{border:1px solid var(--z-color-border);border-radius:var(--z-radius-md);background:var(--z-color-surface);padding:1rem}
+.shell{display:grid;grid-template-columns:14rem minmax(0,1fr);min-height:100dvh}
+.shell>main{min-width:0;padding:clamp(1rem,3vw,3rem)}
+.stack{display:grid;gap:1rem}.inline{display:flex;flex-wrap:wrap;gap:.75rem;align-items:center}
+.cards{display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(min(12rem,100%),1fr))}
+.field{display:grid;gap:.3rem;max-width:28rem}
+.visually-hidden{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
+@media(max-width:48rem){.shell{display:block}.shell nav{padding:1rem;border-bottom:1px solid var(--z-color-border)}.shell>main{padding:1rem}}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:0ms!important;animation-duration:0ms!important}}

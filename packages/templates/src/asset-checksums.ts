@@ -1,0 +1,67 @@
+/** SHA-256 of raw, packaged template assets. Generated from source bytes; do not edit manually. */
+export const templateAssetChecksums: Readonly<Record<string,Readonly<Record<string,string>>>> = Object.freeze({
+  "authentication": {
+    "README.md": "fa8ce76278169f13a7d47e07c8febf804d0a5fa3d2dbb41db95d17ebed6a196c",
+    "index.html": "bb161be7c1fe17440e22a209f79b6593c1646a8fb14da5d6055ea21cda723a86",
+    "package.json": "92807756983f433b7ee28c4cc20da63b3833e7d90a86cfc3012dd6a4568b6d05",
+    "src/App.tsx": "b112b8562bb205755ad3da9ca83c8053a2a42c3ba6896175a7022b8a57957d8c",
+    "src/base.css": "f636ec42701d906ee42501d7ca50f86f68b0a074880d5d651bf105f8c675093c",
+    "src/features/auth/adapters/createAuthPage.ts": "3f3a8342c91635475874a69d82926bd56ed0742b8fa25011cfaf8438222dbb00",
+    "src/features/auth/models/auth.ts": "75d508baf22d078296304f6519e278e05d2151517270e03f71ee9942651543a5",
+    "src/features/auth/services/authRepository.ts": "8354a6416879b9eb46f244bd982de8019f6bf53fc1df55432a17dd8b449e6e62",
+    "src/features/auth/viewmodels/createAuthViewModel.ts": "f2681cd3378157161b9985d23f38c85a05d99f407ef666b7d8191330ec4ea272",
+    "src/features/auth/views/AuthView.tsx": "6623ad30f67c952df1970cb2a40991738f70b475c1c880793bbd951e22867350",
+    "src/main.tsx": "95e254ac62c65e3d462b8b500c66ed7887e3899472cba3a6904dd1c5254cde1c",
+    "tsconfig.json": "82fed62c360afbf2e52f724b91c9aceb72be116af85e7b78d3ce0d660577c17b",
+    "vite.config.ts": "ad775c5952d0087734bd85d274a87e574e03559f41aa2799d8758f80dda2309e",
+    "zaakiy.config.ts": "9d39741383d85f44f7c77da8427a606e63da8b3b4d505f7a2b493b75c4888e4b"
+  },
+  "crud": {
+    "README.md": "10f995bc0173c2cd4a0b037dd52682b9664d9fe7e1edf589674df71a93d76e7d",
+    "index.html": "bb161be7c1fe17440e22a209f79b6593c1646a8fb14da5d6055ea21cda723a86",
+    "package.json": "eff16887541032a315c6326ddb1f30c23ee93a15c66b9762f97ddbc9da94c2eb",
+    "src/App.tsx": "af48d2e2c2cd983b2d9da8c934c1d3730642f92a65d4917f1a75fc089328b3a7",
+    "src/base.css": "a98d8b156f2d2e851292679aff84adccdea1785d94fab5c5747238b3274b18d8",
+    "src/features/products/adapters/createProductPage.ts": "3f7eeeef38398f0bc4ac457b4b3ac9c0a74e0e791b77f1617d7aea2fe7c9e197",
+    "src/features/products/models/product.ts": "8e457450eb6e249f08a47d09aa2bca2e32e72d860f3e4881aeac863f7286655b",
+    "src/features/products/services/productRepository.ts": "f7eacb5f15ac8d5f2c0059c6cd2c732e3dc79e799201e3f73869a0c6090fff0f",
+    "src/features/products/viewmodels/createProductViewModel.ts": "eeb71452e228478585f7bf2de9d4a7420466af89d980b247e6f37d4d81904a2b",
+    "src/features/products/views/ProductView.tsx": "989a234d6fb3ccd4dcc0b1c48bca189b334cfe7b272a6cefe801857ca749397f",
+    "src/main.tsx": "95e254ac62c65e3d462b8b500c66ed7887e3899472cba3a6904dd1c5254cde1c",
+    "tsconfig.json": "82fed62c360afbf2e52f724b91c9aceb72be116af85e7b78d3ce0d660577c17b",
+    "vite.config.ts": "ad775c5952d0087734bd85d274a87e574e03559f41aa2799d8758f80dda2309e",
+    "zaakiy.config.ts": "9d39741383d85f44f7c77da8427a606e63da8b3b4d505f7a2b493b75c4888e4b"
+  },
+  "dashboard": {
+    "README.md": "46a262a27d4cc1de733b79e64154b5361357c08f0be5901c3fd2db3ba3eccc37",
+    "index.html": "bb161be7c1fe17440e22a209f79b6593c1646a8fb14da5d6055ea21cda723a86",
+    "package.json": "da8acdfea3a4534a9b93515b33b6a81bcca08c863137f46590d9921759e42a15",
+    "src/App.tsx": "3235b2c662e7d191fb2571fefaa47e4cb75417c832319e3741fa74657152e393",
+    "src/base.css": "f636ec42701d906ee42501d7ca50f86f68b0a074880d5d651bf105f8c675093c",
+    "src/features/dashboard/adapters/createDashboardPage.ts": "fd5397aa24ce5ce932800e11aa1c904c7bb330f294f54ffb8bf9047f36de74e7",
+    "src/features/dashboard/models/dashboard.ts": "d304203bdc07adafa15fd0a22c5dadf7777a34c5612010d0ad1a742315acd115",
+    "src/features/dashboard/services/dashboardRepository.ts": "d20cef6d1c7a7c3cd9aed03de1d1c205063b3ae3634b8c3a98ca61b5163bc167",
+    "src/features/dashboard/viewmodels/createDashboardViewModel.ts": "dc5e0d76909cc87f06449d6dc4b7e89424cbc97cf23ebacd0787953466faa133",
+    "src/features/dashboard/views/DashboardView.tsx": "5c89e670d9038a65c93f2f81d42bc97f74e9b59e3d19ac7db23ee17629d123f3",
+    "src/main.tsx": "95e254ac62c65e3d462b8b500c66ed7887e3899472cba3a6904dd1c5254cde1c",
+    "tsconfig.json": "82fed62c360afbf2e52f724b91c9aceb72be116af85e7b78d3ce0d660577c17b",
+    "vite.config.ts": "ad775c5952d0087734bd85d274a87e574e03559f41aa2799d8758f80dda2309e",
+    "zaakiy.config.ts": "9d39741383d85f44f7c77da8427a606e63da8b3b4d505f7a2b493b75c4888e4b"
+  },
+  "settings": {
+    "README.md": "31c347a3ed7e8892f295be6fb248d6bb527df09821c40b850782c31e33bf1d3d",
+    "index.html": "bb161be7c1fe17440e22a209f79b6593c1646a8fb14da5d6055ea21cda723a86",
+    "package.json": "92807756983f433b7ee28c4cc20da63b3833e7d90a86cfc3012dd6a4568b6d05",
+    "src/App.tsx": "5d75b170a65d4608af67dfa24a36577b3f774e9aad53b168e6400bf3eb4c98ec",
+    "src/base.css": "f636ec42701d906ee42501d7ca50f86f68b0a074880d5d651bf105f8c675093c",
+    "src/features/settings/adapters/createSettingsPage.ts": "298eb58161d9edcf39b9dbf00aae4fa69b4b9bb73e4fada62bb5bb43e30b3e6e",
+    "src/features/settings/models/settings.ts": "c4d73db6e4eb39054b5810536d58e64d93179258744cd9fc03cc5c29fbef9c4d",
+    "src/features/settings/services/settingsRepository.ts": "0dec62bb431ddcb7d3872b1ff3358135b21ff5232e4112615f6cad3d08671776",
+    "src/features/settings/viewmodels/createSettingsViewModel.ts": "fdbf63c3551360404eb4d900d69fc02d74de90cc7bdc92d40ece7662be5c583d",
+    "src/features/settings/views/SettingsView.tsx": "5768fd379418e0de4f36fbaa354eb4c1fe4086ef643597714ff23df21024f48c",
+    "src/main.tsx": "95e254ac62c65e3d462b8b500c66ed7887e3899472cba3a6904dd1c5254cde1c",
+    "tsconfig.json": "82fed62c360afbf2e52f724b91c9aceb72be116af85e7b78d3ce0d660577c17b",
+    "vite.config.ts": "ad775c5952d0087734bd85d274a87e574e03559f41aa2799d8758f80dda2309e",
+    "zaakiy.config.ts": "9d39741383d85f44f7c77da8427a606e63da8b3b4d505f7a2b493b75c4888e4b"
+  }
+});

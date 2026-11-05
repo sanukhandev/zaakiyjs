@@ -1,0 +1,97 @@
+name: Templates Generated App Browser Matrix
+
+on:
+  pull_request:
+    paths:
+      - "packages/templates/**"
+      - "packages/core/**"
+      - "packages/dom/**"
+      - "packages/compiler/**"
+      - "packages/async/**"
+      - "packages/forms/**"
+      - "packages/vite-plugin/**"
+      - "packages/styles/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/templates-browser.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/templates/**"
+      - ".github/workflows/templates-browser.yml"
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: templates-browser-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  generated-app-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install frozen workspace dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build all workspace packages
+        run: pnpm build
+      - name: Materialize and build four real production apps
+        run: node packages/templates/test/browser/generate.mjs
+      - name: Install pinned native browsers
+        run: |
+          python3 -m pip install 'playwright==1.64.1'
+          python3 -m playwright install --with-deps chromium firefox webkit
+      - name: Pin axe-core 4.14.0 for template accessibility auditing
+        shell: bash
+        run: |
+          npm pack axe-core@4.14.0 --pack-destination "$RUNNER_TEMP" --silent
+          tar -xOzf "$RUNNER_TEMP/axe-core-4.14.0.tgz" package/axe.min.js > "$RUNNER_TEMP/zaakiy-templates-axe.min.js"
+          test -s "$RUNNER_TEMP/zaakiy-templates-axe.min.js"
+      - name: Execute generated-app workflows, responsive, keyboard and native dialog checks
+        shell: bash
+        run: |
+          pids=()
+          for pair in "dashboard:4191" "authentication:4192" "settings:4193" "crud:4194"; do
+            name="${pair%:*}"
+            port="${pair#*:}"
+            python3 -m http.server "$port" --bind 127.0.0.1 --directory "packages/templates/test/.browser-generated/$name/dist" > "/tmp/zaakiy-templates-$name.log" 2>&1 &
+            pids+=("$!")
+          done
+          trap 'for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done' EXIT
+          for port in 4191 4192 4193 4194; do
+            ready=0
+            for i in {1..45}; do
+              if curl --silent --fail "http://127.0.0.1:$port/" >/dev/null; then ready=1;break;fi
+              sleep 1
+            done
+            test "$ready" -eq 1
+          done
+          ZAAKIY_TEMPLATES_AXE_PATH="$RUNNER_TEMP/zaakiy-templates-axe.min.js" python3 packages/templates/test/browser/acceptance.py
+      - name: Assert browser payload excludes build-only and alternate framework modules
+        run: |
+          if grep -RE '(@zaakiyjs/(templates|ai|compiler|vite-plugin)|react-dom|zone\.js|vue-router)' packages/templates/test/.browser-generated/*/dist/assets --include='*.js'; then
+            echo "Forbidden package reference in generated application"
+            exit 1
+          fi
+      - name: Upload browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: templates-browser-diagnostics
+          path: |
+            /tmp/zaakiy-templates-*.png
+            /tmp/zaakiy-templates-*.log
+          if-no-files-found: ignore
