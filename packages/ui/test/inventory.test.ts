@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from "vitest";
-import { createOwner, disposeOwner, runWithOwner, mountOwner } from "@zaakiyjs/core";
+import { createOwner, disposeOwner, runWithOwner } from "@zaakiyjs/core";
 import { signal, flushSync } from "@zaakiyjs/signals";
 import {
   Button, IconButton, LinkButton, ButtonGroup, Textarea, Select, RadioGroup,
