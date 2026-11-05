@@ -32,19 +32,18 @@ export function createControlledHandle(options: MotionScopeOptions = {}): Contro
     if (settled) return;
     settled = true;
     state = outcome.status;
+    // Release WAAPI fill/timeline resources even after natural completion.
+    // The application owns the element's final underlying CSS state.
+    try { driver.stop?.(); } catch { /* cleanup must still settle */ }
     for (const cleanup of cleanups.splice(0)) cleanup();
     driver = {};
     resolveFinished(outcome);
-  };
-  const safeStop = (): void => {
-    try { driver.stop?.(); } catch { /* teardown must still settle */ }
   };
   const handle: AnimationHandle = {
     get finished() { return finished; },
     get status() { return state; },
     cancel(reason: MotionReason = "explicit") {
       if (settled) return;
-      safeStop();
       settle({ status: "cancelled", reason });
     },
     finish() {
@@ -53,23 +52,21 @@ export function createControlledHandle(options: MotionScopeOptions = {}): Contro
         driver.finish?.();
         settle({ status: "finished" });
       } catch (error) {
-        safeStop();
         settle({ status: "failed", reason: "error", error });
       }
     },
     pause() {
       if (settled || state !== "running") return;
       try { driver.pause?.(); state = "paused"; }
-      catch (error) { safeStop(); settle({ status: "failed", reason: "error", error }); }
+      catch (error) { settle({ status: "failed", reason: "error", error }); }
     },
     resume() {
       if (settled || state !== "paused") return;
       try { driver.resume?.(); state = "running"; }
-      catch (error) { safeStop(); settle({ status: "failed", reason: "error", error }); }
+      catch (error) { settle({ status: "failed", reason: "error", error }); }
     },
     dispose() {
       if (settled) return;
-      safeStop();
       settle({ status: "cancelled", reason: "explicit" });
       state = "disposed";
     }
@@ -96,7 +93,7 @@ export function createControlledHandle(options: MotionScopeOptions = {}): Contro
     const changed = (): void => {
       if (media.matches && !settled) {
         try { driver.finish?.(); }
-        catch { safeStop(); }
+        catch { /* WAAPI may already have been cancelled; settle regardless */ }
         settle({ status: "skipped", reason: "reduced-motion" });
       }
     };
