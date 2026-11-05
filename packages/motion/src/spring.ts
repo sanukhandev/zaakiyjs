@@ -28,13 +28,12 @@ export function createSpring(options: SpringOptions): AnimationHandle {
   }
   if (control.reduced || (position === target && Math.abs(velocity) < restSpeed) ||
       typeof requestAnimationFrame !== "function") {
-    if (control.reduced || position === target) {
-      try { options.onUpdate(target); }
-      catch (error) {
-        control.settle({ status: "failed", reason: "error", error }); return control.handle;
-      }
+    try { options.onUpdate(target); }
+    catch (error) {
+      control.settle({ status: "failed", reason: "error", error }); return control.handle;
     }
-    control.settle({ status: "skipped", reason: control.reduced ? "reduced-motion" : "unsupported" });
+    control.settle(control.reduced ? { status: "skipped", reason: "reduced-motion" } :
+      position === target ? { status: "finished" } : { status: "skipped", reason: "unsupported" });
     return control.handle;
   }
 
