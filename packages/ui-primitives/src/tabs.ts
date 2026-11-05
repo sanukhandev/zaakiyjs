@@ -1,0 +1,126 @@
+import type { OwnerScope } from "@zaakiyjs/core";
+import { effect } from "@zaakiyjs/signals";
+import type { ReadonlySignal } from "@zaakiyjs/signals";
+import type { InteractionDetail, ValueChange, ElementController } from "./contracts.js";
+import { createControlledState } from "./state.js";
+import { createRovingFocus } from "./keyboard.js";
+import type { Orientation, TextDirection } from "./keyboard.js";
+import { listen, own, createRegistrationGroup } from "./lifecycle.js";
+import type { PrimitiveHandle } from "./lifecycle.js";
+
+export interface TabDefinition {
+  readonly id: string;
+  readonly tab: HTMLElement;
+  readonly panel: HTMLElement;
+  readonly disabled?: boolean;
+}
+export interface TabsOptions {
+  readonly list: HTMLElement;
+  readonly owner: OwnerScope;
+  readonly value?: ReadonlySignal<string>;
+  readonly defaultValue: string;
+  readonly onChange?: (id: string) => void;
+  readonly onValueChange?: ValueChange<string>;
+  readonly readonly?: boolean;
+  readonly activation?: "automatic" | "manual";
+  readonly orientation?: Exclude<Orientation, "both">;
+  readonly direction?: TextDirection;
+}
+export interface TabsController extends ElementController {
+  readonly selected: ReadonlySignal<string>;
+  register(tab: TabDefinition): PrimitiveHandle;
+  select(id: string): void;
+}
+export function createTabs(options: TabsOptions): TabsController {
+  const { owner, list } = options;
+  list.setAttribute("role", "tablist");
+  list.setAttribute("aria-orientation", options.orientation ?? "horizontal");
+  const state = createControlledState({
+    owner, value: options.value, defaultValue: options.defaultValue,
+    onChange: next => options.onChange?.(next),
+    onValueChange: options.onValueChange
+  });
+  const registered = new Map<string, TabDefinition>();
+  const registrations = createRegistrationGroup(owner);
+  const roving = createRovingFocus({
+    container: list, owner, initialId: options.defaultValue,
+    orientation: options.orientation ?? "horizontal", direction: options.direction,
+    onActiveChange: (id, detail) => { if ((options.activation ?? "automatic") === "automatic") select(id, detail); }
+  });
+  const select = (id: string, detail: InteractionDetail = { reason: "programmatic" }) => {
+    const item = registered.get(id);
+    if (!options.readonly && item && !item.disabled && !item.tab.matches(":disabled")) state.set(id, detail);
+  };
+  const keys = listen(list, "keydown", (event: Event) => {
+    if (!(event instanceof KeyboardEvent) || !["Enter", " "].includes(event.key)) return;
+    const current = [...registered.values()].find(x => x.tab === event.target);
+    if (!current || current.disabled) return;
+    event.preventDefault();
+    select(current.id, { reason: "keyboard", originalEvent: event });
+  }, owner);
+  const rendered = effect(() => {
+    const selected = state.value.value;
+    if (registered.has(selected)) roving.move(selected, false);
+    for (const item of registered.values()) {
+      const active = item.id === selected;
+      item.tab.setAttribute("aria-selected", String(active));
+      item.panel.hidden = !active;
+      item.tab.tabIndex = active ? 0 : -1;
+    }
+  }, { phase: "render" });
+  const sync = () => {
+    const selected = state.value.peek();
+    if (registered.has(selected)) roving.move(selected, false);
+    for (const item of registered.values()) {
+      const active = item.id === selected;
+      item.tab.setAttribute("aria-selected", String(active));
+      item.panel.hidden = !active;
+      item.tab.tabIndex = item.id === roving.activeId && !item.disabled ? 0 : -1;
+    }
+  };
+  const lifecycle = own(() => {
+    rendered.dispose(); keys.dispose(); registrations.dispose(); roving.dispose();
+    for (const item of registered.values()) {
+      item.tab.removeAttribute("role"); item.tab.removeAttribute("aria-selected");
+      item.tab.removeAttribute("aria-controls"); item.panel.removeAttribute("role");
+      item.panel.removeAttribute("aria-labelledby"); item.tab.removeAttribute("tabindex");
+      item.panel.hidden = false;
+    }
+    registered.clear();
+    list.removeAttribute("role"); list.removeAttribute("aria-orientation");
+  }, owner);
+  return {
+    owner, element: list,
+    selected: state.value, select, dispose: () => lifecycle.dispose(),
+    register(item) {
+      if (registered.has(item.id) || [...registered.values()].some(x => x.tab === item.tab ||
+          x.panel === item.panel)) throw new Error("Duplicate tab identity");
+      if (!list.contains(item.tab) || !item.tab.id || !item.panel.id) {
+        throw new Error("Tab and panel require stable IDs and tablist membership");
+      }
+      return registrations.add(registrationOwner => {
+        registered.set(item.id, item);
+        item.tab.setAttribute("role", "tab");
+        item.panel.setAttribute("role", "tabpanel");
+        item.tab.setAttribute("aria-controls", item.panel.id);
+        item.panel.setAttribute("aria-labelledby", item.tab.id);
+        item.tab.setAttribute("aria-disabled", String(!!item.disabled));
+        const registration = roving.register({ id: item.id, element: item.tab, disabled: item.disabled });
+        const click = listen(item.tab, "click", (event: Event) => {
+          if (!item.disabled && !item.tab.matches(":disabled")) {
+            roving.move(item.id, false);
+            select(item.id, { reason: event instanceof MouseEvent && event.detail === 0 ? "keyboard" : "pointer", originalEvent: event });
+          }
+        }, registrationOwner);
+        sync();
+        return () => {
+          click.dispose(); registration.dispose(); registered.delete(item.id);
+          item.tab.removeAttribute("role"); item.tab.removeAttribute("aria-selected");
+          item.tab.removeAttribute("aria-controls"); item.tab.removeAttribute("aria-disabled");
+          item.panel.removeAttribute("role"); item.panel.removeAttribute("aria-labelledby");
+          item.panel.hidden = false;
+        };
+      });
+    }
+  };
+}

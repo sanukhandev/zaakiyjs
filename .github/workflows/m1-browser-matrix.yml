@@ -35,6 +35,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build workspace packages
         run: pnpm build
+      - name: Record UI primitives runtime module sizes
+        run: pnpm --filter @zaakiyjs/ui-primitives size:report
       - name: Scaffold real TypeScript/Vite consumer
         run: node packages/cli/dist/bin.js start --project browser-app --template minimal --workspace --path apps --package-manager pnpm
       - name: Link generated app workspace dependencies
@@ -68,6 +70,8 @@ jobs:
             exit 1
           fi
           python3 tests/browser/m1_acceptance.py --base-url http://127.0.0.1:4188
+      - name: Verify headless UI primitives in Chromium, Firefox and WebKit
+        run: python3 packages/ui-primitives/test/browser/acceptance.py
       - name: Assert browser bundle excludes build-only packages
         shell: bash
         run: |
