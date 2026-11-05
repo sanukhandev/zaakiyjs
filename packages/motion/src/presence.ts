@@ -1,10 +1,10 @@
 import { getOwner, onCleanup, runWithOwner } from "@zaakiyjs/core";
 import type { OwnerScope } from "@zaakiyjs/core";
 import { animateElement } from "./animate.js";
-import type { ElementAnimationOptions, MotionHandle } from "./types.js";
+import type { ElementAnimationOptions, AnimationHandle } from "./types.js";
 
-export type PresenceState = "not-present" | "entering" | "present" | "exiting" | "disposed";
-export interface PresenceOptions {
+export type StandalonePresenceState = "not-present" | "entering" | "present" | "exiting" | "disposed";
+export interface StandalonePresenceOptions {
   readonly owner?: OwnerScope;
   readonly initialPresent?: boolean;
   readonly enter?: Omit<ElementAnimationOptions, "owner">;
@@ -12,17 +12,17 @@ export interface PresenceOptions {
   /** This is a caller-owned DOM removal hook, NOT automatic node/owner disposal. */
   readonly onExited?: () => void;
 }
-export interface PresenceController {
-  readonly state: PresenceState;
+export interface StandalonePresenceController {
+  readonly state: StandalonePresenceState;
   setPresent(value: boolean): void;
   dispose(): void;
 }
 
 /** Standalone element controller. Conditional-region removal needs a separate public DOM hook. */
-export function createPresence(element: Element, options: PresenceOptions = {}): PresenceController {
-  let state: PresenceState = options.initialPresent === false ? "not-present" : "present";
+export function createStandalonePresence(element: Element, options: StandalonePresenceOptions = {}): StandalonePresenceController {
+  let state: StandalonePresenceState = options.initialPresent === false ? "not-present" : "present";
   let generation = 0;
-  let active: MotionHandle | null = null;
+  let active: AnimationHandle | null = null;
   let pendingFrame: number | null = null;
   const owner = options.owner ?? getOwner();
   let clearOwnerCell: (() => void) | null = null;
@@ -36,7 +36,7 @@ export function createPresence(element: Element, options: PresenceOptions = {}):
     active?.cancel("superseded");
     active = null;
   };
-  const controller: PresenceController = {
+  const controller: StandalonePresenceController = {
     get state() { return state; },
     setPresent(present) {
       if (state === "disposed") return;
