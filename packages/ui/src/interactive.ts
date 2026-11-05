@@ -147,7 +147,7 @@ export interface AccordionProps {
 export function Accordion(props:AccordionProps):ViewNode {
   const owner=currentOwner();
   if(new Set(props.items.map(x=>x.id)).size!==props.items.length)throw new RangeError("Accordion IDs must be unique");
-  const root=native("section");root.className="zui-accordion";
+  const root=native("section");root.className="zui-accordion";root.id=nonEmpty(props.id,"Accordion id");
   const pairs=props.items.map(item=>{
     const heading=native("h3");
     const button=native("button") as HTMLButtonElement;

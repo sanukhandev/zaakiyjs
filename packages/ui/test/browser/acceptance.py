@@ -36,7 +36,7 @@ async def browser_case(p, browser_name, url):
         assert await page.evaluate("window.__zaakiyUi.getCounts().saves") == 0
         await page.locator("#save").click()
         await expect(page.locator("#toast-host [role=status]")).to_have_text("Saved 1")
-        await page.locator("#disabled").click(force=True)
+        await page.locator("#disabled").evaluate("node => node.click()")
         assert await page.evaluate("window.__zaakiyUi.getCounts().saves") == 1
         await expect(page.locator("#loading")).to_be_disabled()
         await page.locator("#account-tab-profile").focus()
