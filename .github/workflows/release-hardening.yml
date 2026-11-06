@@ -60,8 +60,9 @@ jobs:
 
   security-accessibility:
     name: release / csp-axe-heap
-    runs-on: ubuntu-latest
-    timeout-minutes: 35
+    # Stable native browser image during Ubuntu 26.04 latest migration.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -118,10 +119,14 @@ jobs:
           PY
       - name: Strict fixture typecheck and optimized production build
         run: pnpm --dir apps/release-app typecheck && pnpm --dir apps/release-app build
+      - name: Cache pinned Playwright browser binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-ubuntu2404-playwright-python-1.64.1
       - name: Install pinned Playwright and three matching browsers
-        run: |
-          python3 -m pip install 'playwright==1.64.1'
-          python3 -m playwright install --with-deps chromium firefox webkit
+        timeout-minutes: 30
+        run: bash scripts/ci/install-playwright-browsers.sh
       - name: Gate CSP, automated WCAG rules, keyboard and Chrome heap
         shell: bash
         run: |
