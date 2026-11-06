@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, mkdir, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { prerenderStatic } from "../src/ssg.js";
@@ -38,6 +38,20 @@ describe("bounded deterministic public SSG", () => {
       expect(output.buildId).toBe("a".repeat(64));
       expect(output.routes).toHaveLength(2);
     } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+  it("rejects existing symlinks that redirect static files outside the output root", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "zaakiy-ssg-"));
+    const outside = await mkdtemp(join(tmpdir(), "zaakiy-ssg-escape-"));
+    try {
+      await mkdir(join(outside, "a"), { recursive: true });
+      await symlink(outside, join(dir, "products"), "dir");
+      await expect(prerenderStatic({ server, outDir: dir, paths: ["/products/a"] }))
+        .rejects.toThrow();
+      await expect(readFile(join(outside, "a/index.html"), "utf8")).rejects.toThrow();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
   });
   it("rejects private, duplicate, traversal and unbounded routes", async () => {
     const dir = await mkdtemp(join(tmpdir(), "zaakiy-ssg-"));

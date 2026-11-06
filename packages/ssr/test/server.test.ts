@@ -136,6 +136,19 @@ describe("SSR request / trusted-module boundary", () => {
   });
 });
 describe("hybrid cache and revalidation", () => {
+  it("does not cache responses disallowed by HTTP cache-control or Vary", async () => {
+    const cache = new MemoryRenderCache();
+    const identity = { routeId: "item", buildId: digest, scope: "public" as const,
+      ttlSeconds: 30, tags: ["item:a"] };
+    for (const headers of [{ "Cache-Control": "private" }, { "Cache-Control": "no-store" },
+      { Vary: "*" }, { "Set-Cookie": "session=secret" }]) {
+      await cache.getOrRender("blocked", identity, async () => ({
+        version: 1, status: 200, headers, body: "restricted",
+        cache: { scope: "public", tags: ["item:a"] }
+      }));
+      expect(cache.size).toBe(0);
+    }
+  });
   it("does not persist a regeneration invalidated while its response is in flight", async () => {
     const cache = new MemoryRenderCache();
     const identity = { routeId: "p", buildId: "a".repeat(64), scope: "public" as const,

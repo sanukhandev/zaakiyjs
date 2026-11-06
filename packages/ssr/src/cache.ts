@@ -68,8 +68,15 @@ export class MemoryRenderCache {
       if (typeof response.body !== "string") {
         throw new TypeError("Streaming responses cannot be shared by single-flight cache");
       }
+      const controls = Object.entries(response.headers).reduce(
+        (acc, [name, value]) => name.toLowerCase() === "cache-control" ? acc + "," + value : acc, ""
+      );
+      const unsafeVary = Object.entries(response.headers).some(
+        ([name, value]) => name.toLowerCase() === "vary" && value.split(",").some(part => part.trim() === "*")
+      );
       if (response.cache.scope !== identity.scope || response.status !== 200 ||
-          Object.keys(response.headers).some(name => name.toLowerCase() === "set-cookie")) {
+          Object.keys(response.headers).some(name => name.toLowerCase() === "set-cookie") ||
+          /(?:^|[,\s])(?:private|no-store|no-cache)(?:$|[,\s])/i.test(controls) || unsafeVary) {
         return response; // uncacheable data is never persisted
       }
       const entry: Entry = { identity, response, expiresAt: this.now() + identity.ttlSeconds * 1000 };

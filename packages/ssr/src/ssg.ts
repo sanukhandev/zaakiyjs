@@ -1,7 +1,8 @@
 /** Deterministic build-only static output. No runtime TSX compilation. */
 import { createHash } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { resolve, sep } from "node:path";
+import { constants } from "node:fs";
+import { lstat, mkdir, open } from "node:fs/promises";
+import { resolve, sep, relative, dirname, join, isAbsolute } from "node:path";
 import { createNodeServerAdapter } from "./node.js";
 import { compileRoutes, matchRoutes } from "@zaakiyjs/router";
 import type { ServerOptions } from "./node.js";
@@ -32,6 +33,33 @@ function safeOutput(path: string, root: string): string {
   const output = resolve(root, relative);
   if (!output.startsWith(root + sep)) throw new TypeError("Static path escapes build directory");
   return output;
+}
+/** Protect paths against symlink redirection, not only literal ../ traversal.
+ * Builds must run in an isolated output directory without concurrent untrusted
+ * filesystem writers; race-free protection from a privileged adversary belongs
+ * to the deployment sandbox.
+ */
+async function writeSafe(root: string, file: string, value: string): Promise<void> {
+  const rel = relative(root, file);
+  if (!rel || rel.startsWith(".." + sep) || rel === ".." || isAbsolute(rel)) {
+    throw new TypeError("Unsafe static output destination");
+  }
+  await mkdir(root, { recursive: true });
+  const rootStat = await lstat(root);
+  if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) throw new TypeError("Unsafe static output root");
+  const directories = relative(root, dirname(file)).split(sep).filter(Boolean);
+  let dir = root;
+  for (const part of directories) {
+    dir = join(dir, part);
+    try { await mkdir(dir); }
+    catch (error) {
+      if (!(error && typeof error === "object" && "code" in error && error.code === "EEXIST")) throw error;
+    }
+    const stat = await lstat(dir);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new TypeError("Unsafe static output directory");
+  }
+  const fd = await open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW, 0o644);
+  try { await fd.writeFile(value, "utf8"); } finally { await fd.close(); }
 }
 export async function prerenderStatic(options: StaticBuildOptions): Promise<StaticResult> {
   const concurrency = options.concurrency ?? 4;
@@ -100,16 +128,14 @@ export async function prerenderStatic(options: StaticBuildOptions): Promise<Stat
       throw new TypeError("Invalid static asset manifest");
   }
   for (const item of successes) {
-    await mkdir(resolve(item.file, ".."), { recursive: true });
-    await writeFile(item.file, item.body, { encoding: "utf8", flag: "w" });
+    await writeSafe(root, item.file, item.body);
   }
   const result: StaticResult = { outputs: successes.map(({ path, file, sha256 }) => ({ path, file, sha256 })),
     failures: failures.sort((a, b) => a.path.localeCompare(b.path)) };
-  await mkdir(root, { recursive: true });
-  await writeFile(resolve(root, "prerender-manifest.json"),
+  await writeSafe(root, resolve(root, "prerender-manifest.json"),
     JSON.stringify({ schema: "zaakiy.prerender/1", buildId: options.server.manifest.buildId,
       assets: Object.fromEntries(assetEntries),
       routes: result.outputs.map(x => ({ path: x.path, file: x.file.slice(root.length + 1).replace(/\\/g, "/"),
-        sha256: x.sha256 })) }) + "\n", "utf8");
+        sha256: x.sha256 })) }) + "\n");
   return result;
 }
