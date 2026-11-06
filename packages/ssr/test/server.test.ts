@@ -148,6 +148,20 @@ describe("SSR request / trusted-module boundary", () => {
   });
 });
 describe("hybrid cache and revalidation", () => {
+  it("bounds concurrent regeneration entries as well as persisted responses", async () => {
+    const cache = new MemoryRenderCache(1);
+    const identity = { routeId: "item", buildId: digest, scope: "public" as const,
+      tags: ["item:a"], ttlSeconds: 30 };
+    let release: ((response: RenderResponseV1) => void) | undefined;
+    const pending = cache.getOrRender("a", identity, () => new Promise(resolve => { release = resolve; }));
+    await expect(cache.getOrRender("b", identity, async () => ({
+      version: 1, status: 200, headers: {}, body: "b",
+      cache: { scope: "public", tags: ["item:a"] }
+    }))).rejects.toThrow(/capacity/);
+    release!({ version: 1, status: 200, headers: {}, body: "a",
+      cache: { scope: "public", tags: ["item:a"] } });
+    expect((await pending).body).toBe("a");
+  });
   it("does not cache responses disallowed by HTTP cache-control or Vary", async () => {
     const cache = new MemoryRenderCache();
     const identity = { routeId: "item", buildId: digest, scope: "public" as const,

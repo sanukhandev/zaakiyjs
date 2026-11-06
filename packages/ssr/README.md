@@ -33,7 +33,7 @@ const response = await handler.handle(new Request("https://app.example.test/"), 
 | Public Router matcher, guards, redirects, loader execution | Foundation implemented; browser lazy PageView deferred |
 | GET, HEAD, missing/denied statuses, trusted rendering, no-stack HTTP errors | Foundation implemented |
 | Bounded public static HTML output and deterministic hashes | Foundation implemented for trusted modules |
-| Hybrid TTL-scoped response cache, single-flight, explicit partitioned invalidation | In-memory foundation, not distributed |
+| Hybrid TTL-scoped response cache, bounded single-flight, explicit partitioned invalidation | In-memory foundation, not distributed |
 | AsyncIterable HTTP body streaming and cancellation/backpressure | Transport streaming only; no progressive component compiler |
 | CSP-aware head serialization / JSON-LD escaping | Foundation implemented; requires app nonce policy |
 | Versioned hydration serialization / read-only marker checks | Protocol validation only; DOM node adoption and browser matrix deferred |

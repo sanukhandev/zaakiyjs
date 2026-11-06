@@ -62,6 +62,9 @@ export class MemoryRenderCache {
         return this.getOrRender(key, identity, render);
       }
     }
+    if (this.inflight.size >= this.maxEntries) {
+      throw new Error("SSR cache regeneration capacity exceeded");
+    }
     const state = { invalidated: false };
     const pending = (async () => {
       const response = await render();
