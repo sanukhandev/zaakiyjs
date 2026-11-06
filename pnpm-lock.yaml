@@ -54,6 +54,19 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/node@22.15.30)(jsdom@26.1.0)
 
+  packages/ads:
+    dependencies:
+      '@zaakiyjs/core':
+        specifier: workspace:^
+        version: link:../core
+      '@zaakiyjs/signals':
+        specifier: workspace:^
+        version: link:../signals
+    devDependencies:
+      jsdom:
+        specifier: ^26.1.0
+        version: 26.1.0
+
   packages/http:
     devDependencies:
       '@zaakiyjs/async':
@@ -212,6 +225,7 @@ importers:
       jsdom:
         specifier: ^26.1.0
         version: 26.1.0
+
 
   packages/signals: {}
 
