@@ -2,7 +2,7 @@
 
 Typed, deterministic SEO metadata, structured-data, robots and sitemap utilities for ZaakiyJS. The server/build-time exports are pure and do not import browser globals, the router, compiler, Node.js, AI or analytics. The browser head adapter is a separate optional entry.
 
-**Provisional:** The P3 SEO/rendering contracts have not been frozen on main as of the initial implementation. Do not merge or publish before contract reconciliation and full quality gates.
+**Contract baseline:** P3-00 was merged as `0f23943a17401170980f66e69e1fd03b2a82a3c3`. This package implements its v1 SEO protocol; publication remains separately gated by approved licensing, namespace ownership, SemVer and release controls.
 
 ## Usage: static and server metadata
 
@@ -53,7 +53,7 @@ Defaults apply before parent layouts, then deeper layouts and the route override
 
 ## P3 versioned SEO/SSR protocol
 
-P3 contract PR #50 reserves `zaakiy.seo/1` and `zaakiy.sitemap/1`. The package exposes `SeoDocumentV1`, `SeoFactoryV1<Data>`, `SeoResolveInputV1<Data>`, `SeoResolutionV1`, `SitemapFeedV1`, and the data-only `RenderHeadAdapterV1` structural interface. These are provisional until P3-00 merges.
+The frozen [P3 SEO contract](../../docs/contracts/14-seo.md) reserves `zaakiy.seo/1` and `zaakiy.sitemap/1`. The package exposes `SeoDocumentV1`, `SeoFactoryV1<Data>`, `SeoResolveInputV1<Data>`, `SeoResolutionV1`, `SitemapFeedV1`, and the data-only `RenderHeadAdapterV1` structural interface. The versioned resolver skips route SEO factories for missing, redirected, private, draft and other non-200 responses.
 
 ~~~ts
 import { resolveSeoV1, seoToRenderHeadV1, createSeoHeadAdapterV1 } from "@zaakiyjs/seo";
@@ -101,7 +101,7 @@ Call update only after successful navigation with a monotonically increasing ver
 
 ## Sitemap, localization and crawler policies
 
-The async sitemap generator filters entries explicitly labeled draft, private, unauthorized, noindex, redirect, HTTP error or soft 404. It deduplicates and deterministically sorts eligible canonical URLs, emits XML escaping, explicit hreflang alternate links, splits above 50,000 URLs or 50 MB, and creates an index when split. Supply meaningful content lastmod values; the engine never invents build timestamps. Use auditHreflang for reciprocal mapping diagnostics and planSitemapRebuild for incremental record changes.
+The async sitemap generator filters entries explicitly labeled draft, private, unauthorized, noindex, redirect, HTTP error or soft 404. It excludes non-200 status responses, deduplicates identical canonical records, **rejects conflicting duplicate canonical metadata**, and sorts eligible URLs deterministically. It rejects invalid calendar dates and sitemap page URLs of 2,048 or more characters, enforces a bounded total source-record count (default 100,000), emits XML escaping and explicit hreflang alternate links, splits at 50,000 URLs or 50 MB per sitemap, and creates an index when split. Supply meaningful content lastmod values; the engine never invents build timestamps. Use auditHreflang for reciprocal mapping diagnostics and planSitemapRebuild for incremental record changes.
 
 Input eligibility flags are not a substitute for access control: callers must independently authorize records and must never feed private user data to a public sitemap. Robots.txt and noindex directives are not security boundaries.
 
@@ -109,6 +109,6 @@ Canonical URLs require a configured HTTP(S) origin and reject unsafe schemes, ma
 
 ## Remaining release gates
 
-The initial implementation is not production-certified until: P3 SEO/SSR contract alignment; workspace verifier allowlist and pnpm frozen-lockfile integration in a separate integration PR; parser-based XML/HTML/browser tests; full lint, strict typecheck, build, tests and independent npm package installation; SSR public adapter review. Never auto-merge this work.
+P3 contract and workspace integration are now incorporated, and parser-based HTML/XML tests are included. The last merged-branch quality gate must pass before approving the implementation PR. Future SSR end-to-end adapter acceptance requires a real SSR implementation and is not claimed complete by the SEO package tests. Independent npm publication remains blocked until license approval, SemVer release decision, npm scope ownership verification and publish authorization. Do not automatically merge or publish.
 
 Search Central sources: https://developers.google.com/search/docs/crawling-indexing/sitemaps/build-sitemap and https://developers.google.com/search/docs/appearance/structured-data/intro-structured-data and https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics
