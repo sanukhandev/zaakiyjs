@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-src 'self'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'">
+  <title>ZaakiyJS Ads P3 Browser Acceptance</title>
+  <style>
+    body { margin: 0; padding: 20px; font-family: sans-serif; }
+    .slot { min-width: 300px; min-height: 180px; box-sizing: border-box; }
+    #below { margin-top: 1500px; }
+    iframe { display: block; border: 0; }
+  </style>
+</head>
+<body>
+  <h1>Ads P3 acceptance</h1>
+  <label for="focus">Focus marker</label>
+  <input id="focus" aria-label="Focus marker">
+  <div id="before">Before advertisement</div>
+  <div id="first" class="slot" data-zaakiy-ad-slot="first" role="complementary" aria-label="Advertisement"></div>
+  <div id="after">After advertisement</div>
+  <section id="below">
+    <h2>Below fold</h2>
+    <div id="second" class="slot" data-zaakiy-ad-slot="second" role="complementary" aria-label="Advertisement"></div>
+  </section>
+  <script type="module" src="/main.ts"></script>
+</body>
+</html>
