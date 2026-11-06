@@ -53,11 +53,12 @@ function consentSnapshotIsValid(s: ConsentSnapshotV1): boolean {
       typeof s.policyVersion !== "string" || !s.policyVersion.trim() || !s.grants) return false;
   return ALL_PURPOSES.every(p => s.grants[p]?.purpose === p && DECISIONS.has(s.grants[p].decision));
 }
-function granted(consent: ConsentCapabilityV1, purposes: readonly AdvertisingPurposeV1[]): boolean {
+function granted(consent: ConsentCapabilityV1, purposes: readonly AdvertisingPurposeV1[], seen: { revision: number }): boolean {
   try {
     if (consent.schema !== "zaakiy.consent/1") return false;
     const snapshot = consent.snapshot();
-    if (!consentSnapshotIsValid(snapshot)) return false;
+    if (!consentSnapshotIsValid(snapshot) || snapshot.revision < seen.revision) return false;
+    seen.revision = snapshot.revision;
     return purposes.every(p => snapshot.grants[p].decision === "granted" && consent.can(p) === true);
   } catch { return false; }
 }
@@ -107,6 +108,7 @@ export function createAdsManagerV1(options: AdsManagerOptionsV1): AdsManagerV1 {
   const placements = new Map<string, AdMountedPlacementV1 & { updatePermission(): void }>();
   const slots = new Map<string, AdSlotV1>();
   const resources = new Set<string>();
+  const consentRevision = { revision: -1 };
   let disposed = false;
   let providerReady = false;
   let providerAbort: AbortController | undefined;
@@ -124,13 +126,13 @@ export function createAdsManagerV1(options: AdsManagerOptionsV1): AdsManagerV1 {
       ...slot.requiredPurposes,
       ...(policy.personalized || slot.personalized ? ["ad-personalization" as const] : [])
     ])];
-    return granted(consent, required);
+    return granted(consent, required, consentRevision);
   };
   const gatePermitsStart = (): boolean =>
     granted(consent, [...new Set<AdvertisingPurposeV1>([
       "advertising", ...policy.requiredPurposes,
       ...(policy.personalized ? ["ad-personalization" as const] : [])
-    ])]);
+    ])], consentRevision);
   const forgetResource = async (id: string): Promise<void> => {
     if (!resources.delete(id)) return;
     try { await provider.remove(id); } catch { /* provider-side cleanup is best effort */ }
