@@ -1,0 +1,81 @@
+name: P3 Ads Browser Acceptance
+
+on:
+  pull_request:
+    paths:
+      - "packages/ads/**"
+      - "pnpm-lock.yaml"
+      - "scripts/ci/verify-workspaces.mjs"
+      - ".github/workflows/p3-ads-browser.yml"
+  push:
+    branches: [main]
+    paths:
+      - "packages/ads/**"
+      - ".github/workflows/p3-ads-browser.yml"
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p3-ads-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    name: ads / chromium-firefox-webkit-consent-cls
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install reproducible frozen workspace
+        run: pnpm install --frozen-lockfile
+      - name: Build actual Ads/Signals/Core packages
+        run: pnpm build
+      - name: Verify standalone Ads artifact and compressed size
+        run: |
+          pnpm --filter @zaakiyjs/ads size:report
+          pnpm --filter @zaakiyjs/ads pack:check
+      - name: Install Playwright and Chromium Firefox WebKit
+        run: |
+          python3 -m pip install 'playwright==1.64.1'
+          python3 -m playwright install --with-deps chromium firefox webkit
+      - name: Verify consent, CSP, CLS, focus and iframe cleanup on real browsers
+        shell: bash
+        run: |
+          pnpm exec vite packages/ads/test/browser --host 127.0.0.1 --port 4199 --strictPort > /tmp/zaakiy-ads-preview.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in {1..60}; do
+            if curl --fail --silent http://127.0.0.1:4199/ > /dev/null; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/zaakiy-ads-preview.log
+            exit 1
+          fi
+          python3 packages/ads/test/browser/acceptance.py --base-url http://127.0.0.1:4199
+      - name: Browser diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ads-browser-diagnostics
+          path: |
+            /tmp/zaakiy-ads-*.png
+            /tmp/zaakiy-ads-preview.log
+          if-no-files-found: ignore
