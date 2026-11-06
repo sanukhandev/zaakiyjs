@@ -301,6 +301,9 @@ export async function generateSitemapsFromFeedV1(
   feed: SitemapFeedV1, signal: AbortSignal, options: SitemapFeedOptionsV1
 ): Promise<SitemapBuild> {
   if (feed.schema !== "zaakiy.sitemap/1") throw new TypeError("Unsupported sitemap feed schema");
+  const feedOrigin = new URL(options.siteURL);
+  if (feedOrigin.protocol !== "https:" || feedOrigin.username || feedOrigin.password)
+    throw new TypeError("P3 sitemap feed requires a trusted HTTPS origin");
   const maxPages = options.maxPages ?? 1000;
   const maxRecords = options.maxRecords ?? 100_000;
   if (!Number.isSafeInteger(maxPages) || maxPages < 1 || maxPages > 10_000 ||
@@ -320,6 +323,10 @@ export async function generateSitemapsFromFeedV1(
     totalRecords += result.items.length;
     for (const entry of result.items) {
       if (entry.visibility !== "public") continue;
+      // P3 SitemapEntryV1 requires fully qualified HTTPS page URLs. The lower
+      // level static sitemap helper intentionally also accepts relative paths.
+      if (!entry.loc.startsWith("https://"))
+        throw new TypeError("P3 sitemap feed URL must be absolute HTTPS");
       entries.push({
         loc: entry.loc, lastmod: entry.lastmod,
         changefreq: entry.changefreq, priority: entry.priority,
