@@ -1,4 +1,4 @@
-import type { HeadTag, RenderedMetadata } from "./types.js";
+import type { RenderedMetadata } from "./types.js";
 import { serializeHeadTags } from "./metadata.js";
 import { serializeJsonLd } from "./structured.js";
 
