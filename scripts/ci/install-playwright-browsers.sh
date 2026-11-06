@@ -11,9 +11,9 @@ echo "Installing pinned Python Playwright ${version}"
 timeout --signal=TERM --kill-after=10s 120s python3 -m pip install "playwright==${version}"
 
 echo "Installing Chromium, Firefox and WebKit native dependencies"
-# Cold Ubuntu runners can take more than 4 minutes to install the complete
+# Cold Ubuntu runners can take more than 10 minutes to install the complete
 # WebKit/GStreamer/font dependency set. Do not skip native dependencies.
-timeout --signal=TERM --kill-after=10s 600s python3 -m playwright install-deps chromium firefox webkit
+timeout --signal=TERM --kill-after=10s 1200s python3 -m playwright install-deps chromium firefox webkit
 
 for attempt in 1 2 3; do
   echo "Installing all three pinned browser engines (attempt ${attempt}/3)"
