@@ -47,10 +47,14 @@ jobs:
         run: |
           pnpm --filter @zaakiyjs/ads size:report
           pnpm --filter @zaakiyjs/ads pack:check
+      - name: Cache pinned Playwright browser binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-python-1.64.1
       - name: Install Playwright and Chromium Firefox WebKit
-        run: |
-          python3 -m pip install 'playwright==1.64.1'
-          python3 -m playwright install --with-deps chromium firefox webkit
+        timeout-minutes: 18
+        run: bash scripts/ci/install-playwright-browsers.sh
       - name: Verify consent, CSP, CLS, focus and iframe cleanup on real browsers
         shell: bash
         run: |
