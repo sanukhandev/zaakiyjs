@@ -1,0 +1,23 @@
+{
+  "name": "@zaakiyjs/consent",
+  "version": "0.0.0",
+  "description": "Fail-closed, signal-driven consent policy and optional vendor authorization",
+  "type": "module",
+  "sideEffects": false,
+  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "scripts": {
+    "lint": "eslint src test",
+    "typecheck": "tsc --noEmit --project tsconfig.json && tsc --noEmit --project tsconfig.types.json",
+    "build": "tsc --project tsconfig.build.json",
+    "test": "vitest run test",
+    "pack:check": "npm pack --dry-run --json"
+  },
+  "publishConfig": { "access": "public" },
+  "dependencies": {
+    "@zaakiyjs/signals": "workspace:^",
+    "@zaakiyjs/core": "workspace:^"
+  }
+}
