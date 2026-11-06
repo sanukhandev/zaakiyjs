@@ -4,6 +4,8 @@ Typed, deterministic SEO metadata, structured-data, robots and sitemap utilities
 
 **Contract baseline:** P3-00 was merged as `0f23943a17401170980f66e69e1fd03b2a82a3c3`. This package implements its v1 SEO protocol; publication remains separately gated by approved licensing, namespace ownership, SemVer and release controls.
 
+**Full API and integration guide:** [Complete SEO Usage and Integration Guide](./docs/complete-guide.md) — static metadata, typed route loaders, P3 v1/SSR, SPA head updates, canonical/OG/hreflang, JSON-LD, robots, sitemap feeds, diagnostics, security and deployment examples.
+
 ## Usage: static and server metadata
 
 ~~~ts
