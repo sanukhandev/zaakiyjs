@@ -20,6 +20,8 @@ export interface SitemapOptions extends CanonicalPolicy {
   readonly prefix?: string;
   readonly maxEntries?: number;
   readonly maxBytes?: number;
+  /** Maximum total feed records to traverse, including filtered records. */
+  readonly maxRecords?: number;
 }
 export interface GeneratedSitemap {
   readonly filename: string;
@@ -91,18 +93,27 @@ export async function generateSitemaps(
 ): Promise<SitemapBuild> {
   const maxEntries = options.maxEntries ?? 50_000;
   const maxBytes = options.maxBytes ?? 50_000_000;
+  const maxRecords = options.maxRecords ?? 100_000;
   if (!Number.isInteger(maxEntries) || maxEntries < 1 || maxEntries > 50_000 ||
-    !Number.isInteger(maxBytes) || maxBytes < 1024 || maxBytes > 50_000_000) {
-    throw new RangeError("Sitemap limits must respect 50,000 URLs and 50 MB");
+    !Number.isInteger(maxBytes) || maxBytes < 1024 || maxBytes > 50_000_000 ||
+    !Number.isSafeInteger(maxRecords) || maxRecords < 1 || maxRecords > 1_000_000) {
+    throw new RangeError("Sitemap limits must respect 50,000 URLs, 50 MB, and bounded feed records");
   }
-  const seen = new Set<string>();
+  const seen = new Map<string, string>();
   const entries: { loc: string; xml: string }[] = [];
   let excluded = 0;
+  let processed = 0;
   for await (const entry of source) {
+    if (++processed > maxRecords) throw new RangeError("Sitemap source exceeds maxRecords");
     if (!eligible(entry)) { excluded++; continue; }
     const item = serializedEntry(entry, options);
-    if (seen.has(item.loc)) { excluded++; continue; }
-    seen.add(item.loc);
+    const previous = seen.get(item.loc);
+    if (previous !== undefined) {
+      if (previous !== item.xml) throw new TypeError("Conflicting metadata for duplicate sitemap canonical");
+      excluded++;
+      continue;
+    }
+    seen.set(item.loc, item.xml);
     entries.push(item);
   }
   entries.sort((a, b) => a.loc.localeCompare(b.loc, "en"));
@@ -137,10 +148,11 @@ export async function generateSitemaps(
 }
 export function generateSitemapIndex(entries: readonly SitemapIndexEntry[], options: CanonicalPolicy): string {
   if (entries.length > 50_000) throw new RangeError("Sitemap index exceeds 50,000 locations");
-  const sorted = entries.map(entry => ({
-    loc: normalizeCanonical(entry.loc, options),
-    lastmod: dateString(entry.lastmod)
-  })).sort((a, b) => a.loc.localeCompare(b.loc, "en"));
+  const sorted = entries.map(entry => {
+    const loc = normalizeCanonical(entry.loc, options);
+    if (loc.length >= 2_048) throw new RangeError("Sitemap index URL must be fewer than 2048 characters");
+    return { loc, lastmod: dateString(entry.lastmod) };
+  }).sort((a, b) => a.loc.localeCompare(b.loc, "en"));
   const unique = new Set<string>();
   const rows = sorted.map(({ loc, lastmod }) => {
     if (unique.has(loc)) throw new TypeError("Duplicate sitemap index location");
@@ -156,7 +168,7 @@ export function planSitemapRebuild(
   previous: Readonly<Record<string, string>>, next: Readonly<Record<string, string>>
 ): { readonly changed: readonly string[]; readonly removed: readonly string[] } {
   const changed = Object.keys(next).filter(id => next[id] !== previous[id]).sort();
-  const removed = Object.keys(previous).filter(id => !(id in next)).sort();
+  const removed = Object.keys(previous).filter(id => !Object.hasOwn(next, id)).sort();
   return { changed, removed };
 }
 export interface HreflangPage {
