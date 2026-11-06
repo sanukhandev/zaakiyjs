@@ -30,8 +30,18 @@ export function resolveMetadata<Data = unknown, Params extends Readonly<Record<s
   const robots: RobotsDirectives = {
     index: true, follow: true, ...merged.robots
   };
-  const notIndexable = options.private === true || (options.status !== undefined && options.status >= 400);
+  // For non-200 or private responses, never serialize loader-derived discovery content.
+  // This protects older convenience metadata APIs as well as the P3 resolver.
+  const notIndexable = options.private === true ||
+    (options.status !== undefined && options.status !== 200);
   const forcedRobots = notIndexable ? { ...robots, index: false, follow: false } : robots;
+  if (notIndexable) {
+    return {
+      robots: forcedRobots as ResolvedMetadata["robots"],
+      title: options.private ? undefined : options.status && options.status >= 400 ? merged.title : undefined,
+      locale: options.locale ?? merged.locale
+    };
+  }
   const canonical = merged.canonical === undefined ? undefined : normalizeCanonical(merged.canonical, options);
   const altEntries = Object.entries(merged.alternates ?? {}).map(([locale, href]) =>
     [locale, normalizeCanonical(href, options)] as const);
