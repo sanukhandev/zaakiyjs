@@ -31,7 +31,7 @@ interface AdProviderV1 {
 }
 interface AdPlacementHandleV1 {
   readonly id: string;
-  readonly state: AdSlotStateV1; // observable state may later use existing Signals
+  readonly state: ReadonlySignal<AdSlotStateV1>; // public Signals readonly type
   refresh(): Promise<void>;
   dispose(): Promise<void>;
 }
@@ -44,7 +44,7 @@ interface AdPolicyV1 {
 }
 ~~~
 
-Contract 15's decision/grant vocabulary is authoritative. `requiredPurposes` is the intersection of provider and slot **requirements**, with no implied grant from one purpose to another. Nonpersonalized advertising may require `advertising` only if configured policy permits; personalization requires **both** `advertising` and `ad-personalization`. Essential consent is never a substitute. Unknown/denied/revoked are blocked states, not temporary permission.
+`ReadonlySignal` is the existing public `@zaakiyjs/signals` type, not a new scheduler. Its use requires an explicit optional Ads dependency on Signals if implemented. Contract 15's decision/grant vocabulary is authoritative. `requiredPurposes` is the **union** of provider and slot requirements (every required purpose must be granted), with no implied grant from one purpose to another. Nonpersonalized advertising may require `advertising` only if configured policy permits; personalization requires **both** `advertising` and `ad-personalization`. Essential consent is never a substitute. Unknown/denied/revoked are blocked states, not temporary permission.
 
 ## Own the DOM, not the routing engine
 

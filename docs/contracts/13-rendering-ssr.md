@@ -53,7 +53,25 @@ interface ServerRequestContextV1 {
   readonly services: NavigationServices; // request-bound provider facade
   readonly loaderData: unknown; // resolved by existing Router contract, with abort semantics
   readonly principal: { readonly scope: CacheScopeV1; readonly partitionKey?: string };
-  readonly initialConsent?: unknown; // transport-neutral policy snapshot, see Contract 15
+  readonly initialConsent?: ConsentSnapshotV1; // injected structural contract from Contract 15
+}
+interface TrustedServerRenderModuleV1 {
+  readonly protocol: "zaakiy.render/1";
+  render(context: ServerRequestContextV1): RenderResponseV1 | Promise<RenderResponseV1>;
+}
+interface RenderInvalidationRequestV1 {
+  readonly version: 1;
+  readonly tags: readonly string[];
+  readonly scope: Exclude<CacheScopeV1, "no-store">;
+  readonly partitionKey?: string; // required for tenant/user
+  readonly principalId: string; // authenticated server-side, never exposed to client
+  readonly issuedAt: string; // ISO 8601
+  readonly idempotencyKey: string;
+}
+interface RenderCacheInvalidatorV1 {
+  readonly version: 1;
+  invalidate(request: RenderInvalidationRequestV1, signal: AbortSignal):
+    Promise<{ readonly invalidatedCount: number }>;
 }
 interface RenderHeadEntryV1 {
   readonly tag: "title" | "meta" | "link" | "script-jsonld";
@@ -87,7 +105,7 @@ interface NodeServerAdapterV1 {
 }
 ~~~
 
-These are **reserved interface shapes**. `OwnerScope` and `NavigationServices` refer to public Core/Router concepts; a future implementation must import their types only from public exports. `NodeServerAdapterV1` describes a Fetch Request/Response bridge on Node; no Node-specific dependency is introduced into browser modules. Route matching MUST reuse Router's public matcher; no second path grammar. Router's browser `PageView` is a `Node` and cannot be run on a server: generating a server render factory needs a distinct, reviewed compiler output target. Do not infer server support from `RouteDefinition.metadata`.
+These are **reserved interface shapes**. `ConsentSnapshotV1` is the structurally compatible Contract 15 snapshot supplied by the host; SSR must not import the concrete Consent state engine. `OwnerScope` and `NavigationServices` refer to public Core/Router concepts; a future implementation must import their types only from public exports. `NodeServerAdapterV1` describes a Fetch Request/Response bridge on Node; no Node-specific dependency is introduced into browser modules. Route matching MUST reuse Router's public matcher; no second path grammar. Router's browser `PageView` is a `Node` and cannot be run on a server: generating a server render factory needs a distinct, reviewed compiler output target. Do not infer server support from `RouteDefinition.metadata`.
 
 ## Trusted build and request isolation
 
