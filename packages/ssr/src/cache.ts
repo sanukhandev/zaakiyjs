@@ -16,7 +16,7 @@ const KEY = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$/;
 /** Bounded, local-only response cache. In-memory entries are not distributed or durable. */
 export class MemoryRenderCache {
   private readonly entries = new Map<string, Entry>();
-  private readonly inflight = new Map<string, { promise: Promise<RenderResponseV1>; identity: CacheIdentity; invalidated: boolean }>();
+  private readonly inflight = new Map<string, { promise: Promise<RenderResponseV1>; identity: CacheIdentity; state: { invalidated: boolean } }>();
   constructor(readonly maxEntries = 256, private readonly now: () => number = Date.now) {
     if (!Number.isSafeInteger(maxEntries) || maxEntries < 1 || maxEntries > 100_000)
       throw new TypeError("Invalid cache capacity");
@@ -34,7 +34,7 @@ export class MemoryRenderCache {
     if (cached) return cached;
     const existing = this.inflight.get(key);
     if (existing) return existing.promise;
-    let flight: { promise: Promise<RenderResponseV1>; identity: CacheIdentity; invalidated: boolean };
+    const state = { invalidated: false };
     const pending = (async () => {
       const response = await render();
       if (typeof response.body !== "string") {
@@ -45,7 +45,7 @@ export class MemoryRenderCache {
         return response; // uncacheable data is never persisted
       }
       const entry: Entry = { identity, response, expiresAt: this.now() + identity.ttlSeconds * 1000 };
-      if (identity.ttlSeconds > 0 && !flight.invalidated) {
+      if (identity.ttlSeconds > 0 && !state.invalidated) {
         this.entries.delete(key); this.entries.set(key, entry);
         while (this.entries.size > this.maxEntries) {
           const oldest = this.entries.keys().next().value;
@@ -55,7 +55,7 @@ export class MemoryRenderCache {
       }
       return response;
     })();
-    flight = { promise: pending, identity, invalidated: false };
+    const flight = { promise: pending, identity, state };
     this.inflight.set(key, flight);
     try { return await pending; }
     finally { if (this.inflight.get(key) === flight) this.inflight.delete(key); }
@@ -73,7 +73,7 @@ export class MemoryRenderCache {
     for (const [key, flight] of this.inflight) {
       if (flight.identity.scope === scope && flight.identity.partitionKey === partitionKey &&
           flight.identity.tags.some(tag => requested.has(tag))) {
-        flight.invalidated = true;
+        flight.state.invalidated = true;
         this.inflight.delete(key);
       }
     }
