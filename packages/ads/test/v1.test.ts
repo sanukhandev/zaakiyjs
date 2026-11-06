@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, afterEach, expect, it, vi } from "vitest";
 import { createOwner, disposeOwner, runWithOwner } from "@zaakiyjs/core";
-import { createAdsManagerV1 } from "../src/index.js";
+import { createAdsManagerV1, renderAdSlotPlaceholderV1, bindAdsV1ToRoutes } from "../src/index.js";
 import type {
   AdProviderV1, AdPolicyV1, AdSlotV1,
   ConsentCapabilityV1, ConsentDecisionV1, ConsentPurposeV1, ConsentSnapshotV1
@@ -248,6 +248,36 @@ describe("P3-00 frozen AdSlotV1 / ConsentCapabilityV1", () => {
     await flush();
     expect(placement.state.peek()).toBe("disposed");
     expect(consent.callbacks.size).toBe(0);
+  });
+  it("renders escaped SSR geometry that hydrates into the same native element", async () => {
+    const markup = renderAdSlotPlaceholderV1(baseSlot, 'Sponsored "display" <safe>');
+    expect(markup).toContain('min-width:300px');
+    expect(markup).toContain('min-height:180px');
+    expect(markup).toContain("&lt;safe&gt;");
+    const host = document.createElement("main");
+    host.innerHTML = markup;
+    const node = host.firstElementChild as HTMLElement;
+    const f = fixture();
+    const placement = f.manager.register(baseSlot);
+    placement.mount(node);
+    expect(host.firstElementChild).toBe(node);
+    await f.manager.dispose();
+  });
+  it("blocks unapproved route registration and tears down exited pages", async () => {
+    const f = fixture();
+    let current = "public";
+    let callback!: (id: string) => void;
+    const unsubscribe = vi.fn();
+    const route = bindAdsV1ToRoutes(f.manager, {
+      currentRouteId: () => current,
+      subscribe: fn => { callback = fn; return unsubscribe; }
+    }, { allowRoutes: ["public", "article"] });
+    expect(() => route.register({ ...baseSlot, id: "private" }, undefined, { routeId: "account" })).toThrow();
+    const slot = route.register(baseSlot);
+    current = "article"; callback(current);
+    expect(slot.state.peek()).toBe("disposed");
+    await route.dispose(); await f.manager.dispose();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
   it("keeps app scopes and providers isolated", async () => {
     const a = fixture(), b = fixture();
