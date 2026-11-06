@@ -48,7 +48,7 @@ describe("frozen P3 SEO v1", () => {
     }
   });
   it("never evaluates SEO factories for missing, deleted or private loader data", async () => {
-    const forbidden = vi.fn((_input: SeoResolveInputV1<unknown>): SeoDocumentV1 => {
+    const forbidden = vi.fn((): SeoDocumentV1 => {
       throw new Error("Factory must not read missing or private loader data");
     });
     for (const input of [
