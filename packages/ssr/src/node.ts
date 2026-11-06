@@ -70,10 +70,14 @@ function makeResponse(result: RenderResponseV1, method: string, signal: AbortSig
   if (!headers.has("content-type")) headers.set("content-type", "text/html; charset=utf-8");
   headers.set("x-content-type-options", "nosniff");
   if (result.status >= 300) headers.set("x-robots-tag", "noindex");
-  if (result.cache.scope !== "public") headers.set("cache-control", "private, no-store");
+  if (result.cache.scope !== "public" || headers.has("set-cookie"))
+    headers.set("cache-control", "private, no-store");
   else if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
   if (method === "HEAD" || [204, 205, 304].includes(result.status)) {
-    if (typeof result.body !== "string") void result.body[Symbol.asyncIterator]().return?.();
+    if (typeof result.body !== "string") {
+      try { void Promise.resolve(result.body[Symbol.asyncIterator]().return?.()).catch(() => undefined); }
+      catch { /* The response has no body, and request cleanup must still run. */ }
+    }
     close();
     return new Response(null, { status: result.status, headers });
   }

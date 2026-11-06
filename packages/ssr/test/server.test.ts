@@ -94,6 +94,18 @@ describe("SSR request / trusted-module boundary", () => {
     expect((await get(injected)).status).toBe(500);
     expect((await get(fixture(), "/products/%2e%2e")).status).not.toBe(200);
   });
+  it("overrides public cache headers whenever a response sets a cookie", async () => {
+    const options = fixture(() => ({
+      version: 1, status: 200, body: "public page with cookie",
+      headers: { "Cache-Control": "public, max-age=900", "Set-Cookie": "session=opaque" },
+      cache: { scope: "public", tags: [] }
+    }), { policies: [{ version: 1, routeId: "item", mode: "ssr",
+      cache: { scope: "public", ttlSeconds: 0, tags: [] } }],
+      resolvePrincipal: () => ({ scope: "public" }) });
+    const result = await get(options);
+    expect(result.status).toBe(200);
+    expect(result.headers.get("cache-control")).toBe("private, no-store");
+  });
   it("handles HEAD and aborts cancelled requests without exposing errors", async () => {
     const adapter = createNodeServerAdapter(fixture());
     const head = await adapter.handle(new Request("https://shop.example.test/products/a", { method: "HEAD" }),

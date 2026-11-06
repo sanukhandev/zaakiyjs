@@ -76,7 +76,7 @@ export function safeLocation(value: string, origin: string): string {
   return target.pathname + target.search + target.hash;
 }
 const allowedAttributes: Record<RenderHeadEntryV1["tag"], ReadonlySet<string>> = {
-  title: new Set(), meta: new Set(["name", "property", "content", "charset", "http-equiv"]),
+  title: new Set(), meta: new Set(["name", "property", "content", "charset"]),
   link: new Set(["rel", "href", "hreflang", "type", "sizes", "media"]),
   "script-jsonld": new Set(["nonce"])
 };

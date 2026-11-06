@@ -15,6 +15,9 @@ describe("SSR serialization and policy hardening", () => {
       href: "javascript:alert(1)" } }], "https://shop.example.test")).toThrow();
     expect(() => serializeHead([{ tag: "meta", attributes: { onclick: "bad" } }],
       "https://shop.example.test")).toThrow();
+    expect(() => serializeHead([{ tag: "meta", attributes: {
+      "http-equiv": "refresh", content: "0;url=javascript:alert(1)"
+    } }], "https://shop.example.test")).toThrow();
   });
   it("rejects untrusted JSON prototype, getters, sensitive fields and oversized data", () => {
     expect(() => safeJson({ public: { token: "abc" } }, ["public"])).toThrow();
