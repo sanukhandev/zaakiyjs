@@ -178,7 +178,7 @@ export async function resolveSeoV1<Data>(
     options.redirect && options.redirect.status !== input.status) {
     throw new TypeError("Redirect status and Location must agree");
   }
-  const defaults = options.defaults ?? { version: 1 };
+  const defaults: SeoDocumentV1 = options.defaults ?? { version: 1 };
   assertVersion(defaults);
   // For auth, missing/deleted pages, redirects and non-200 responses, never call
   // the route metadata factory. Loader data may not exist or may be private.
