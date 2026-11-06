@@ -25,7 +25,7 @@ class CountedObserver extends native {
 // Test instrumentation only: preserve browser-native PerformanceObserver behavior.
 Object.defineProperty(CountedObserver, 'supportedEntryTypes', { get: () => native.supportedEntryTypes });
 globalThis.PerformanceObserver = CountedObserver;
-const stopReady = startWebVitals(analytics, { path: () => '/performance?token=private' });
+const stopReady = startWebVitals(analytics, { path: () => '/globalThis.performance?token=private' });
 let stop = () => {};
 const ready = stopReady.then(dispose => { stop = dispose; });
 function consentTo(value) {
@@ -34,24 +34,24 @@ function consentTo(value) {
 }
 async function induceLayoutAndLcp() {
   // Only browser-created entries (not synthetic callback metric values) are used.
-  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-  const visual = document.querySelector('#visual');
+  await new Promise(resolve => globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(resolve)));
+  const visual = globalThis.document.querySelector('#visual');
   visual.style.height = '350px';
-  const h = document.createElement('h2');
+  const h = globalThis.document.createElement('h2');
   h.style.fontSize = '72px'; h.textContent = 'Large content generated after consent';
-  document.querySelector('main').appendChild(h);
-  await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  globalThis.document.querySelector('main').appendChild(h);
+  await new Promise(resolve => globalThis.requestAnimationFrame(() => globalThis.requestAnimationFrame(resolve)));
 }
-document.querySelector('#interact').addEventListener('click', () => {
-  const end = performance.now() + 110;
-  while (performance.now() < end) { /* a real slow interaction for the Event Timing API */ }
+globalThis.document.querySelector('#interact').addEventListener('click', () => {
+  const end = globalThis.performance.now() + 110;
+  while (globalThis.performance.now() < end) { /* a real slow interaction for the Event Timing API */ }
 });
-window.__nativeVitals = {
+globalThis.window.__nativeVitals = {
   ready,
   supported: native.supportedEntryTypes,
   grant: () => consentTo(true), revoke: () => consentTo(false),
   induceLayoutAndLcp,
-  flush: async () => { window.dispatchEvent(new Event('pagehide')); await analytics.flush(); },
+  flush: async () => { globalThis.window.dispatchEvent(new globalThis.Event('pagehide')); await analytics.flush(); },
   events: () => providers.flatMap(p => p.events),
   counts: () => ({ ...counts, subscribers: listeners.size }),
   dispose: async () => { stop(); await analytics.dispose(); }
