@@ -32,6 +32,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: ESLint and workspace contract
         run: pnpm lint
+      - name: Validate site Markdown, imports and documented APIs
+        run: node scripts/docs/validate-site.mjs
 
   typecheck:
     name: quality / typecheck
