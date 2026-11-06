@@ -224,6 +224,15 @@ describe("P3-00 frozen AdSlotV1 / ConsentCapabilityV1", () => {
     expect(placement.state.peek()).toBe("failed");
     await f.manager.dispose();
   });
+  it("cleans a provider resource after a no-fill outcome", async () => {
+    const f = fixture(); f.consent.grant("advertising");
+    vi.mocked(f.provider.load).mockResolvedValueOnce("empty");
+    const placement = f.manager.register(baseSlot); placement.mount(host());
+    await flush();
+    expect(placement.state.peek()).toBe("empty");
+    expect(f.provider.remove).toHaveBeenCalledWith(baseSlot.id);
+    await f.manager.dispose();
+  });
   it("owner disposal releases the manager and child placement", async () => {
     const consent = new ConsentFixture(); consent.grant("advertising");
     const provider = fixture().provider;
