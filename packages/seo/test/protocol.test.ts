@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSeoHeadAdapterV1, generateSitemapsFromFeedV1, resolveSeoV1,
+import { auditSeoV1, createSeoHeadAdapterV1, generateSitemapsFromFeedV1, resolveSeoV1,
   seoRobotsHeaderV1, seoToRenderHeadV1 } from "../src/index.js";
 import type { SeoDocumentV1, SeoResolveInputV1, SitemapFeedV1 } from "../src/index.js";
 const siteOrigin = new URL("https://shop.example.test");
@@ -91,6 +91,18 @@ describe("frozen P3 SEO v1", () => {
       url: productInput.url, status: 200, loaderData: productInput.loaderData });
     expect(tags.find(t => t.tag === "link" && t.attributes?.rel === "canonical")?.attributes?.href)
       .toBe("https://shop.example.test/products/sku-7");
+  });
+  it("returns machine-readable SEO diagnostics for private or invalid indexability", async () => {
+    const product = await resolveSeoV1(productInput, productFactory);
+    const good = auditSeoV1({ resolution: product, visibility: "public" });
+    expect(good.some(d => d.severity === "error")).toBe(false);
+    const missing = await resolveSeoV1({ ...productInput, status: 404 }, productFactory);
+    const bad = auditSeoV1({ resolution: missing, visibility: "public", sitemapIncluded: true });
+    expect(bad).toContainEqual(expect.objectContaining({
+      code: "SEO307", severity: "error"
+    }));
+    const duplicates = auditSeoV1({ resolution: product, visibility: "public", existingCanonicalCount: 2 });
+    expect(duplicates.some(d => d.code === "SEO308")).toBe(true);
   });
   it("supports bounded cursor-based published sitemap feeds and abort", async () => {
     const feed: SitemapFeedV1 = {

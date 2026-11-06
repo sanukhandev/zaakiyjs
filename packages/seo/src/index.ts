@@ -20,3 +20,6 @@ export { resolveSeoV1, seoToRenderHeadV1, seoRobotsHeaderV1, createSeoHeadAdapte
 export type { JsonLdValueV1, SeoRobotsV1, SeoDocumentV1, SeoResolveInputV1, SeoFactoryV1,
   SeoResolutionV1, SitemapEntryV1, SitemapFeedV1, RenderHeadEntryV1, RenderHeadAdapterV1,
   SeoResolveOptionsV1, SeoRouteBindingV1, SitemapFeedOptionsV1 } from "./protocol.js";
+
+export { auditSeoV1 } from "./audit-v1.js";
+export type { SeoAuditInputV1 } from "./audit-v1.js";
