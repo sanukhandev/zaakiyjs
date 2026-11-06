@@ -68,6 +68,34 @@ describe('native disposable Core Web Vitals collection', () => {
     stop(); stop();
     expect(FakeObserver.instances.every(x => x.disconnect.mock.calls.length === 1)).toBe(true);
   });
+  it('finalizes LCP without consuming queued CLS, INP or paint entries', () => {
+    const { w, doc, observer } = fixture();
+    const add = vi.spyOn(w, 'addEventListener');
+    const emit = vi.fn();
+    const stop = createNativeWebVitalsSource().start(emit, new AbortController().signal) as () => void;
+    observer('largest-contentful-paint').records.push(
+      { entryType: 'largest-contentful-paint', startTime: 200 } as PerformanceEntry);
+    observer('layout-shift').records.push(
+      { entryType: 'layout-shift', startTime: 210, value: 0.3, hadRecentInput: false } as unknown as PerformanceEntry);
+    observer('event').records.push(
+      { entryType: 'event', startTime: 220, duration: 350, interactionId: 4 } as unknown as PerformanceEntry);
+    observer('paint').records.push(
+      { entryType: 'paint', name: 'first-contentful-paint', startTime: 230 } as PerformanceEntry);
+    const input = add.mock.calls.find(([type]) => type === 'pointerdown')?.[1];
+    expect(typeof input).toBe('function');
+    if (typeof input !== 'function') throw new Error('Missing pointerdown listener');
+    input({ isTrusted: true } as Event);
+    expect(observer('layout-shift').records).toHaveLength(1);
+    expect(observer('event').records).toHaveLength(1);
+    expect(observer('paint').records).toHaveLength(1);
+    doc.visibilityState = 'hidden';
+    doc.dispatchEvent(new Event('visibilitychange'));
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ name: 'LCP', value: 200 }));
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ name: 'CLS', value: 0.3 }));
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ name: 'INP', value: 350 }));
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ name: 'FCP', value: 230 }));
+    stop();
+  });
   it('measures only actual interaction ids and disposes fully on abort', () => {
     const { observer, doc, clock } = fixture();
     const emit = vi.fn();
