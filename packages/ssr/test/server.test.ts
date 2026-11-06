@@ -152,8 +152,11 @@ describe("hybrid cache and revalidation", () => {
     const cache = new MemoryRenderCache();
     const identity = { routeId: "item", buildId: digest, scope: "public" as const,
       ttlSeconds: 30, tags: ["item:a"] };
-    for (const headers of [{ "Cache-Control": "private" }, { "Cache-Control": "no-store" },
-      { Vary: "*" }, { "Set-Cookie": "session=secret" }]) {
+    const headersCases: readonly Readonly<Record<string, string>>[] = [
+      { "Cache-Control": "private" }, { "Cache-Control": "no-store" },
+      { Vary: "*" }, { "Set-Cookie": "session=secret" }
+    ];
+    for (const headers of headersCases) {
       await cache.getOrRender("blocked", identity, async () => ({
         version: 1, status: 200, headers, body: "restricted",
         cache: { scope: "public", tags: ["item:a"] }
