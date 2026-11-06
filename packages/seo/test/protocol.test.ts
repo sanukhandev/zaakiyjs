@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { auditSeoV1, createSeoHeadAdapterV1, generateSitemapsFromFeedV1, resolveSeoV1,
   seoRobotsHeaderV1, seoToRenderHeadV1 } from "../src/index.js";
 import type { SeoDocumentV1, SeoResolveInputV1, SitemapFeedV1 } from "../src/index.js";
@@ -46,6 +46,22 @@ describe("frozen P3 SEO v1", () => {
       expect(result.metadata.robots).toMatchObject({ index: false, follow: false });
       expect(seoRobotsHeaderV1(result.metadata)).toContain("noindex");
     }
+  });
+  it("never evaluates SEO factories for missing, deleted or private loader data", async () => {
+    const forbidden = vi.fn((_input: SeoResolveInputV1<unknown>): SeoDocumentV1 => {
+      throw new Error("Factory must not read missing or private loader data");
+    });
+    for (const input of [
+      { ...productInput, status: 404, loaderData: undefined },
+      { ...productInput, status: 410, loaderData: undefined },
+      { ...productInput, status: 200, visibility: "private" as const },
+      { ...productInput, status: 200, visibility: "draft" as const }
+    ]) {
+      const result = await resolveSeoV1(input, forbidden);
+      expect(result.metadata.robots?.index).toBe(false);
+      expect(result.metadata.jsonLd).toBeUndefined();
+    }
+    expect(forbidden).not.toHaveBeenCalled();
   });
   it("validates redirect Location and removes indexable response content", async () => {
     const result = await resolveSeoV1({ ...productInput, status: 302 }, productFactory,
