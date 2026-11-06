@@ -35,6 +35,19 @@ describe("robots/sitemap", () => {
     expect(build.index).toContain("sitemap-3.xml");
     expect(build.index).not.toContain("<lastmod>");
   });
+  it("rejects conflicting duplicate canonicals and deduplicates exact repeated records", async () => {
+    const records = [{ loc: "/a", lastmod: "2026-11-01" }, { loc: "/a", lastmod: "2026-11-02" }];
+    await expect(generateSitemaps(records, policy)).rejects.toThrow("Conflicting metadata");
+    await expect(generateSitemaps([...records].reverse(), policy)).rejects.toThrow("Conflicting metadata");
+    const exact = await generateSitemaps([{ loc: "/a" }, { loc: "/a" }], policy);
+    expect(exact.files[0]?.count).toBe(1);
+    expect(exact.excluded).toBe(1);
+  });
+  it("bounds all records including excluded entries", async () => {
+    await expect(generateSitemaps([
+      { loc: "/1", published: false }, { loc: "/2", published: false }, { loc: "/3" }
+    ], { ...policy, maxRecords: 2 })).rejects.toThrow("maxRecords");
+  });
   it("supports dynamic async record discovery", async () => {
     async function* pages() { yield { loc: "/a" }; yield { loc: "/b" }; }
     expect((await generateSitemaps(pages(), policy)).files[0]?.count).toBe(2);
@@ -58,6 +71,8 @@ describe("robots/sitemap", () => {
   it("plans deterministic incremental rebuild and checks reciprocal hreflang", () => {
     expect(planSitemapRebuild({ a: "old", b: "same" }, { a: "new", c: "new" }))
       .toEqual({ changed: ["a", "c"], removed: ["b"] });
+    expect(planSitemapRebuild({ toString: "v1" }, {}))
+      .toEqual({ changed: [], removed: ["toString"] });
     const issues = auditHreflang([
       { loc: "/en", alternates: { fr: "/fr", en: "/en" } },
       { loc: "/fr", alternates: { fr: "/fr" } }
