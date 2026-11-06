@@ -1,0 +1,56 @@
+{
+  "name": "@zaakiyjs/ssr",
+  "version": "0.0.0",
+  "description": "Contract-first server rendering, static generation and isolated revalidation foundation",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./node": {
+      "node": {
+        "types": "./dist/node.d.ts",
+        "import": "./dist/node.js"
+      }
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js"
+    },
+    "./build": {
+      "node": {
+        "types": "./dist/build-entry.d.ts",
+        "import": "./dist/build-entry.js"
+      }
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "scripts": {
+    "lint": "eslint src test",
+    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "build": "tsc --project tsconfig.build.json",
+    "test": "vitest run test",
+    "pack:check": "npm pack --dry-run --json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@zaakiyjs/core": "workspace:^",
+    "@zaakiyjs/router": "workspace:^"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.30"
+  }
+}
