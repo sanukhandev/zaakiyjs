@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createAdsManager, bindAdsToRoutes, renderAdSlotPlaceholder } from "../src/index.js";
-import type { AdsConsentGate, AdProvider, AdSlotConfig, ConsentDecision } from "../src/index.js";
+import { createAdsManager } from "../src/manager.js";
+import { bindAdsToRoutes } from "../src/route.js";
+import { renderAdSlotPlaceholder } from "../src/placeholder.js";
+import type { AdsConsentGate, AdProvider, AdSlotConfig, ConsentDecision } from "../src/types.js";
 
 class Gate implements AdsConsentGate {
   value: ConsentDecision = "unknown";

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from "vitest";
-import { loadAuthorizedProviderScript } from "../src/index.js";
+import { loadAuthorizedProviderScript } from "../src/scripts.js";
 const consent = { check: () => "granted" as const, subscribe: () => () => undefined };
 afterEach(() => {
   for (const node of [...document.querySelectorAll("script[src]")]) node.remove();

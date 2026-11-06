@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOwner, disposeOwner, runWithOwner } from "@zaakiyjs/core";
-import { bindAdsToRoutes, createAdsManager, renderAdSlotPlaceholder } from "../src/index.js";
-import type { AdProvider, AdsConsentGate, AdSlotConfig, ConsentDecision } from "../src/index.js";
+import { createAdsManager } from "../src/manager.js";
+import { bindAdsToRoutes } from "../src/route.js";
+import { renderAdSlotPlaceholder } from "../src/placeholder.js";
+import type { AdProvider, AdsConsentGate, AdSlotConfig, ConsentDecision } from "../src/types.js";
 
 const config: AdSlotConfig = {
   id: "advertisement", providerId: "mock", placement: "layout/top",

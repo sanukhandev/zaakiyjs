@@ -1,18 +1,8 @@
-/** Optional advertising orchestration. No SDKs or network activity at import time. */
-export { createAdsManager } from "./manager.js";
-export { renderAdSlotPlaceholder } from "./placeholder.js";
-export { loadAuthorizedProviderScript } from "./scripts.js";
-export { bindAdsToRoutes } from "./route.js";
-export type {
-  AdsConsentGate, ConsentDecision, AdFormat, AdMode, AdPhase, AdSlotConfig,
-  AdSlotState, AdSize, ResponsiveAdSize, AdProvider, AdProviderContext,
-  AdRequest, AdLoadResult, AdEvent, AdEventType, AdsManagerOptions, AdsManager, AdSlot
-} from "./types.js";
-export type { ProviderScriptOptions } from "./scripts.js";
-export type { AdRouteSource, RouteAdsHandle } from "./route.js";
-
-/** Frozen P3-00 native Ads/Consent capability protocol. */
-export { createAdsManagerV1 } from "./v1.js";
+/** P3-00 frozen protocol: optional, consent-aware advertisement orchestration. */
+export { createAdsManagerV1, createAdsManagerV1 as createAdsManager } from "./v1.js";
+export { renderAdSlotPlaceholderV1, renderAdSlotPlaceholderV1 as renderAdSlotPlaceholder } from "./placeholder-v1.js";
+export { bindAdsV1ToRoutes, bindAdsV1ToRoutes as bindAdsToRoutes } from "./route-v1.js";
+export { loadAuthorizedProviderScriptV1, loadAuthorizedProviderScriptV1 as loadAuthorizedProviderScript } from "./script-v1.js";
 export type {
   ConsentPurposeV1, ConsentDecisionV1, ConsentGrantV1, ConsentSnapshotV1,
   ConsentCapabilityV1, AdvertisingPurposeV1, AdSlotV1, AdSlotStateV1,
@@ -20,7 +10,5 @@ export type {
   AdPlacementOptionsV1, AdsEventV1, AdsManagerOptionsV1, AdMountedPlacementV1,
   AdsManagerV1
 } from "./contract-v1.js";
-
-export { renderAdSlotPlaceholderV1 } from "./placeholder-v1.js";
-export { bindAdsV1ToRoutes } from "./route-v1.js";
 export type { AdRouteSourceV1, RouteAdsOptionsV1, RoutePlacementOptionsV1, AdRouteHandleV1 } from "./route-v1.js";
+export type { AdScriptOptionsV1, AdScriptLeaseV1 } from "./script-v1.js";
