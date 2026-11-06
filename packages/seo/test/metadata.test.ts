@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { auditMetadata, defineMetadata, definePageMetadata, normalizeCanonical,
-  renderMetadata, resolveMetadata, resolveRouteMetadata, serializeJsonLd, validateStructuredData } from "../src/index.js";
+  renderMetadata, resolveMetadata, resolveRouteMetadata, serializeHeadTags, serializeJsonLd, validateStructuredData } from "../src/index.js";
 const policy = { siteURL: "https://example.com", trailingSlash: "never" as const };
 describe("metadata/canonical", () => {
   it("merges defaults, route precedence and social tags", () => {
@@ -61,6 +61,17 @@ describe("metadata/canonical", () => {
     expect(normalizeCanonical("/list?page=2", policy)).toContain("?page=2");
     expect(normalizeCanonical("/list?ref=a&page=2", { ...policy, query: { allow: ["page"] } })).toContain("?page=2");
     expect(normalizeCanonical("/list?page=2", { ...policy, query: "strip" })).toBe("https://example.com/list");
+  });
+  it("rejects forged script payload and event-handler attributes", () => {
+    expect(() => serializeHeadTags([{ kind: "script", key: "unsafe",
+      attributes: { type: "application/ld+json" }, text: "</script><script>alert(1)</script>" }])).toThrow();
+    expect(() => serializeHeadTags([{ kind: "meta", key: "event",
+      attributes: { name: "description", content: "Safe", onload: "alert(1)" } }])).toThrow("Forbidden");
+    const safe = serializeHeadTags([{ kind: "script", key: "safe",
+      attributes: { type: "application/ld+json" },
+      text: JSON.stringify({ "@type": "Product", name: "</script><img src=x>" }) }]);
+    expect(safe).not.toContain("</script><img");
+    expect(safe).toContain("\\u003c");
   });
   it("rejects foreign canonical, credentials, protocol-relative, unsafe and malformed URL", () => {
     for (const url of ["javascript:alert(1)", "data:a", "//evil.com/a", "https://evil.com/",

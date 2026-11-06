@@ -1,4 +1,5 @@
 import type { HeadTag, RenderedMetadata } from "./types.js";
+import { serializeHeadTags } from "./metadata.js";
 
 /** Separate browser entry: pure SEO imports never read document/window. */
 export interface HeadManager {
@@ -36,6 +37,8 @@ export function createHeadManager(doc: Document, lifetime?: AbortSignal): HeadMa
   return {
     update(result, options = {}) {
       if (disposed || lifetime?.aborted || options.signal?.aborted) return false;
+      // Validate all tag names, attributes, links and JSON-LD before any DOM mutation.
+      serializeHeadTags(result.tags);
       const nextVersion = options.version ?? version + 1;
       if (nextVersion < version) return false;
       version = nextVersion;
