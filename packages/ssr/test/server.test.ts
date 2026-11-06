@@ -148,6 +148,50 @@ describe("hybrid cache and revalidation", () => {
     expect((await waiting).body).toBe("old");
     expect(cache.size).toBe(0);
   });
+  it("never reuses a caller-supplied cache key across tenant or user scopes", async () => {
+    const cache = new MemoryRenderCache();
+    let calls = 0;
+    const base = { routeId: "item", buildId: digest, tags: ["item:a"], ttlSeconds: 20 };
+    const response = (body: string): RenderResponseV1 => ({
+      version: 1, status: 200, headers: {}, body,
+      cache: { scope: "tenant", tags: ["item:a"] }
+    });
+    const first = await cache.getOrRender("same-key", { ...base, scope: "tenant", partitionKey: "tenant-a" },
+      async () => { calls++; return response("tenant-a"); });
+    const second = await cache.getOrRender("same-key", { ...base, scope: "tenant", partitionKey: "tenant-b" },
+      async () => { calls++; return response("tenant-b"); });
+    expect(first.body).toBe("tenant-a");
+    expect(second.body).toBe("tenant-b");
+    expect(calls).toBe(2);
+    expect(cache.size).toBe(2);
+    expect(cache.get("same-key", { ...base, scope: "tenant", partitionKey: "tenant-b" })?.body).toBe("tenant-b");
+  });
+  it("rejects public caching for a private request and isolates query dimensions", async () => {
+    let calls = 0;
+    const cache = new MemoryRenderCache();
+    const policies: ServerOptions["policies"] = [{
+      version: 1, routeId: "item", mode: "hybrid",
+      cache: { scope: "public", ttlSeconds: 30, tags: ["item:a"] }
+    }];
+    const options = fixture(() => ({ version: 1, status: 200, headers: {},
+      body: "v" + ++calls, cache: { scope: "public", tags: ["item:a"] } }), {
+      policies, cache,
+      resolvePrincipal: request => ({
+        scope: request.headers.has("x-private") ? "user" : "public",
+        ...(request.headers.has("x-private") ? { partitionKey: "customer-1" } : {})
+      })
+    });
+    expect((await get(options, "/products/a")).status).toBe(200);
+    expect((await get(options, "/products/a?campaign=one")).status).toBe(200);
+    expect((await get(options, "/products/a?campaign=two")).status).toBe(200);
+    expect(calls).toBe(3);
+    const blocked = await createNodeServerAdapter(options).handle(
+      new Request("https://shop.example.test/products/a", { headers: { "x-private": "yes" } }),
+      { signal: new AbortController().signal }
+    );
+    expect(blocked.status).toBe(500); // safe fail-closed error; no public cache hit
+    expect(calls).toBe(3);
+  });
   it("deduplicates regeneration, scopes tenants, revalidates TTL, and checks invalidation auth", async () => {
     let now = 1_000_000;
     const cache = new MemoryRenderCache(4, () => now);

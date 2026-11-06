@@ -128,7 +128,12 @@ function getDecision(value: unknown): "allow" | "deny" | string {
   return "deny";
 }
 function partition(principal: Principal, scope: CacheScopeV1): string | undefined {
-  if (scope === "public") return undefined;
+  if (scope === "public") {
+    if (principal.scope !== "public") {
+      throw new TypeError("Public HTML requires an explicitly public principal");
+    }
+    return undefined;
+  }
   if (scope === "no-store") return undefined;
   if ((principal.scope !== scope && !(principal.scope === "user" && scope === "tenant")) ||
       !principal.partitionKey || !/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$/.test(principal.partitionKey)) {
@@ -208,7 +213,7 @@ export function createNodeServerAdapter(options: ServerOptions): NodeServerAdapt
         ), controller.signal);
         if (principal.scope !== "no-store" && principal.scope !== "public" && !principal.partitionKey)
           throw new TypeError("Private principal must include a partition");
-        options.provide?.(root, request);
+        if (options.provide) runWithOwner(root, () => options.provide!(root, request));
         const services: NavigationServices = {
           get<T>(key: ContextToken<T>): T | undefined { return useContext(root, key); },
           require<T>(key: ContextToken<T>): T { return requireContext(root, key); }
@@ -267,15 +272,16 @@ export function createNodeServerAdapter(options: ServerOptions): NodeServerAdapt
         if (policy.mode === "hybrid" && cacheScope !== "no-store" && cachePolicy &&
             cachePolicy.ttlSeconds > 0 && options.cache) {
           const cleanQuery = new URLSearchParams(url.search);
-          for (const name of [...cleanQuery.keys()]) if (/^(utm_|gclid$|fbclid$)/i.test(name)) cleanQuery.delete(name);
+          // Query dimensions cannot be dropped without a proved route contract.
+          // Only stable ordering is normalized here.
           cleanQuery.sort();
           const vary = (cachePolicy.vary ?? []).map(name => name + "=" + (request.headers.get(name) ?? "")).join("&");
-          const key = digest([buildId, leaf.route.id, url.pathname, cleanQuery.toString(),
-            cacheScope, part ?? "", vary].join("\0"));
-          result = await options.cache.getOrRender(key, {
+          const key = digest([buildId, leaf.route.id, request.method, url.pathname,
+            cleanQuery.toString(), cacheScope, part ?? "", vary].join("\0"));
+          result = await abortRace(options.cache.getOrRender(key, {
             routeId: leaf.route.id, buildId,
             scope: cacheScope, partitionKey: part, tags: cachePolicy.tags, ttlSeconds: cachePolicy.ttlSeconds
-          }, render);
+          }, render), controller.signal);
         } else result = await render();
         streaming = typeof result.body !== "string" && request.method === "GET";
         const response = makeResponse(result, request.method, controller.signal, close, origin.origin);

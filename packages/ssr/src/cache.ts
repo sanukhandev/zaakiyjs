@@ -21,19 +21,47 @@ export class MemoryRenderCache {
     if (!Number.isSafeInteger(maxEntries) || maxEntries < 1 || maxEntries > 100_000)
       throw new TypeError("Invalid cache capacity");
   }
-  get(key: string): RenderResponseV1 | undefined {
-    const hit = this.entries.get(key);
+  private identityKey(key: string, identity: CacheIdentity): string {
+    if (!key || key.length > 512 ||
+        !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,199}$/.test(identity.routeId) ||
+        !/^[a-f0-9]{64}$/.test(identity.buildId) ||
+        !["public", "tenant", "user"].includes(identity.scope) ||
+        (identity.scope !== "public" &&
+          (!identity.partitionKey || !/^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$/.test(identity.partitionKey))) ||
+        !Number.isSafeInteger(identity.ttlSeconds) || identity.ttlSeconds < 0 ||
+        identity.ttlSeconds > 604800 ||
+        identity.tags.length > 32 || identity.tags.some(tag => !/^[a-z0-9][a-z0-9:_-]{0,119}$/.test(tag))) {
+      throw new TypeError("Invalid cache identity or private partition");
+    }
+    // Identity is integral to the storage key, including for direct API callers.
+    // JSON-array encoding avoids ambiguity from delimiter-bearing keys.
+    return JSON.stringify([
+      identity.buildId, identity.routeId, identity.scope, identity.partitionKey ?? "",
+      [...identity.tags].sort(), identity.ttlSeconds, key
+    ]);
+  }
+  get(key: string, identity: CacheIdentity): RenderResponseV1 | undefined {
+    const scoped = this.identityKey(key, identity);
+    const hit = this.entries.get(scoped);
     if (!hit) return undefined;
-    if (hit.expiresAt <= this.now()) { this.entries.delete(key); return undefined; }
-    this.entries.delete(key); this.entries.set(key, hit);
+    if (hit.expiresAt <= this.now()) { this.entries.delete(scoped); return undefined; }
+    this.entries.delete(scoped); this.entries.set(scoped, hit);
     return hit.response;
   }
   async getOrRender(key: string, identity: CacheIdentity, render: () => Promise<RenderResponseV1>): Promise<RenderResponseV1> {
-    if (identity.scope !== "public" && !identity.partitionKey) throw new TypeError("Private cache partition is required");
-    const cached = this.get(key);
+    const scoped = this.identityKey(key, identity);
+    const cached = this.get(key, identity);
     if (cached) return cached;
-    const existing = this.inflight.get(key);
-    if (existing) return existing.promise;
+    const existing = this.inflight.get(scoped);
+    if (existing) {
+      try { return await existing.promise; }
+      catch {
+        // A previous request may abort while another request still needs the
+        // same document; retry independently rather than inherit its failure.
+        if (this.inflight.get(scoped) === existing) this.inflight.delete(scoped);
+        return this.getOrRender(key, identity, render);
+      }
+    }
     const state = { invalidated: false };
     const pending = (async () => {
       const response = await render();
@@ -46,7 +74,7 @@ export class MemoryRenderCache {
       }
       const entry: Entry = { identity, response, expiresAt: this.now() + identity.ttlSeconds * 1000 };
       if (identity.ttlSeconds > 0 && !state.invalidated) {
-        this.entries.delete(key); this.entries.set(key, entry);
+        this.entries.delete(scoped); this.entries.set(scoped, entry);
         while (this.entries.size > this.maxEntries) {
           const oldest = this.entries.keys().next().value;
           if (oldest === undefined) break;
@@ -56,9 +84,9 @@ export class MemoryRenderCache {
       return response;
     })();
     const flight = { promise: pending, identity, state };
-    this.inflight.set(key, flight);
+    this.inflight.set(scoped, flight);
     try { return await pending; }
-    finally { if (this.inflight.get(key) === flight) this.inflight.delete(key); }
+    finally { if (this.inflight.get(scoped) === flight) this.inflight.delete(scoped); }
   }
   invalidateTags(scope: Exclude<CacheScopeV1, "no-store">, partitionKey: string | undefined, tags: readonly string[]): number {
     if (scope !== "public" && !partitionKey) throw new TypeError("Invalidation partition required");
