@@ -42,7 +42,8 @@ it('activates on grant, deactivates immediately on revoke and supports fresh reg
   callbacks[0]?.({ name: 'LCP', id: 'metric_001', value: 1010 });
   callbacks[0]?.({ name: 'LCP', id: 'metric_001', value: 1010 });
   expect(analytics.measure).toHaveBeenCalledOnce();
-  expect(analytics.measure).toHaveBeenLastCalledWith('LCP', 1010, 'metric_001', '/app',\n    { rating: undefined, navigationType: undefined });
+  expect(analytics.measure).toHaveBeenLastCalledWith('LCP', 1010, 'metric_001', '/app',
+    { rating: undefined, navigationType: undefined });
   c.update(false); expect(off).toHaveBeenCalledOnce();
   callbacks[0]?.({ name: 'CLS', id: 'metric_002', value: 0.02 });
   expect(analytics.measure).toHaveBeenCalledOnce();
