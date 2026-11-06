@@ -45,10 +45,18 @@ function dateString(value: string | Date | undefined): string | undefined {
   }
   if (!/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2}))?$/.test(value)
     || Number.isNaN(Date.parse(value))) throw new TypeError("Invalid lastmod date");
+  // Date.parse can normalize impossible dates such as February 30.
+  const [yearText, monthText, dayText] = value.slice(0, 10).split("-");
+  const year = Number(yearText), month = Number(monthText), day = Number(dayText);
+  const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  if (month < 1 || month > 12 || day < 1 || day > (days[month - 1] ?? 0))
+    throw new TypeError("Invalid lastmod calendar date");
   return value;
 }
 function serializedEntry(entry: SitemapEntry, options: SitemapOptions): { loc: string; xml: string } {
   const loc = normalizeCanonical(entry.loc, options);
+  if (loc.length >= 2_048) throw new RangeError("Sitemap URL must be fewer than 2048 characters");
   let body = "<url><loc>" + escapeXml(loc) + "</loc>";
   const date = dateString(entry.lastmod);
   if (date) body += "<lastmod>" + escapeXml(date) + "</lastmod>";
@@ -75,7 +83,7 @@ function serializedEntry(entry: SitemapEntry, options: SitemapOptions): { loc: s
 function eligible(entry: SitemapEntry): boolean {
   return entry.published !== false && entry.authorized !== false && entry.private !== true &&
     entry.noindex !== true && entry.redirect !== true && entry.soft404 !== true &&
-    (entry.status === undefined || entry.status >= 200 && entry.status < 300);
+    (entry.status === undefined || entry.status === 200);
 }
 export async function generateSitemaps(
   source: Iterable<SitemapEntry> | AsyncIterable<SitemapEntry>,
@@ -140,7 +148,9 @@ export function generateSitemapIndex(entries: readonly SitemapIndexEntry[], opti
     return "<sitemap><loc>" + escapeXml(loc) + "</loc>" +
       (lastmod ? "<lastmod>" + escapeXml(lastmod) + "</lastmod>" : "") + "</sitemap>";
   });
-  return XML_HEADER + '<sitemapindex xmlns="' + NS + '">\n' + rows.join("\n") + "\n</sitemapindex>";
+  const xml = XML_HEADER + '<sitemapindex xmlns="' + NS + '">\n' + rows.join("\n") + "\n</sitemapindex>";
+  if (ENCODER.encode(xml).length > 50_000_000) throw new RangeError("Sitemap index exceeds 50 MB");
+  return xml;
 }
 export function planSitemapRebuild(
   previous: Readonly<Record<string, string>>, next: Readonly<Record<string, string>>
