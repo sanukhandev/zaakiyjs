@@ -31,6 +31,33 @@ function schemas() {
       !!x && typeof x === 'object' && 'amount' in x && typeof x.amount === 'number' }
   };
 }
+function purposeGate(initial: Partial<Record<ConsentPurposeV1, boolean>>) {
+  const grants = { ...initial };
+  let revision = 0;
+  const listeners = new Set<(n: ConsentSnapshotV1, p: ConsentSnapshotV1) => void>();
+  function snapshot(): ConsentSnapshotV1 {
+    return {
+      schema: 'zaakiy.consent/1', policyId: 'purpose-test', policyVersion: 'v1', revision,
+      grants: Object.fromEntries(PURPOSES.map(p => [p, {
+        purpose: p, decision: grants[p] === true ? 'granted' : 'denied'
+      }])) as unknown as ConsentSnapshotV1['grants']
+    };
+  }
+  const consent: ConsentCapabilityV1 = {
+    schema: 'zaakiy.consent/1', snapshot,
+    can: purpose => grants[purpose] === true,
+    subscribe: fn => { listeners.add(fn); return () => listeners.delete(fn); }
+  };
+  return {
+    consent,
+    set(purpose: ConsentPurposeV1, value: boolean) {
+      const previous = snapshot();
+      grants[purpose] = value;
+      revision++;
+      for (const fn of listeners) fn(snapshot(), previous);
+    }
+  };
+}
 function setup(consented = false, more: Partial<Parameters<typeof createAnalytics<Events>>[0]> = {}) {
   const c = gate(consented);
   const memory = createMemoryProvider();
@@ -224,6 +251,82 @@ describe('P3 analytics contract and privacy', () => {
       identity: { purpose: 'advertising', retention: 'event-only', encode: () => 'opaque_12345' } });
     expect(engine.identify('user-sensitive')).toBe(false);
     expect(engine.track('viewed', { productId: 'p' })).toBe(false);
+    await engine.dispose();
+  });
+  it('purges queued identity records when their additional purpose is revoked', async () => {
+    const c = purposeGate({ analytics: true, 'ad-personalization': true });
+    const memory = createMemoryProvider();
+    const engine = createAnalytics<Events & { identify: { opaqueId: string } }>({
+      schemas: {
+        ...schemas(),
+        identify: { fields: ['opaqueId'], validate: (x: unknown): x is { opaqueId: string } =>
+          !!x && typeof x === 'object' && 'opaqueId' in x && typeof x.opaqueId === 'string' }
+      },
+      consent: c.consent,
+      providers: [{ id: 'memory', purpose: 'analytics', load: () => memory }],
+      identity: { purpose: 'ad-personalization', retention: 'event-only', encode: () => 'anonymous_12345' },
+      flushIntervalMs: 60000
+    });
+    expect(engine.identify('opaque-source')).toBe(true);
+    expect(engine.diagnostics().queueLength).toBe(1);
+    c.set('ad-personalization', false);
+    expect(engine.diagnostics().queueLength).toBe(0);
+    expect(engine.identify('new-source')).toBe(false);
+    expect(engine.track('identify', { opaqueId: 'bypass_12345' })).toThrow();
+    expect(engine.track('viewed', { productId: 'still-allowed' })).toBe(true);
+    await engine.flush();
+    expect(memory.events).toHaveLength(1);
+    expect(memory.events[0]?.name).toBe('viewed');
+    c.set('ad-personalization', true);
+    expect(engine.identify('new-source')).toBe(true);
+    await engine.flush();
+    expect(memory.events.filter(event => event.name === 'identify')).toHaveLength(1);
+    await engine.dispose();
+  });
+  it('aborts an in-flight identity delivery when the additional consent purpose is revoked', async () => {
+    const c = purposeGate({ analytics: true, 'ad-personalization': true });
+    let entered!: () => void;
+    const inFlight = new Promise<void>(resolve => { entered = resolve; });
+    const aborted = vi.fn();
+    const send = vi.fn(async (_events: readonly unknown[], signal: AbortSignal) => {
+      entered();
+      await new Promise<void>((resolve, reject) => {
+        if (signal.aborted) { aborted(); reject(new Error('aborted')); return; }
+        signal.addEventListener('abort', () => { aborted(); reject(new Error('aborted')); }, { once: true });
+      });
+    });
+    const provider: AnalyticsProviderV1 = {
+      version: 1, start: async () => {}, send, flush: async () => {}, dispose: async () => {}
+    };
+    const engine = createAnalytics<Events & { identify: { opaqueId: string } }>({
+      schemas: { ...schemas(), identify: { fields: ['opaqueId'],
+        validate: (x: unknown): x is { opaqueId: string } =>
+          !!x && typeof x === 'object' && 'opaqueId' in x && typeof x.opaqueId === 'string' } },
+      consent: c.consent,
+      providers: [{ id: 'memory', purpose: 'analytics', load: () => provider }],
+      identity: { purpose: 'ad-personalization', retention: 'event-only', encode: () => 'anonymous_12345' },
+      flushIntervalMs: 60000
+    });
+    expect(engine.identify('source')).toBe(true);
+    const flushing = engine.flush();
+    await inFlight;
+    c.set('ad-personalization', false);
+    await flushing;
+    expect(aborted).toHaveBeenCalledOnce();
+    expect(engine.diagnostics().queueLength).toBe(0);
+    expect(engine.diagnostics().delivered).toBe(0);
+    await engine.dispose();
+  });
+  it('accepts all valid Router route ID shapes for pageview telemetry', async () => {
+    const { engine, memory } = setup(true);
+    for (const routeId of ['products.list', '.index', '-default', '7products', 'my-route']) {
+      expect(engine.pageview({ path: '/catalog?private=1', routeId })).toBe(true);
+    }
+    expect(() => engine.pageview({ path: '/catalog', routeId: 'invalid route' })).toThrow();
+    await engine.flush();
+    expect(memory.events.map(event => event.kind === 'pageview' ? event.routeId : '')).toEqual(
+      ['products.list', '.index', '-default', '7products', 'my-route']
+    );
     await engine.dispose();
   });
   it('performs HTTP transport without credentials and rejects unsafe endpoints or headers', async () => {
