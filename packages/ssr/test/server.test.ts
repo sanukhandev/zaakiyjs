@@ -90,6 +90,21 @@ describe("SSR request / trusted-module boundary", () => {
     controller.abort();
     expect((await blocked).status).toBe(503);
   });
+  it("disposes a streaming request on host cancellation without a body reader", async () => {
+    let disposed = false;
+    const controller = new AbortController();
+    const adapter = createNodeServerAdapter(fixture(() => {
+      onCleanup(() => { disposed = true; });
+      return { version: 1, status: 200, headers: {},
+        body: (async function* () { await new Promise(resolve => setTimeout(resolve, 100)); yield new Uint8Array([65]); })(),
+        cache: { scope: "no-store", tags: [] } };
+    }));
+    const response = await adapter.handle(new Request("https://shop.example.test/products/a"),
+      { signal: controller.signal });
+    expect(response.status).toBe(200);
+    controller.abort();
+    expect(disposed).toBe(true);
+  });
   it("supports backpressure-driven transport streams with owner disposal", async () => {
     let disposed = false;
     const response = await get(fixture(() => {
@@ -103,6 +118,18 @@ describe("SSR request / trusted-module boundary", () => {
   });
 });
 describe("hybrid cache and revalidation", () => {
+  it("does not persist a regeneration invalidated while its response is in flight", async () => {
+    const cache = new MemoryRenderCache();
+    const identity = { routeId: "p", buildId: "a".repeat(64), scope: "public" as const,
+      tags: ["product:x"], ttlSeconds: 30 };
+    let finish: ((result: RenderResponseV1) => void) | undefined;
+    const waiting = cache.getOrRender("p", identity, () => new Promise(resolve => { finish = resolve; }));
+    cache.invalidateTags("public", undefined, ["product:x"]);
+    finish!({ version: 1, status: 200, headers: {}, body: "old",
+      cache: { scope: "public", tags: ["product:x"] } });
+    expect((await waiting).body).toBe("old");
+    expect(cache.size).toBe(0);
+  });
   it("deduplicates regeneration, scopes tenants, revalidates TTL, and checks invalidation auth", async () => {
     let now = 1_000_000;
     const cache = new MemoryRenderCache(4, () => now);

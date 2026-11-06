@@ -82,25 +82,29 @@ function makeResponse(result: RenderResponseV1, method: string, signal: AbortSig
   }
   const iterator = result.body[Symbol.asyncIterator]();
   let closed = false;
-  const end = async () => {
+  const end = (): void => {
     if (closed) return;
     closed = true;
-    try { await iterator.return?.(); } finally { close(); }
+    // Dispose request-owned resources immediately, even if the async iterator
+    // cannot finish after a disconnect or an uncooperative blocked next().
+    close();
+    try { void Promise.resolve(iterator.return?.()).catch(() => undefined); }
+    catch { /* Headers may already have been sent; do not replace the response. */ }
   };
   const stream = new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
         if (signal.aborted) throw signal.reason;
         const next = await abortRace(Promise.resolve(iterator.next()), signal);
-        if (next.done) { controller.close(); await end(); return; }
+        if (next.done) { controller.close(); end(); return; }
         if (!(next.value instanceof Uint8Array)) throw new TypeError("Stream chunks must be bytes");
         controller.enqueue(next.value);
       } catch (error) {
         controller.error(error);
-        await end();
+        end();
       }
     },
-    async cancel() { await end(); }
+    cancel() { end(); }
   }, { highWaterMark: 1 });
   return new Response(stream, { status: result.status, headers });
 }
@@ -164,9 +168,18 @@ export function createNodeServerAdapter(options: ServerOptions): NodeServerAdapt
         closed = true;
         request.signal.removeEventListener("abort", stop);
         context.signal.removeEventListener("abort", stop);
+        controller.signal.removeEventListener("abort", onStreamAbort);
         terminate(root, timer, () => undefined);
       };
       let streaming = false;
+      // An aborted streamed response must tear down its Core owner even if
+      // the consumer never pulls or explicitly cancels the body.
+      const onStreamAbort = () => {
+        if (streaming) {
+          try { close(); } catch { /* Cleanup is best effort after disconnect. */ }
+        }
+      };
+      controller.signal.addEventListener("abort", onStreamAbort, { once: true });
       try {
         const matches = matchRoutes(table, url.pathname);
         if (!matches.length) return makeResponse(basic(404, "Not Found"), request.method, controller.signal, close, origin.origin);
