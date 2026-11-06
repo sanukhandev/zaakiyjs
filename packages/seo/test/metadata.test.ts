@@ -104,6 +104,9 @@ describe("JSON-LD/security/diagnostics", () => {
   it("validates required fields, finite numbers and circular structures", () => {
     expect(() => validateStructuredData({ "@type": "Product" })).toThrow("name");
     expect(() => validateStructuredData({ "@type": "Product", name: "A", price: Infinity })).toThrow("Unsupported");
+    expect(() => validateStructuredData({
+      "@type": "Product", name: "A", details: { "@context": "https://evil.invalid", note: "misleading" }
+    })).toThrow("Unsupported structured data @context");
     const item: { "@type": string; name: string; child?: unknown } = { "@type": "Product", name: "X" };
     item.child = item;
     expect(() => validateStructuredData(item)).toThrow("Circular");
