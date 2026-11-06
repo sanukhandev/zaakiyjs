@@ -173,41 +173,50 @@ export async function resolveSeoV1<Data>(
   if (input.siteOrigin.protocol !== "https:" || input.siteOrigin.username || input.siteOrigin.password ||
     input.siteOrigin.search || input.siteOrigin.hash) throw new TypeError("Trusted siteOrigin must be HTTPS");
   if (!Number.isInteger(input.status) || input.status < 100 || input.status > 599) throw new RangeError("Invalid HTTP status");
-  let document: SeoDocumentV1 = options.defaults ?? { version: 1 };
-  assertVersion(document);
-  for (const layout of options.layouts ?? []) document = mergeDoc(document, layout);
-  const page = await factory(input);
-  document = mergeDoc(document, page);
   const redirectStatus = [301, 302, 307, 308].includes(input.status);
   if (redirectStatus !== Boolean(options.redirect) ||
     options.redirect && options.redirect.status !== input.status) {
     throw new TypeError("Redirect status and Location must agree");
   }
-  // Only a real, authorized public 200 page is eligible for discovery metadata.
-  const denied = input.visibility !== "public" || input.status !== 200;
-  if (denied) {
-    document = {
-      version: 1,
-      title: input.visibility === "public" && !redirectStatus ? document.title : undefined,
-      robots: { ...document.robots, index: false, follow: false }
+  const defaults = options.defaults ?? { version: 1 };
+  assertVersion(defaults);
+  // For auth, missing/deleted pages, redirects and non-200 responses, never call
+  // the route metadata factory. Loader data may not exist or may be private.
+  if (input.visibility !== "public" || input.status !== 200) {
+    const resolution: SeoResolutionV1 = {
+      version: 1, status: input.status,
+      metadata: {
+        version: 1,
+        title: input.visibility === "public" && input.status >= 400 ? defaults.title : undefined,
+        robots: { index: false, follow: false }
+      }
     };
-  } else document = normalizeDoc(document, input, options);
-  const resolution: SeoResolutionV1 = { version: 1, status: input.status,
-    metadata: { ...document, robots: { ...document.robots, index: denied ? false : document.robots?.index,
-      follow: denied ? false : document.robots?.follow } }
-  };
-  if (options.redirect) {
-    const policy: CanonicalPolicy = {
-      siteURL: input.siteOrigin.origin, allowedOrigins: options.allowedOrigins,
-      trailingSlash: options.trailingSlash, query: options.query
-    };
-    return { ...resolution, redirect: {
-      status: options.redirect.status,
-      location: normalizeTarget(options.redirect.location, policy)
-    } };
+    if (options.redirect) {
+      const policy: CanonicalPolicy = {
+        siteURL: input.siteOrigin.origin,
+        allowedOrigins: options.allowedOrigins,
+        trailingSlash: options.trailingSlash,
+        query: options.query
+      };
+      return {
+        ...resolution,
+        redirect: {
+          status: options.redirect.status,
+          location: normalizeTarget(options.redirect.location, policy)
+        }
+      };
+    }
+    return resolution;
   }
-  return resolution;
+
+  let document: SeoDocumentV1 = defaults;
+  for (const layout of options.layouts ?? []) document = mergeDoc(document, layout);
+  const page = await factory(input);
+  document = mergeDoc(document, page);
+  document = normalizeDoc(document, input, options);
+  return { version: 1, status: input.status, metadata: document };
 }
+
 export function seoRobotsHeaderV1(document: SeoDocumentV1): string {
   const directives = [
     document.robots?.index === false ? "noindex" : "index",
