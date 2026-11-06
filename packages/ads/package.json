@@ -1,0 +1,26 @@
+{
+  "name": "@zaakiyjs/ads",
+  "version": "0.0.0",
+  "description": "Optional consent-gated advertising slots for ZaakiyJS",
+  "type": "module",
+  "sideEffects": false,
+  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" }
+  },
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "scripts": {
+    "lint": "eslint src test",
+    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "build": "tsc --project tsconfig.build.json",
+    "test": "vitest run --root ../.. packages/ads/test",
+    "pack:check": "npm pack --dry-run --json"
+  },
+  "publishConfig": { "access": "public" },
+  "dependencies": {
+    "@zaakiyjs/core": "workspace:^",
+    "@zaakiyjs/signals": "workspace:^"
+  },
+  "devDependencies": { "jsdom": "^26.1.0" }
+}
