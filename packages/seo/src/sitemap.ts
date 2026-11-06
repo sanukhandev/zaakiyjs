@@ -4,6 +4,8 @@ import type { CanonicalPolicy, SeoDiagnostic } from "./types.js";
 export interface SitemapEntry {
   readonly loc: string;
   readonly lastmod?: string | Date;
+  readonly changefreq?: "always" | "hourly" | "daily" | "weekly" | "monthly" | "yearly" | "never";
+  readonly priority?: number;
   readonly alternates?: Readonly<Record<string, string>>;
   /** Content must be published, public, authorized, and indexable. */
   readonly published?: boolean;
@@ -50,6 +52,18 @@ function serializedEntry(entry: SitemapEntry, options: SitemapOptions): { loc: s
   let body = "<url><loc>" + escapeXml(loc) + "</loc>";
   const date = dateString(entry.lastmod);
   if (date) body += "<lastmod>" + escapeXml(date) + "</lastmod>";
+  if (entry.changefreq !== undefined) {
+    if (!["always", "hourly", "daily", "weekly", "monthly", "yearly", "never"].includes(entry.changefreq)) {
+      throw new TypeError("Invalid sitemap changefreq");
+    }
+    body += "<changefreq>" + entry.changefreq + "</changefreq>";
+  }
+  if (entry.priority !== undefined) {
+    if (!Number.isFinite(entry.priority) || entry.priority < 0 || entry.priority > 1) {
+      throw new TypeError("Invalid sitemap priority");
+    }
+    body += "<priority>" + entry.priority.toFixed(1) + "</priority>";
+  }
   for (const [locale, url] of Object.entries(entry.alternates ?? {}).sort(([a], [b]) => a.localeCompare(b))) {
     if (locale !== "x-default" && !/^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/.test(locale)) throw new TypeError("Invalid locale: " + locale);
     const target = normalizeCanonical(url, options);

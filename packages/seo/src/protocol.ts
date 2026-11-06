@@ -243,8 +243,7 @@ export function seoToRenderHeadV1(resolution: SeoResolutionV1): readonly RenderH
   for (const alt of document.alternates ?? []) entries.push({ tag: "link",
     attributes: { rel: "alternate", hreflang: alt.hreflang, href: alt.url } });
   if (document.jsonLd?.length) entries.push({ tag: "script-jsonld",
-    text: document.jsonLd.map(node => serializeJsonLd(
-      node as unknown as import("./types.js").StructuredData)).join("\n")
+    text: serializeJsonLd(document.jsonLd as unknown as import("./types.js").StructuredDataInput)
   });
   return entries;
 }
