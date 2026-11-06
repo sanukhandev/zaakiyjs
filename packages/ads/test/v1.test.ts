@@ -202,6 +202,68 @@ describe("P3-00 frozen AdSlotV1 / ConsentCapabilityV1", () => {
     expect(placement.state.peek()).toBe("empty");
     await manager.dispose();
   });
+  it("restarts a paused request after cancellation and teardown settle", async () => {
+    const f = fixture(); f.consent.grant("advertising");
+    vi.mocked(f.provider.load)
+      .mockImplementationOnce(() => new Promise<"filled">(() => undefined))
+      .mockResolvedValueOnce("filled");
+    const placement = f.manager.register(baseSlot); placement.mount(host());
+    await flush();
+    expect(f.provider.load).toHaveBeenCalledTimes(1);
+    const aborted = vi.mocked(f.provider.load).mock.calls[0]?.[2];
+    placement.pause();
+    placement.resume();
+    await flush();
+    expect(aborted?.aborted).toBe(true);
+    expect(f.provider.load).toHaveBeenCalledTimes(2);
+    expect(placement.state.peek()).toBe("ready");
+    await f.manager.dispose();
+  });
+  it("restarts after immediate revoke and regrant during a pending load", async () => {
+    const f = fixture(); f.consent.grant("advertising");
+    vi.mocked(f.provider.load)
+      .mockImplementationOnce(() => new Promise<"filled">(() => undefined))
+      .mockResolvedValueOnce("filled");
+    const placement = f.manager.register(baseSlot); placement.mount(host());
+    await flush();
+    const signal = vi.mocked(f.provider.load).mock.calls[0]?.[2];
+    f.consent.change("advertising", "revoked");
+    f.consent.change("advertising", "granted");
+    await flush();
+    expect(signal?.aborted).toBe(true);
+    expect(f.provider.start).toHaveBeenCalledTimes(2);
+    expect(f.provider.load).toHaveBeenCalledTimes(2);
+    expect(placement.state.peek()).toBe("ready");
+    await f.manager.dispose();
+  });
+  it("awaits async slot removal before reloading after scoped purpose regrant", async () => {
+    const f = fixture(); f.consent.grant("advertising", "ad-personalization");
+    const strict: AdSlotV1 = {
+      ...baseSlot, requiredPurposes: ["advertising", "ad-personalization"]
+    };
+    const other: AdSlotV1 = { ...baseSlot, id: "other", placement: "home/rail" };
+    const first = f.manager.register(strict), second = f.manager.register(other);
+    first.mount(host()); second.mount(host());
+    await flush();
+    expect(first.state.peek()).toBe("ready");
+    expect(second.state.peek()).toBe("ready");
+    let releaseRemove!: () => void;
+    const blockedRemoval = new Promise<void>(resolve => { releaseRemove = resolve; });
+    vi.mocked(f.provider.remove).mockImplementation(id =>
+      id === strict.id ? blockedRemoval : Promise.resolve()
+    );
+    f.consent.change("ad-personalization", "revoked");
+    f.consent.change("ad-personalization", "granted");
+    await flush();
+    expect(f.provider.load).toHaveBeenCalledTimes(2);
+    expect(f.provider.dispose).not.toHaveBeenCalled();
+    releaseRemove();
+    await flush();
+    expect(f.provider.load).toHaveBeenCalledTimes(3);
+    expect(first.state.peek()).toBe("ready");
+    expect(second.state.peek()).toBe("ready");
+    await f.manager.dispose();
+  });
   it("returns failed on provider exceptions with redacted state", async () => {
     const f = fixture(); f.consent.grant("advertising");
     vi.mocked(f.provider.load).mockRejectedValue(new Error("SENSITIVE_PRIVATE_TOKEN"));

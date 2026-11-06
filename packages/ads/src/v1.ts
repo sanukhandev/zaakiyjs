@@ -108,6 +108,9 @@ export function createAdsManagerV1(options: AdsManagerOptionsV1): AdsManagerV1 {
   const placements = new Map<string, AdMountedPlacementV1 & { updatePermission(): void }>();
   const slots = new Map<string, AdSlotV1>();
   const resources = new Set<string>();
+  // A revoked placement must not load a replacement while its previous
+  // asynchronous provider.remove() is still tearing down its creative.
+  const pendingRemovals = new Map<string, Promise<void>>();
   const consentRevision = { revision: -1 };
   let disposed = false;
   let providerReady = false;
@@ -133,9 +136,18 @@ export function createAdsManagerV1(options: AdsManagerOptionsV1): AdsManagerV1 {
       "advertising", ...policy.requiredPurposes,
       ...(policy.personalized ? ["ad-personalization" as const] : [])
     ])], consentRevision);
-  const forgetResource = async (id: string): Promise<void> => {
-    if (!resources.delete(id)) return;
-    try { await provider.remove(id); } catch { /* provider-side cleanup is best effort */ }
+  const forgetResource = (id: string): Promise<void> => {
+    const previous = pendingRemovals.get(id);
+    if (!resources.delete(id)) return previous ?? Promise.resolve();
+    const removal = (async () => {
+      if (previous) await previous;
+      try { await provider.remove(id); } catch { /* provider-side cleanup is best effort */ }
+    })();
+    pendingRemovals.set(id, removal);
+    void removal.then(() => {
+      if (pendingRemovals.get(id) === removal) pendingRemovals.delete(id);
+    });
+    return removal;
   };
   const retireProvider = (): void => {
     providerGeneration++;
@@ -149,6 +161,8 @@ export function createAdsManagerV1(options: AdsManagerOptionsV1): AdsManagerV1 {
     const owned = [...resources];
     resources.clear();
     retirePromise = retirePromise.then(async () => {
+      // Serialise SDK retirement after any placement removals in progress.
+      await Promise.all([...pendingRemovals.values()]);
       for (const id of owned) {
         try { await provider.remove(id); } catch { /* recorded only as redacted diagnostics */ }
       }
@@ -203,6 +217,7 @@ export function createAdsManagerV1(options: AdsManagerOptionsV1): AdsManagerV1 {
     let requestCounter = 0;
     let requestAbort: AbortController | undefined;
     let inFlight: Promise<void> | undefined;
+    let retryActivation = false;
     let lastLoadAt = -Infinity;
     let failures = 0;
     let lastFailureAt = -Infinity;
@@ -214,7 +229,12 @@ export function createAdsManagerV1(options: AdsManagerOptionsV1): AdsManagerV1 {
     };
     const draw = async (refresh: boolean): Promise<void> => {
       if (ended || disposed || paused || !element || !visible || !authorized(slot)) return;
-      if (inFlight) return inFlight;
+      if (inFlight) {
+        // An activation arriving during a cancelled request must retry after
+        // that request and its asynchronous resource teardown have settled.
+        if (!refresh && state.peek() === "idle") retryActivation = true;
+        return inFlight;
+      }
       if (!refresh && state.peek() === "failed" && now() - lastFailureAt <
           Math.min(30000 * Math.pow(2, Math.min(Math.max(failures - 1, 0), 3)), 240000)) return;
       if (refresh) {
@@ -233,6 +253,11 @@ export function createAdsManagerV1(options: AdsManagerOptionsV1): AdsManagerV1 {
         try {
           const started = await ensureStarted();
           if (!started) throw new Error("Provider start failed");
+          if (ended || disposed || paused || requestCounter !== token || controller.signal.aborted || !authorized(slot)) return;
+          // Revocation may be scoped to this slot while the provider stays
+          // alive for another authorized placement.
+          const pendingRemoval = pendingRemovals.get(slot.id);
+          if (pendingRemoval) await pendingRemoval;
           if (ended || disposed || paused || requestCounter !== token || controller.signal.aborted || !authorized(slot)) return;
           lastLoadAt = now();
           resources.add(slot.id); // provider can insert a partially-rendered creative before resolving
@@ -265,7 +290,15 @@ export function createAdsManagerV1(options: AdsManagerOptionsV1): AdsManagerV1 {
         }
       })();
       inFlight = task;
-      try { await task; } finally { if (inFlight === task) inFlight = undefined; }
+      try { await task; } finally {
+        if (inFlight === task) {
+          inFlight = undefined;
+          if (retryActivation) {
+            retryActivation = false;
+            activate();
+          }
+        }
+      }
     };
     const disallowedPhase = (): AdSlotStateV1 => {
       if (initiated) return "revoked";
@@ -342,6 +375,7 @@ export function createAdsManagerV1(options: AdsManagerOptionsV1): AdsManagerV1 {
       async dispose() {
         if (ended) return;
         ended = true;
+        retryActivation = false;
         cancel();
         observer?.disconnect(); observer = undefined;
         placements.delete(slot.id);
