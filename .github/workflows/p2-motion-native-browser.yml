@@ -54,7 +54,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-playwright-python-1.64.1
       - name: Install pinned Playwright and Chromium Firefox WebKit
-        timeout-minutes: 12
+        timeout-minutes: 18
         run: bash scripts/ci/install-playwright-browsers.sh
       - name: Run native animation, cancellation, gesture, scroll and layout tests in all engines
         shell: bash
