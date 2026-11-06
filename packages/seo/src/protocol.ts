@@ -250,7 +250,15 @@ export function seoToRenderHeadV1(resolution: SeoResolutionV1): readonly RenderH
 export interface SeoRouteBindingV1<Data = unknown> {
   readonly routeId: string;
   readonly visibility: "public" | "private" | "draft";
-  readonly params: Readonly<Record<string, string>>;
+  /** Fixed params for static pages. Do not use these for multi-param dynamic routes. */
+  readonly params?: Readonly<Record<string, string>>;
+  /** Inject authoritative params from the application Router; SEO does not rematch URLs. */
+  readonly resolveParams?: (input: {
+    readonly routeId: string;
+    readonly url: URL;
+    readonly status: number;
+    readonly loaderData: unknown;
+  }) => Readonly<Record<string, string>>;
   readonly factory: SeoFactoryV1<Data>;
 }
 /** The application supplies the already matched route's params and loader result. */
@@ -264,8 +272,10 @@ export function createSeoHeadAdapterV1(
     async resolve({ routeId, url, status, loaderData }) {
       const route = registry.get(routeId);
       if (!route) throw new TypeError("No SEO factory for route " + routeId);
+      const params = route.resolveParams?.({ routeId, url, status, loaderData }) ?? route.params;
+      if (!params) throw new TypeError("Missing Router-provided SEO route params");
       const output = await resolveSeoV1({
-        routeId, url, status, loaderData, params: route.params,
+        routeId, url, status, loaderData, params,
         visibility: route.visibility, siteOrigin: config.siteOrigin
       }, route.factory, config.options);
       return seoToRenderHeadV1(output);
