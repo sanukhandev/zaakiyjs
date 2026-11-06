@@ -55,6 +55,7 @@ export function createNativeWebVitalsSource(): DisposableWebVitalsSource {
           typeof PerformanceObserver === 'undefined' || signal.aborted) return () => {};
 
       const observers: PerformanceObserver[] = [];
+      let lcpObserver: PerformanceObserver | undefined;
       const supported = PerformanceObserver.supportedEntryTypes ?? [];
       const collectionStart = performance.now();
       const nav = performance.getEntriesByType('navigation')[0] as
@@ -96,6 +97,7 @@ export function createNativeWebVitalsSource(): DisposableWebVitalsSource {
         try {
           observer.observe({ type, buffered: true, ...other });
           observers.push(observer);
+          if (type === 'largest-contentful-paint') lcpObserver = observer;
         } catch { observer.disconnect(); }
       }
       function recordLcp(entries: PerformanceEntry[]): void {
@@ -169,10 +171,9 @@ export function createNativeWebVitalsSource(): DisposableWebVitalsSource {
       }
       function finalizeLcp(): void {
         if (lcpFinished) return;
-        for (const observer of observers) {
-          const records = observer.takeRecords().filter(entry => entry.entryType === 'largest-contentful-paint');
-          if (records.length) recordLcp(records);
-        }
+        // Never drain CLS, INP or paint observers while finalizing LCP on first input.
+        // Their queued records must remain available to the normal metric collectors.
+        if (lcpObserver) recordLcp(lcpObserver.takeRecords());
         lcpFinished = true;
         publish('LCP', lcp);
       }
@@ -215,6 +216,7 @@ export function createNativeWebVitalsSource(): DisposableWebVitalsSource {
         closed = true;
         for (const observer of observers) observer.disconnect();
         observers.length = 0;
+        lcpObserver = undefined;
         document.removeEventListener('visibilitychange', onVisibility);
         window.removeEventListener('pagehide', onPageHide);
         window.removeEventListener('pageshow', onPageShow);
