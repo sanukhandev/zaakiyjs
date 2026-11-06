@@ -34,6 +34,9 @@ export function validateStructuredData(input: StructuredDataInput): void {
         if (key === "__proto__" || key === "constructor" || key === "prototype") {
           throw new TypeError("Unsafe structured data key");
         }
+        if (key === "@context" && item !== "https://schema.org") {
+          throw new TypeError("Unsupported structured data @context");
+        }
         checkValue(item, depth + 1);
       }
     }
