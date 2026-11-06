@@ -109,13 +109,13 @@ export function ContactForm() {
   });
   const name = form.field('name', { required: 'Enter your name' });
   return <main>
-    <BoundTextField field={name} label="Name" />
+    <BoundTextField id="contact-name" field={name} label="Name" />
     <Button type="button" label="Submit" onPress={() => { void form.submit(); }} />
   </main>;
 }
 ```
 
-The snippet demonstrates package composition; confirm the exact `BoundTextFieldProps` contract against current public types before copying into a release. In a live TSX app, setup and form cleanup belong to the component's Core owner. Import `@zaakiyjs/ui/styles.css` once in the entrypoint. Do not rely on this pattern for server validation or safe logging of submitted personal data.
+The snippet demonstrates package composition with the required native input ID and structural field binding. Validate the full application against the current Compiler/DOM integration and browser tests before shipping. In a live TSX app, setup and form cleanup belong to the component's Core owner. Import `@zaakiyjs/ui/styles.css` once in the entrypoint. Do not rely on this pattern for server validation or safe logging of submitted personal data.
 
 ## Routing and cancellation
 

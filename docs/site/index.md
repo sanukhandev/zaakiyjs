@@ -60,6 +60,10 @@ These pages are **source documentation**, designed to be imported into a documen
 | [Consent](./packages/consent.md) | Purpose decisions, revocation, CMP/storage adapters |
 | [Ads](./packages/ads.md) | Consent-gated display placements and provider lifecycle |
 
+## Proposed package guides (not runtime exports)
+
+[SEO](./packages/seo.md) · [Analytics](./packages/analytics.md) · [AI advisor](./packages/ai.md) · [Devtools](./packages/devtools.md) · [Testing helpers](./packages/testing.md). These pages document intended contracts and release gates only. See [status and roadmap](./planned-packages.md).
+
 ## Design rules
 
 - **Compiler-first:** Author TSX; produce native DOM operations at build time. There is no mandatory JSX interpreter or virtual DOM.
