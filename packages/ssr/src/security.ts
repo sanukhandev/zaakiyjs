@@ -68,7 +68,8 @@ export function serializeHydration(envelope: HydrationEnvelopeV1, publicFields: 
   }, ["schema", "buildId", "domAbiVersion", "routeId", "boundaries", "payload"]);
 }
 export function safeLocation(value: string, origin: string): string {
-  if (/[\\\u0000-\u001f\u007f]/.test(value) || value.startsWith("//")) throw new TypeError("Unsafe redirect");
+  if (value.includes("\\") || [...value].some(c => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127) ||
+      value.startsWith("//")) throw new TypeError("Unsafe redirect");
   const target = new URL(value, origin);
   if (!["http:", "https:"].includes(target.protocol) || target.origin !== new URL(origin).origin ||
       target.username || target.password) throw new TypeError("Redirect must be same origin");

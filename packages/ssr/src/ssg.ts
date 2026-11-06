@@ -23,7 +23,8 @@ export interface StaticResult {
 }
 function safeOutput(path: string, root: string): string {
   if (!path.startsWith("/") || path.startsWith("//") || path.includes("?") || path.includes("#") ||
-      /[%\\\u0000-\u001f\u007f]/.test(path)) throw new TypeError("Unsafe static route path");
+      path.includes("%") || path.includes("\\") || [...path].some(c => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127))
+    throw new TypeError("Unsafe static route path");
   const segments = path.split("/").filter(Boolean);
   if (segments.some(segment => segment === "." || segment === ".." || !/^[\p{L}\p{N}_.~-]+$/u.test(segment)))
     throw new TypeError("Unsafe static route segment");
