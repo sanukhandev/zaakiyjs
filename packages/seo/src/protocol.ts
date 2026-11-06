@@ -96,6 +96,10 @@ function normalizeTarget(value: string, policy: CanonicalPolicy): string {
   if (!result.startsWith("https://")) throw new TypeError("SEO v1 requires HTTPS URLs");
   return result;
 }
+function validateRedirectLocation(value: string, policy: CanonicalPolicy): string {
+  normalizeTarget(value, { ...policy, trailingSlash: "preserve", query: "preserve" });
+  return new URL(value, policy.siteURL).href;
+}
 function validateLocale(value: string): string {
   if (value === "x-default") return value;
   try {
@@ -202,7 +206,9 @@ export async function resolveSeoV1<Data>(
         ...resolution,
         redirect: {
           status: options.redirect.status,
-          location: normalizeTarget(options.redirect.location, policy)
+          // Validate against the same trusted HTTPS origin/allowlist, but do not
+        // apply canonical query, fragment or trailing-slash policies to redirects.
+        location: validateRedirectLocation(options.redirect.location, policy)
         }
       };
     }

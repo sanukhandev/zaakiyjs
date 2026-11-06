@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { auditMetadata, defineMetadata, definePageMetadata, normalizeCanonical,
   renderMetadata, resolveMetadata, resolveRouteMetadata, serializeHeadTags, serializeJsonLd, validateStructuredData } from "../src/index.js";
 const policy = { siteURL: "https://example.com", trailingSlash: "never" as const };
@@ -34,6 +34,22 @@ describe("metadata/canonical", () => {
       expect(renderMetadata([{ robots: { index: true } }], { ...policy, status }).headers["X-Robots-Tag"]).toContain("noindex");
     }
     expect(resolveMetadata([{ robots: { index: true } }], { ...policy, private: true }).robots.index).toBe(false);
+  });
+  it("skips loader-derived factories on private, redirect and error responses", () => {
+    const forbidden = vi.fn(() => { throw new Error("SEO factory ran without authorized data"); });
+    for (const options of [{ ...policy, status: 404 }, { ...policy, status: 410 },
+      { ...policy, status: 302 }, { ...policy, status: 401 },
+      { ...policy, status: 200, private: true }]) {
+      const resolved = resolveMetadata([forbidden], options);
+      expect(resolved.robots).toMatchObject({ index: false, follow: false });
+      expect(resolved.canonical).toBeUndefined();
+      expect(renderMetadata(forbidden, options).html).toContain("noindex");
+      const route = resolveRouteMetadata("private", [
+        { id: "private", metadata: forbidden }
+      ], {}, options);
+      expect(route.robots.index).toBe(false);
+    }
+    expect(forbidden).not.toHaveBeenCalled();
   });
   it("does not leak canonical, social or JSON-LD on private, 404 or redirected documents", () => {
     const page = { title: "Private Product", canonical: "/private", openGraph: { title: "Secret" },

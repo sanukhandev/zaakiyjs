@@ -73,6 +73,24 @@ describe("frozen P3 SEO v1", () => {
     await expect(resolveSeoV1({ ...productInput, status: 302 }, productFactory,
       { redirect: { status: 302, location: "https://evil.test" } })).rejects.toThrow();
   });
+  it("preserves redirect query, fragment and trailing slash regardless of canonical policy", async () => {
+    const output = await resolveSeoV1({ ...productInput, status: 302 }, productFactory, {
+      query: "strip", trailingSlash: "never",
+      redirect: { status: 302, location: "/new/?item=7&lang=en#details" }
+    });
+    expect(output.redirect?.location).toBe("https://shop.example.test/new/?item=7&lang=en#details");
+    const approved = await resolveSeoV1({ ...productInput, status: 307 }, productFactory, {
+      allowedOrigins: ["https://checkout.example.test"],
+      query: "strip",
+      redirect: { status: 307, location: "https://checkout.example.test/start?token=abc#step2" }
+    });
+    expect(approved.redirect?.location).toBe("https://checkout.example.test/start?token=abc#step2");
+    for (const location of ["javascript:alert(1)", "//evil.example.test/start",
+      "https://user:password@shop.example.test/start", "/bad%GG"]) {
+      await expect(resolveSeoV1({ ...productInput, status: 302 }, productFactory,
+        { redirect: { status: 302, location } })).rejects.toThrow();
+    }
+  });
   it("rejects untrusted origins, bad versions and malicious JSON-LD", async () => {
     await expect(resolveSeoV1({ ...productInput, siteOrigin: new URL("http://shop.example.test") },
       productFactory)).rejects.toThrow("HTTPS");

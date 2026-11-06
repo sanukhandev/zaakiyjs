@@ -11,6 +11,11 @@ export function resolveMetadata<Data = unknown, Params extends Readonly<Record<s
   layers: readonly MetadataDefinition<Data, Params>[],
   options: ResolveMetadataOptions<Data, Params>
 ): ResolvedMetadata {
+  // HTTP status and visibility must be checked before invoking any loader-derived
+  // factory; missing, redirected or private pages may not have safe loader data.
+  if (options.private === true || (options.status !== undefined && options.status !== 200)) {
+    return { robots: { index: false, follow: false }, locale: options.locale };
+  }
   let merged: Metadata = {};
   const context: PageMetadataContext<Data, Params> = {
     data: options.data as Data, params: (options.params ?? {}) as Params,
@@ -30,24 +35,12 @@ export function resolveMetadata<Data = unknown, Params extends Readonly<Record<s
   const robots: RobotsDirectives = {
     index: true, follow: true, ...merged.robots
   };
-  // For non-200 or private responses, never serialize loader-derived discovery content.
-  // This protects older convenience metadata APIs as well as the P3 resolver.
-  const notIndexable = options.private === true ||
-    (options.status !== undefined && options.status !== 200);
-  const forcedRobots = notIndexable ? { ...robots, index: false, follow: false } : robots;
-  if (notIndexable) {
-    return {
-      robots: forcedRobots as ResolvedMetadata["robots"],
-      title: options.private ? undefined : options.status && options.status >= 400 ? merged.title : undefined,
-      locale: options.locale ?? merged.locale
-    };
-  }
   const canonical = merged.canonical === undefined ? undefined : normalizeCanonical(merged.canonical, options);
   const altEntries = Object.entries(merged.alternates ?? {}).map(([locale, href]) =>
     [locale, normalizeCanonical(href, options)] as const);
   const alternates = altEntries.length ? Object.fromEntries(altEntries.sort(([a], [b]) => a.localeCompare(b))) : undefined;
   return {
-    ...merged, canonical, robots: forcedRobots as ResolvedMetadata["robots"], alternates,
+    ...merged, canonical, robots: robots as ResolvedMetadata["robots"], alternates,
     openGraph: merged.openGraph ? {
       ...merged.openGraph,
       ...(merged.openGraph.image ? { image: normalizeCanonical(merged.openGraph.image, options) } : {})

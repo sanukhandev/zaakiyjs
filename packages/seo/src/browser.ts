@@ -1,26 +1,34 @@
 import type { HeadTag, RenderedMetadata } from "./types.js";
 import { serializeHeadTags } from "./metadata.js";
+import { serializeJsonLd } from "./structured.js";
 
 /** Separate browser entry: pure SEO imports never read document/window. */
 export interface HeadManager {
   update(result: RenderedMetadata, options?: { readonly version?: number; readonly signal?: AbortSignal }): boolean;
   dispose(): void;
 }
-function matchElement(doc: Document, tag: HeadTag): Element | null {
-  const candidates = [...doc.head.children];
-  for (const element of candidates) {
-    if (tag.kind === "title" && element.tagName.toLowerCase() === "title") return element;
-    if (tag.kind === "meta" && element.tagName.toLowerCase() === "meta" &&
-      (element.getAttribute("name") === tag.attributes.name ||
-       element.getAttribute("property") === tag.attributes.property)) return element;
-    if (tag.kind === "link" && element.tagName.toLowerCase() === "link" &&
-      element.getAttribute("rel") === tag.attributes.rel &&
-      (tag.attributes.rel !== "alternate" || element.getAttribute("hreflang") === tag.attributes.hreflang)) return element;
-    if (tag.kind === "script" && element.tagName.toLowerCase() === "script" &&
-      element.getAttribute("type") === "application/ld+json") return element;
+/** Adopt only SEO-relevant SSR nodes; preserve viewport, charset, styles, etc. */
+function existingSeoKey(element: Element): string | undefined {
+  const tag = element.tagName.toLowerCase();
+  if (tag === "title") return "title";
+  if (tag === "meta") {
+    const name = element.getAttribute("name");
+    if (name && (["description", "robots", "author", "publisher"].includes(name) ||
+      name.startsWith("twitter:"))) return name;
+    const property = element.getAttribute("property");
+    if (property?.startsWith("og:")) return property;
   }
-  return null;
+  if (tag === "link") {
+    const rel = element.getAttribute("rel");
+    if (rel === "canonical") return "canonical";
+    if (rel === "alternate" && element.hasAttribute("hreflang")) {
+      return "hreflang:" + element.getAttribute("hreflang");
+    }
+  }
+  if (tag === "script" && element.getAttribute("type") === "application/ld+json") return "jsonld";
+  return undefined;
 }
+
 export function createHeadManager(doc: Document, lifetime?: AbortSignal): HeadManager {
   let disposed = false;
   let version = -Infinity;
@@ -29,7 +37,9 @@ export function createHeadManager(doc: Document, lifetime?: AbortSignal): HeadMa
     if (disposed) return;
     disposed = true;
     for (const node of owned.values()) node.remove();
+    for (const node of duplicates) node.remove();
     owned.clear();
+    duplicates.clear();
     lifetime?.removeEventListener("abort", dispose);
   };
   if (lifetime?.aborted) dispose();
@@ -42,11 +52,25 @@ export function createHeadManager(doc: Document, lifetime?: AbortSignal): HeadMa
       const nextVersion = options.version ?? version + 1;
       if (nextVersion < version) return false;
       version = nextVersion;
+      // Reconcile the complete server-rendered SEO head on first navigation.
+      // Otherwise metadata omitted by the new route would remain indexed.
+      if (!adopted) {
+        adopted = true;
+        for (const node of [...doc.head.children]) {
+          const key = existingSeoKey(node);
+          if (key === undefined) continue;
+          if (owned.has(key)) duplicates.add(node);
+          else owned.set(key, node);
+        }
+      }
       const next = new Map<string, Element>();
       for (const tag of result.tags) {
-        const element = owned.get(tag.key) ?? matchElement(doc, tag) ??
-          doc.createElement(tag.kind === "title" ? "title" : tag.kind);
-        if (tag.kind === "title" || tag.kind === "script") element.textContent = tag.text;
+        const element = owned.get(tag.key) ?? doc.createElement(tag.kind === "title" ? "title" : tag.kind);
+        if (tag.kind === "title") element.textContent = tag.text;
+        if (tag.kind === "script") {
+          const value = JSON.parse(tag.text) as import("./types.js").StructuredDataInput;
+          element.textContent = serializeJsonLd(value);
+        }
         if (tag.kind !== "title") {
           for (const attribute of [...element.attributes]) {
             if (attribute.name !== "data-zaakiy-seo" && !(attribute.name in tag.attributes))
@@ -59,6 +83,8 @@ export function createHeadManager(doc: Document, lifetime?: AbortSignal): HeadMa
         next.set(tag.key, element);
       }
       for (const [key, element] of owned) if (!next.has(key)) element.remove();
+      for (const node of duplicates) node.remove();
+      duplicates.clear();
       owned.clear();
       for (const [key, element] of next) owned.set(key, element);
       return true;
