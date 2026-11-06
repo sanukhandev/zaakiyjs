@@ -106,8 +106,42 @@ export function serializeHeadTags(tags: readonly HeadTag[]): string {
     if (keys.has(tag.key)) throw new TypeError("Duplicate SEO head tag key: " + tag.key);
     keys.add(tag.key);
     if (tag.kind === "title") return "<title>" + escapeHtml(tag.text) + "</title>";
-    const attrs = Object.entries(tag.attributes).map(([key, value]) => " " + key + '="' + escapeHtml(value) + '"').join("");
-    if (tag.kind === "script") return "<script" + attrs + ">" + tag.text + "</script>";
+    if (tag.kind !== "meta" && tag.kind !== "link" && tag.kind !== "script") {
+      throw new TypeError("Unknown SEO head element");
+    }
+    const allowed = tag.kind === "meta" ? ["name", "property", "content"] :
+      tag.kind === "link" ? ["rel", "href", "hreflang"] : ["type"];
+    if (Object.keys(tag.attributes).some(name => !allowed.includes(name))) {
+      throw new TypeError("Forbidden SEO head attribute");
+    }
+    if (tag.kind === "meta") {
+      if (typeof tag.attributes.content !== "string" ||
+        !(tag.attributes.name || tag.attributes.property) ||
+        (tag.attributes.name && tag.attributes.property)) {
+        throw new TypeError("Invalid SEO meta attributes");
+      }
+    }
+    if (tag.kind === "link") {
+      if (!["canonical", "alternate"].includes(tag.attributes.rel ?? "") ||
+        !tag.attributes.href) throw new TypeError("Invalid SEO link attributes");
+      const url = new URL(tag.attributes.href);
+      if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) {
+        throw new TypeError("Unsafe SEO link URL");
+      }
+      if (tag.attributes.rel === "alternate" && !tag.attributes.hreflang) {
+        throw new TypeError("Missing hreflang for alternate link");
+      }
+    }
+    if (tag.kind === "script") {
+      if (tag.attributes.type !== "application/ld+json") {
+        throw new TypeError("Only validated JSON-LD scripts are permitted");
+      }
+      const json = JSON.parse(tag.text) as import("./types.js").StructuredDataInput;
+      const safeJson = serializeJsonLd(json);
+      return '<script type="application/ld+json">' + safeJson + "</script>";
+    }
+    const attrs = Object.entries(tag.attributes)
+      .map(([name, value]) => " " + name + '="' + escapeHtml(value) + '"').join("");
     return "<" + tag.kind + attrs + ">";
   }).join("\n");
 }
