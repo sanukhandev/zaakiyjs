@@ -76,6 +76,10 @@ describe("SSR request / trusted-module boundary", () => {
           cache: { scope: "no-store", tags: [] } }) } }
     };
     const adapter = createNodeServerAdapter(fixture(undefined, { modules }));
+    Object.assign(modules["built/item"]!.module, {
+      render: () => ({ version: 1, status: 200, headers: {}, body: "mutated function",
+        cache: { scope: "no-store", tags: [] } })
+    });
     modules["built/item"] = { sourceDigest, module: { protocol: "zaakiy.render/1",
       render: () => ({ version: 1, status: 200, headers: {}, body: "unverified",
         cache: { scope: "no-store", tags: [] } }) } };

@@ -148,7 +148,12 @@ export function createNodeServerAdapter(options: ServerOptions): NodeServerAdapt
   for (const [routeId, entry] of Object.entries(options.manifest.routes)) {
     const descriptor = Object.getOwnPropertyDescriptor(options.modules, entry.moduleId);
     if (!descriptor || !("value" in descriptor)) throw new TypeError("Trusted module registry changed");
-    trustedModules.set(entry.moduleId, descriptor.value.module);
+    const implementation = descriptor.value.module as TrustedServerRenderModuleV1;
+    const verifiedRender = implementation.render;
+    trustedModules.set(entry.moduleId, {
+      protocol: "zaakiy.render/1",
+      render: context => verifiedRender.call(implementation, context)
+    });
     moduleByRoute.set(routeId, entry.moduleId);
   }
   const table = compileRoutes(options.routes);
