@@ -178,13 +178,13 @@ export async function resolveSeoV1<Data>(
   for (const layout of options.layouts ?? []) document = mergeDoc(document, layout);
   const page = await factory(input);
   document = mergeDoc(document, page);
-  const redirectStatus = input.status >= 300 && input.status < 400;
+  const redirectStatus = [301, 302, 307, 308].includes(input.status);
   if (redirectStatus !== Boolean(options.redirect) ||
     options.redirect && options.redirect.status !== input.status) {
     throw new TypeError("Redirect status and Location must agree");
   }
-  const denied = input.visibility !== "public" || input.status >= 400 || redirectStatus ||
-    input.status === 401 || input.status === 403 || input.status < 200;
+  // Only a real, authorized public 200 page is eligible for discovery metadata.
+  const denied = input.visibility !== "public" || input.status !== 200;
   if (denied) {
     document = {
       version: 1,
@@ -250,7 +250,15 @@ export function seoToRenderHeadV1(resolution: SeoResolutionV1): readonly RenderH
 export interface SeoRouteBindingV1<Data = unknown> {
   readonly routeId: string;
   readonly visibility: "public" | "private" | "draft";
-  readonly params: Readonly<Record<string, string>>;
+  /** Fixed params for static pages. Do not use these for multi-param dynamic routes. */
+  readonly params?: Readonly<Record<string, string>>;
+  /** Inject authoritative params from the application Router; SEO does not rematch URLs. */
+  readonly resolveParams?: (input: {
+    readonly routeId: string;
+    readonly url: URL;
+    readonly status: number;
+    readonly loaderData: unknown;
+  }) => Readonly<Record<string, string>>;
   readonly factory: SeoFactoryV1<Data>;
 }
 /** The application supplies the already matched route's params and loader result. */
@@ -264,8 +272,10 @@ export function createSeoHeadAdapterV1(
     async resolve({ routeId, url, status, loaderData }) {
       const route = registry.get(routeId);
       if (!route) throw new TypeError("No SEO factory for route " + routeId);
+      const params = route.resolveParams?.({ routeId, url, status, loaderData }) ?? route.params;
+      if (!params) throw new TypeError("Missing Router-provided SEO route params");
       const output = await resolveSeoV1({
-        routeId, url, status, loaderData, params: route.params,
+        routeId, url, status, loaderData, params,
         visibility: route.visibility, siteOrigin: config.siteOrigin
       }, route.factory, config.options);
       return seoToRenderHeadV1(output);
@@ -290,13 +300,15 @@ export async function generateSitemapsFromFeedV1(
   }
   const entries: SitemapEntry[] = [];
   const cursors = new Set<string>();
+  let totalRecords = 0;
   let cursor: string | undefined;
   for (let page = 0; page < maxPages; page++) {
     if (signal.aborted) throw signal.reason ?? new Error("Sitemap generation aborted");
     const result = await feed.entries({ signal, cursor });
     if (signal.aborted) throw signal.reason ?? new Error("Sitemap generation aborted");
-    if (!Array.isArray(result.items) || entries.length + result.items.length > maxRecords)
+    if (!Array.isArray(result.items) || totalRecords + result.items.length > maxRecords)
       throw new RangeError("Sitemap feed exceeds record limit");
+    totalRecords += result.items.length;
     for (const entry of result.items) {
       if (entry.visibility !== "public") continue;
       entries.push({

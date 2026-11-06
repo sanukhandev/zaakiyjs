@@ -35,6 +35,8 @@ describe("frozen P3 SEO v1", () => {
     for (const input of [
       { ...productInput, status: 404 },
       { ...productInput, status: 410 },
+      { ...productInput, status: 204 },
+      { ...productInput, status: 304 },
       { ...productInput, status: 401, visibility: "private" as const },
       { ...productInput, status: 200, visibility: "draft" as const }
     ]) {
@@ -103,6 +105,22 @@ describe("frozen P3 SEO v1", () => {
     }));
     const duplicates = auditSeoV1({ resolution: product, visibility: "public", existingCanonicalCount: 2 });
     expect(duplicates.some(d => d.code === "SEO308")).toBe(true);
+  });
+  it("reads fresh route params from an application-supplied adapter for dynamic URLs", async () => {
+    const adapter = createSeoHeadAdapterV1({
+      siteOrigin,
+      routes: [{
+        routeId: "product", visibility: "public",
+        resolveParams: ({ url }: { url: URL }) => ({ slug: url.pathname.split("/").at(-1)! }),
+        factory: productFactory as (input: SeoResolveInputV1) => SeoDocumentV1
+      }]
+    });
+    const tags = await adapter.resolve({
+      routeId: "product", url: new URL("https://shop.example.test/products/other"),
+      loaderData: { name: "Another Lamp" }, status: 200
+    });
+    expect(tags.find(t => t.tag === "link" && t.attributes?.rel === "canonical")?.attributes?.href)
+      .toBe("https://shop.example.test/products/other");
   });
   it("supports bounded cursor-based published sitemap feeds and abort", async () => {
     const feed: SitemapFeedV1 = {
