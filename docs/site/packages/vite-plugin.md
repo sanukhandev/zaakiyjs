@@ -79,7 +79,7 @@ export default defineConfig({
 
 A static TSX component imports `virtual:zaakiy-styles.css` automatically from the generated JS. In development the virtual module serves the current aggregate stylesheet. In HTML production builds a deterministic `assets/zaakiy-styles.css` (or configured `cssFileName`) is emitted, linked into HTML, and enumerated in `zaakiy-assets.json` (schema version 1). The manifest never embeds absolute build-host source paths: source file IDs are project-relative and omitted for virtual/external modules. Non-HTML/library consumers must add the emitted CSS file to their distribution manually. A configured brand or safelist can generate CSS even when no TSX files are transformed, once the styles engine is available.
 
-The public `zaakiyPlugin()` factory is exported from the package root. A compatibility `./plugin` subpath remains available. `foundationStatus.implemented` refers to this executable Vite adapter, **not** proof that upstream compiler, styles and DOM integration is complete.
+The public `zaakiyPlugin()` factory is exported from the package root and a compatibility `./plugin` subpath remains available. Runtime/browser compatibility must be verified for each supported TSX pattern; an executable adapter does not mean unrestricted TSX syntax or state-preserving hot updates.
 
 ### Public configuration
 
@@ -93,14 +93,14 @@ No mandatory Tailwind, React Fast Refresh, or browser-side compiler is included.
 
 ### Integration contract and blocking prerequisites
 
-The compiler's *result* and the styles *result* are frozen in M0, but the executable export functions and token transport are not. Until the coordinating integration ADR freezes them, this adapter requires:
+The adapter connects the executable Compiler, Styles and DOM packages. Its output, diagnostics and CSS token integration use these public contracts:
 
 - `@zaakiyjs/compiler.compile(request: CompileRequest): CompileResult | Promise<CompileResult>` returning one JS asset per transformed TSX module, IR version 1, a valid source map when requested, and diagnostics with original TSX spans.
 - `@zaakiyjs/styles.compileStyles(request: StyleCompilerRequest): StyleCompilerResult | Promise<StyleCompilerResult>` performing utility CSS validation/deduplication without Tailwind.
-- A compiler manifest `styleTokens` key containing either `string[]` (as emitted by the current compiler implementation branch) or `ExtractedStyleToken[]` (as described by the M0 styles contract). String tokens are resolved against the original source using the real `@zaakiyjs/styles.extractStyleTokens` public extractor. Only offsets verified against the exact source are accepted; an unresolvable token fails with an actionable `ZV2011`/`ZV2013` diagnostic instead of fabricating offset 0. The preferred long-term compiler contract remains directly emitted `ExtractedStyleToken[]` spans.
+- A compiler manifest `styleTokens` key containing either `string[]` (as emitted by the compiler) or `ExtractedStyleToken[]` (as described by the M0 styles contract). String tokens are resolved against the original source using the real `@zaakiyjs/styles.extractStyleTokens` public extractor. Only offsets verified against the exact source are accepted; an unresolvable token fails with an actionable `ZV2011`/`ZV2013` diagnostic instead of fabricating offset 0. The preferred long-term compiler contract remains directly emitted `ExtractedStyleToken[]` spans.
 - Executable `@zaakiyjs/dom/compiler` runtime ABI with compatible owner cleanup, exported by the independent DOM package.
 
-No alternative implementation is substituted when a dependency is absent or reports invalid output. Style errors and dynamic CSS classes fail; other style warnings are surfaced without rejecting valid builds. The entire PR remains **draft** until the real packages are merged and jointly tested.
+No alternative implementation is substituted when a dependency is absent or reports invalid output. Style errors and dynamic CSS classes fail; other style warnings are surfaced without rejecting valid builds.
 
 ### Caching, errors, HMR, security
 

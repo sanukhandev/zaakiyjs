@@ -91,7 +91,7 @@ const app = mount((owner) => {
 app.dispose();
 ```
 
-The example is generated-code style. M0's TSX is still typecheck-only. There is no JSX runtime fallback.
+The example illustrates the compiler's native-DOM ABI. Supported TSX is compiled to these runtime operations at build time; no generic JSX interpreter or React-style runtime fallback is used.
 
 ### Internal region machinery
 

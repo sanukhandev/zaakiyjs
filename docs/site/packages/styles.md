@@ -196,13 +196,13 @@ Recipes are component-independent, pure string compositions; their possible clas
 
 Run `pnpm --filter @zaakiyjs/styles lint`, `typecheck`, `build`, and `test`. The `typecheck` script validates both implementation and test sources. Tests cover parsing, invalid tokens/configuration, responsive/state/dark selectors, brand scopes, reduced motion, recipes, extraction, deterministic output, deduplication, basic browser prefixing and injection rejection.
 
-The `postcss` dependency must be reflected in the frozen workspace lockfile through coordinated integration; concurrency-safe lockfile ownership is required. The root M0 export-surface fixture still assumes every foundation package exports **only** `foundationStatus` with `implemented: false` and must be amended by the M0 integration owner before whole-repository CI can pass. This PR intentionally leaves shared files untouched in accordance with package ownership.
+The Styles package and its PostCSS dependency are part of the current workspace. Verify pinned builds and generated CSS behavior in the present repository rather than relying on historical M0 integration notes.
 
 Independent SemVer and Changesets apply; npm scope ownership, package license and publication authorization are not established.
 
 #### Cross-package diagnostic boundary
 
-`StyleDiagnostic.severity === "warning"` does **not** invalidate CSS. The Vite integration must log warnings without stopping builds; only `severity === "error"` is fatal. Consumers must not unconditionally throw on a non-empty `result.diagnostics` array. The shared integration owner must also pass declared browser targets into `StyleConfig.targets` rather than only the compiler-specific target list.
+`StyleDiagnostic.severity === "warning"` does **not** invalidate CSS. The Vite integration must log warnings without stopping builds; only `severity === "error"` is fatal. Consumers must not unconditionally throw on a non-empty `result.diagnostics` array. The build integration must pass declared browser targets into `StyleConfig.targets` when requesting target-specific CSS transforms.
 
 ## Integrate with neighboring packages
 

@@ -88,7 +88,7 @@ Sections below retain capability explanations and examples from the package's so
 
 The executable is named **zaakiy**. Project creation uses **start --project**, not create.
 
-- **Minimal:** strict TSX Counter, typed branding, native mount and the Vite plugin. Creation is refused until supported runtime/plugin exports exist and non-workspace versions have left M0 placeholder version 0.0.0.
+- **Minimal:** strict TSX Counter, typed branding, native mount and the Vite plugin. Scaffolding outside a workspace is gated by framework package readiness and non-placeholder published versions; source package manifests currently use 0.0.0.
 - **Standard:** Minimal plus organized shared/feature directories; no unimplemented runtime imports.
 - **Enterprise:** Standard plus application provider/branding and MVVM documentation structure; no router, forms, async resources or proxy APIs.
 
@@ -102,7 +102,7 @@ dev/build/test delegate to real project scripts, forward subprocess exit codes a
 
 page, layout, store, resource, task, interceptor, proxy, analyze, migrate, seo and ai are unavailable until their owning packages are implemented. They fail without creating files.
 
-### Release gates
+### Publication requirements
 
 Before marking the PR ready, install packed packages in a clean fixture; verify generated typecheck, Vite production build, native DOM interaction, security tests, CLI executable, npm pack and provenance. The M0-only baseline cannot satisfy these gates. The branch includes a scoped pnpm lockfile update for CLI Node typings. Current CI passes lint/typecheck/build/test and validates pnpm-packed CLI invocation, but a clean compiled Counter production build remains blocked on the other foundation packages.
 

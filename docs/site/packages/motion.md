@@ -156,7 +156,7 @@ Reduced-motion defaults to `respect`; `disable` skips and `force` overrides. The
 - Router has no public DOM-commit transition interception contract. `@zaakiyjs/motion/route` is a transport-neutral helper, **not** an installed Router adapter. Never run before guards, loaders and authorization succeed.
 - `animateKeyedMoves` requires the caller to capture element positions before the compiler's reorder and invoke it after. No private keyed ABI access or automatic hooks.
 - Native WAAPI, View Transitions, CSS individual transforms, IntersectionObserver and Pointer Events need Chromium, Firefox and WebKit compatibility verification. Unsupported WAAPI skips, and View Transitions fall back to committing without animation.
-- Package CI discovery, root lockfile importer and external packed-consumer audit are isolated in stacked PR #41, because this branch may not edit root scripts and lockfiles.
+- Maintain current package/workspace integration checks and independently verify published package consumers; do not infer these from source-only tests.
 - Not certified: all 33 prescribed browser scenarios, heap/bundle/frame timing, production CSP/AXE, first-publication scope ownership and npm release.
 
 The package is opt-in and browser-global-free at import; there are no runtime dependencies besides `@zaakiyjs/core`.

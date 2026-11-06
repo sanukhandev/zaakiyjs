@@ -133,9 +133,7 @@ existing atomic transactional writer after validating target scope, and support 
 list before touching the filesystem. It must prohibit silent overwrite and symlink escapes,
 with tests for TOCTOU and rollback. No CLI change is part of this branch.
 
-`@zaakiyjs/ui` will be adopted only after its public exports and browser compatibility
-are validated. Current draft Views use semantic native elements and static brand utility
-tokens rather than copying UI internals. No chart dependency or JavaScript theme engine.
+Current template Views use semantic native elements and static brand utility tokens instead of importing UI internals. Adoption of public UI components is a separate, tested integration decision. No chart dependency or JavaScript theme engine.
 
 ### Auth/security policies
 

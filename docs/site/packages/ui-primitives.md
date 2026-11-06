@@ -175,7 +175,7 @@ controller.setOpen(true);
 
 ### Verification and release gates
 
-The separate integration PR #45 owns frozen lockfile/workspace/browser CI integration. This package requires  `pnpm` lint/typecheck/build/test, real Chromium/Firefox/WebKit focus/pointer tests, screen reader keyboard review, ESM consumer installation and npm pack verification **before merge and publication**. Source tests are not a substitute for those browser gates. No claim is made that WCAG 2.2 AA certification has occurred.
+Validation covers package lint/typecheck/build/test and browser-oriented fixtures. Independently verify current required CI checks, screen-reader keyboard interaction, packaged consumer installation and npm metadata **before publication**. Source tests do not establish WCAG 2.2 AA certification.
 
 ### Security
 
