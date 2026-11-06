@@ -204,6 +204,8 @@ export function createAdsManagerV1(options: AdsManagerOptionsV1): AdsManagerV1 {
     let requestAbort: AbortController | undefined;
     let inFlight: Promise<void> | undefined;
     let lastLoadAt = -Infinity;
+    let failures = 0;
+    let lastFailureAt = -Infinity;
     const move = (phase: AdSlotStateV1): void => { if (!ended) state.value = phase; };
     const cancel = (): void => {
       requestCounter++;
@@ -213,6 +215,8 @@ export function createAdsManagerV1(options: AdsManagerOptionsV1): AdsManagerV1 {
     const draw = async (refresh: boolean): Promise<void> => {
       if (ended || disposed || paused || !element || !visible || !authorized(slot)) return;
       if (inFlight) return inFlight;
+      if (!refresh && state.peek() === "failed" && now() - lastFailureAt <
+          Math.min(30000 * Math.pow(2, Math.min(Math.max(failures - 1, 0), 3)), 240000)) return;
       if (refresh) {
         if (!opts.refreshMinIntervalMs || !hasRefresh(provider) || state.peek() !== "ready" && state.peek() !== "empty" ||
             (doc && doc.visibilityState === "hidden")) return;
@@ -237,6 +241,7 @@ export function createAdsManagerV1(options: AdsManagerOptionsV1): AdsManagerV1 {
             : provider.load(slot, host, controller.signal);
           const result = await bounded(Promise.resolve(invocation), controller, policy.loadTimeoutMs);
           if (ended || disposed || requestCounter !== token || controller.signal.aborted || !authorized(slot)) return;
+          failures = 0;
           if (result === "filled") { move("ready"); emit("ready", slot.id); }
           else if (result === "empty") { move("empty"); emit("empty", slot.id); }
           else if (result === "blocked") { move("blocked"); emit("blocked", slot.id); }
@@ -244,14 +249,16 @@ export function createAdsManagerV1(options: AdsManagerOptionsV1): AdsManagerV1 {
           if (refresh) emit("refreshed", slot.id);
         } catch {
           if (!ended && !disposed && requestCounter === token && !controller.signal.aborted) {
+            failures++; lastFailureAt = now();
             move("failed");
             emit("failed", slot.id);
           } else if (!ended && !disposed && requestCounter === token && controller.signal.aborted && authorized(slot)) {
+            failures++; lastFailureAt = now();
             move("failed");
             emit("failed", slot.id);
           }
         } finally {
-          if (requestCounter !== token || ended || disposed || !authorized(slot)) {
+          if (requestCounter !== token || ended || disposed || !authorized(slot) || state.peek() !== "ready") {
             await forgetResource(slot.id);
           }
           if (requestAbort === controller) requestAbort = undefined;
