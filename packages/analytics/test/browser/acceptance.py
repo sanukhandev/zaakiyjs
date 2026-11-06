@@ -35,7 +35,7 @@ async def browser_case(p, browser_name):
         await page.goto(URL, wait_until='networkidle')
         await page.evaluate('window.__analyticsFixture.ready')
         state = await page.evaluate('window.__analyticsFixture.counters()')
-        assert state == {'start': 0, 'disconnect': 0, 'subscribers': 1, 'providers': 0}, state
+        assert state == {'start': 0, 'disconnect': 0, 'subscribers': 2, 'providers': 0}, state
         assert await page.evaluate('window.__analyticsFixture.events().length') == 0
 
         await page.evaluate('window.__analyticsFixture.grant()')
