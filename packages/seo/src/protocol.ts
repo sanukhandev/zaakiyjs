@@ -178,13 +178,13 @@ export async function resolveSeoV1<Data>(
   for (const layout of options.layouts ?? []) document = mergeDoc(document, layout);
   const page = await factory(input);
   document = mergeDoc(document, page);
-  const redirectStatus = input.status >= 300 && input.status < 400;
+  const redirectStatus = [301, 302, 307, 308].includes(input.status);
   if (redirectStatus !== Boolean(options.redirect) ||
     options.redirect && options.redirect.status !== input.status) {
     throw new TypeError("Redirect status and Location must agree");
   }
-  const denied = input.visibility !== "public" || input.status >= 400 || redirectStatus ||
-    input.status === 401 || input.status === 403 || input.status < 200;
+  // Only a real, authorized public 200 page is eligible for discovery metadata.
+  const denied = input.visibility !== "public" || input.status !== 200;
   if (denied) {
     document = {
       version: 1,
@@ -290,13 +290,15 @@ export async function generateSitemapsFromFeedV1(
   }
   const entries: SitemapEntry[] = [];
   const cursors = new Set<string>();
+  let totalRecords = 0;
   let cursor: string | undefined;
   for (let page = 0; page < maxPages; page++) {
     if (signal.aborted) throw signal.reason ?? new Error("Sitemap generation aborted");
     const result = await feed.entries({ signal, cursor });
     if (signal.aborted) throw signal.reason ?? new Error("Sitemap generation aborted");
-    if (!Array.isArray(result.items) || entries.length + result.items.length > maxRecords)
+    if (!Array.isArray(result.items) || totalRecords + result.items.length > maxRecords)
       throw new RangeError("Sitemap feed exceeds record limit");
+    totalRecords += result.items.length;
     for (const entry of result.items) {
       if (entry.visibility !== "public") continue;
       entries.push({
