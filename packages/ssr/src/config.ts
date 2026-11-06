@@ -19,5 +19,8 @@ export function validateRenderPolicy(policy: RenderRoutePolicyV1): void {
         cache.staleWhileRevalidateSeconds < 0 || cache.staleWhileRevalidateSeconds > 86400))) {
     throw new TypeError("Invalid or unsafe render cache policy");
   }
+  // Stale serving is a reserved contract field, not an implemented cache mode.
+  if ((cache.staleWhileRevalidateSeconds ?? 0) > 0)
+    throw new TypeError("Stale-while-revalidate requires the future coordinator");
   if (cache.scope === "no-store" && cache.ttlSeconds !== 0) throw new TypeError("no-store requires zero TTL");
 }

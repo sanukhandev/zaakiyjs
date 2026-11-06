@@ -69,6 +69,20 @@ describe("SSR request / trusted-module boundary", () => {
     expect((await adapter.handle(new Request("https://shop.example.test/", { method: "POST" }),
       { signal: new AbortController().signal })).status).toBe(405);
   });
+  it("pins the verified module implementation against registry mutation", async () => {
+    const modules: Record<string, ServerOptions["modules"][string]> = {
+      "built/item": { sourceDigest, module: { protocol: "zaakiy.render/1",
+        render: () => ({ version: 1, status: 200, headers: {}, body: "verified",
+          cache: { scope: "no-store", tags: [] } }) } }
+    };
+    const adapter = createNodeServerAdapter(fixture(undefined, { modules }));
+    modules["built/item"] = { sourceDigest, module: { protocol: "zaakiy.render/1",
+      render: () => ({ version: 1, status: 200, headers: {}, body: "unverified",
+        cache: { scope: "no-store", tags: [] } }) } };
+    const response = await adapter.handle(new Request("https://shop.example.test/products/a"),
+      { signal: new AbortController().signal });
+    expect(await response.text()).toBe("verified");
+  });
   it("rejects unregistered modules and cross-origin redirect responses", async () => {
     expect(() => createNodeServerAdapter(fixture(undefined, { modules: {} }))).toThrow(/trusted server module/i);
     const injected = fixture(() => ({ version: 1, status: 302,

@@ -34,6 +34,8 @@ describe("SSR serialization and policy hardening", () => {
   it("validates cache policies and redirect origins", () => {
     expect(() => validateRenderPolicy({ version: 1, routeId: "a", mode: "hybrid",
       cache: { scope: "public", ttlSeconds: -1, tags: [] } })).toThrow();
+    expect(() => validateRenderPolicy({ version: 1, routeId: "a", mode: "hybrid",
+      cache: { scope: "public", ttlSeconds: 30, staleWhileRevalidateSeconds: 10, tags: [] } })).toThrow();
     expect(() => safeLocation("//other.test/", "https://shop.example.test")).toThrow();
     expect(() => safeLocation("javascript:alert(1)", "https://shop.example.test")).toThrow();
     expect(safeLocation("/products/1", "https://shop.example.test")).toBe("/products/1");

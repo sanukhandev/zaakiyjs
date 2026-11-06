@@ -10,7 +10,7 @@ import { validateRenderPolicy } from "./config.js";
 import { htmlDocument, safeLocation } from "./security.js";
 import type {
   CacheScopeV1, RenderHeadAdapterV1, RenderResponseV1, RenderRoutePolicyV1,
-  NodeServerAdapterV1, TrustedServerBuildManifestV1, TrustedModuleRegistration
+  NodeServerAdapterV1, TrustedServerBuildManifestV1, TrustedModuleRegistration, TrustedServerRenderModuleV1
 } from "./protocol.js";
 
 export { MemoryRenderCache, createCacheInvalidator } from "./cache.js";
@@ -69,6 +69,7 @@ function makeResponse(result: RenderResponseV1, method: string, signal: AbortSig
   }
   if (!headers.has("content-type")) headers.set("content-type", "text/html; charset=utf-8");
   headers.set("x-content-type-options", "nosniff");
+  if (result.status >= 300) headers.set("x-robots-tag", "noindex");
   if (result.cache.scope !== "public") headers.set("cache-control", "private, no-store");
   else if (!headers.has("cache-control")) headers.set("cache-control", "no-store");
   if (method === "HEAD" || [204, 205, 304].includes(result.status)) {
@@ -139,6 +140,17 @@ export function createNodeServerAdapter(options: ServerOptions): NodeServerAdapt
   const origin = new URL(options.origin);
   if (origin.protocol !== "https:" && origin.protocol !== "http:") throw new TypeError("Invalid trusted origin");
   verifyTrustedManifest(options.manifest, options.modules);
+  // Pin the verified module objects and route-to-module bindings. A mutable
+  // caller-owned registry cannot swap code after the manifest was verified.
+  const buildId = options.manifest.buildId;
+  const trustedModules = new Map<string, TrustedServerRenderModuleV1>();
+  const moduleByRoute = new Map<string, string>();
+  for (const [routeId, entry] of Object.entries(options.manifest.routes)) {
+    const descriptor = Object.getOwnPropertyDescriptor(options.modules, entry.moduleId);
+    if (!descriptor || !("value" in descriptor)) throw new TypeError("Trusted module registry changed");
+    trustedModules.set(entry.moduleId, descriptor.value.module);
+    moduleByRoute.set(routeId, entry.moduleId);
+  }
   const table = compileRoutes(options.routes);
   const policies = new Map<string, RenderRoutePolicyV1>();
   for (const policy of options.policies) {
@@ -221,8 +233,8 @@ export function createNodeServerAdapter(options: ServerOptions): NodeServerAdapt
         }
         if (policy.mode === "ssg") return makeResponse(basic(503, "SSG pages must be deployed from build artifacts"),
           request.method, controller.signal, close, origin.origin);
-        const manifestEntry = options.manifest.routes[leaf.route.id];
-        const module = manifestEntry && options.modules[manifestEntry.moduleId]?.module;
+        const moduleId = moduleByRoute.get(leaf.route.id);
+        const module = moduleId === undefined ? undefined : trustedModules.get(moduleId);
         if (!module) return makeResponse(basic(503, "Trusted server module unavailable"), request.method, controller.signal, close, origin.origin);
         const cachePolicy = policy.cache;
         const cacheScope = cachePolicy?.scope ?? "no-store";
@@ -253,10 +265,10 @@ export function createNodeServerAdapter(options: ServerOptions): NodeServerAdapt
           for (const name of [...cleanQuery.keys()]) if (/^(utm_|gclid$|fbclid$)/i.test(name)) cleanQuery.delete(name);
           cleanQuery.sort();
           const vary = (cachePolicy.vary ?? []).map(name => name + "=" + (request.headers.get(name) ?? "")).join("&");
-          const key = digest([options.manifest.buildId, leaf.route.id, url.pathname, cleanQuery.toString(),
+          const key = digest([buildId, leaf.route.id, url.pathname, cleanQuery.toString(),
             cacheScope, part ?? "", vary].join("\0"));
           result = await options.cache.getOrRender(key, {
-            routeId: leaf.route.id, buildId: options.manifest.buildId,
+            routeId: leaf.route.id, buildId,
             scope: cacheScope, partitionKey: part, tags: cachePolicy.tags, ttlSeconds: cachePolicy.ttlSeconds
           }, render);
         } else result = await render();
