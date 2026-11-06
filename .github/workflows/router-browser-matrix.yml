@@ -29,7 +29,8 @@ concurrency:
 jobs:
   playwright:
     name: router / chromium-firefox-webkit
-    runs-on: ubuntu-latest
+    # Stable native browser image during Ubuntu 26.04 latest migration.
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
