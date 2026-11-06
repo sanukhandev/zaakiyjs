@@ -30,3 +30,9 @@
 - [ADR 0007 — P2 UI packages and compiler boundaries](adr/0007-p2-ui-contract-boundaries.md).
 - [UI primitives](contracts/09-ui-primitives.md), [UI components](contracts/10-ui.md), [Motion](contracts/11-motion.md), [Templates](contracts/12-templates.md) — future TypeScript contracts, **not implemented exports**.
 - [Issue #37](https://github.com/sanukhandev/zaakiyjs/issues/37) — compiler-native refs/component slots, safe dynamic variants and exit-aware regions are separately gated.
+
+## P3 rendering, SEO and privacy design contracts (contract-only)
+
+- [ADR 0009 — P3 cross-package boundaries](adr/0009-p3-rendering-privacy-boundaries.md) defines import direction, trust, versioning and explicit deferrals.
+- [SSR and hydration](contracts/13-rendering-ssr.md), [SEO](contracts/14-seo.md), [Consent](contracts/15-consent.md), [Analytics](contracts/16-analytics.md), [Ads](contracts/17-ads.md) reserve interoperable v1 protocols; **no P3 runtime or compiler server-output implementation is included**.
+- [Dependency/integration matrix](contracts/p3-dependency-integration-matrix.md) and [rendered-page ownership fixture](contracts/p3-page-ownership-example.md) define future interop and acceptance tests.
