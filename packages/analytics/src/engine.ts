@@ -287,6 +287,9 @@ export function createAnalytics<M extends EventMapConstraint<M>>(options: Analyt
   }
   function revoke(runtime: Runtime): void {
     runtime.revision++;
+    // A revocation invalidates unresolved lazy provider loads immediately.
+    // Stale loads still retire their eventual provider on completion.
+    runtime.opening = undefined;
     dropped += runtime.queue.length;
     runtime.queue.length = 0;
     clearTimer(runtime);
