@@ -31,8 +31,10 @@ function existingSeoKey(element: Element): string | undefined {
 
 export function createHeadManager(doc: Document, lifetime?: AbortSignal): HeadManager {
   let disposed = false;
-  let version = -Infinity;
+  let version = -1;
   const owned = new Map<string, Element>();
+  const duplicates = new Set<Element>();
+  let adopted = false;
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
@@ -50,7 +52,9 @@ export function createHeadManager(doc: Document, lifetime?: AbortSignal): HeadMa
       // Validate all tag names, attributes, links and JSON-LD before any DOM mutation.
       serializeHeadTags(result.tags);
       const nextVersion = options.version ?? version + 1;
-      if (nextVersion < version) return false;
+      if (!Number.isSafeInteger(nextVersion) || nextVersion < 0)
+        throw new RangeError("SEO head navigation version must be a nonnegative safe integer");
+      if (nextVersion <= version) return false;
       version = nextVersion;
       // Reconcile the complete server-rendered SEO head on first navigation.
       // Otherwise metadata omitted by the new route would remain indexed.

@@ -62,6 +62,9 @@ describe("SPA head updates", () => {
     const manager = createHeadManager(document, lifetime.signal);
     expect(manager.update(renderMetadata({ title: "Latest" }, policy), { version: 10 })).toBe(true);
     expect(manager.update(renderMetadata({ title: "Old" }, policy), { version: 9 })).toBe(false);
+    expect(manager.update(renderMetadata({ title: "Old" }, policy), { version: 10 })).toBe(false);
+    expect(() => manager.update(renderMetadata({ title: "Old" }, policy), { version: Number.NaN }))
+      .toThrow("navigation version");
     pending.abort();
     expect(manager.update(renderMetadata({ title: "Old" }, policy), { version: 11, signal: pending.signal })).toBe(false);
     expect(document.title).toBe("Latest");

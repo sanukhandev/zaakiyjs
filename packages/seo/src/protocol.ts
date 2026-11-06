@@ -96,9 +96,20 @@ function normalizeTarget(value: string, policy: CanonicalPolicy): string {
   if (!result.startsWith("https://")) throw new TypeError("SEO v1 requires HTTPS URLs");
   return result;
 }
-function validateRedirectLocation(value: string, policy: CanonicalPolicy): string {
-  normalizeTarget(value, { ...policy, trailingSlash: "preserve", query: "preserve" });
-  return new URL(value, policy.siteURL).href;
+function validateRedirectLocation(value: string, policy: CanonicalPolicy, requestUrl: URL): string {
+  if (requestUrl.origin !== new URL(policy.siteURL).origin) {
+    throw new TypeError("Redirect request origin differs from configured site origin");
+  }
+  // Redirects resolve relative references against the actual request URL.
+  // They must retain queries, fragments and exact trailing-slash semantics.
+  const redirectPolicy: CanonicalPolicy = {
+    ...policy, siteURL: requestUrl.origin + requestUrl.pathname,
+    trailingSlash: "preserve", query: "preserve"
+  };
+  normalizeTarget(value, redirectPolicy);
+  const location = new URL(value, requestUrl).href;
+  normalizeTarget(location, redirectPolicy);
+  return location;
 }
 function validateLocale(value: string): string {
   if (value === "x-default") return value;
@@ -208,7 +219,7 @@ export async function resolveSeoV1<Data>(
           status: options.redirect.status,
           // Validate against the same trusted HTTPS origin/allowlist, but do not
         // apply canonical query, fragment or trailing-slash policies to redirects.
-        location: validateRedirectLocation(options.redirect.location, policy)
+        location: validateRedirectLocation(options.redirect.location, policy, input.url)
         }
       };
     }

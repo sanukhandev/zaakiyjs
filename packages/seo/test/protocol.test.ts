@@ -79,6 +79,11 @@ describe("frozen P3 SEO v1", () => {
       redirect: { status: 302, location: "/new/?item=7&lang=en#details" }
     });
     expect(output.redirect?.location).toBe("https://shop.example.test/new/?item=7&lang=en#details");
+    const queryOnly = await resolveSeoV1({ ...productInput, status: 302 }, productFactory, {
+      query: "strip", trailingSlash: "never",
+      redirect: { status: 302, location: "?item=8#details" }
+    });
+    expect(queryOnly.redirect?.location).toBe("https://shop.example.test/products/sku-7?item=8#details");
     const approved = await resolveSeoV1({ ...productInput, status: 307 }, productFactory, {
       allowedOrigins: ["https://checkout.example.test"],
       query: "strip",
