@@ -3,7 +3,7 @@ import { describe, afterEach, expect, it, vi } from "vitest";
 import { createOwner, disposeOwner, runWithOwner } from "@zaakiyjs/core";
 import { createAdsManagerV1 } from "../src/index.js";
 import type {
-  AdProviderV1, AdPolicyV1, AdSlotV1, AdvertisingPurposeV1,
+  AdProviderV1, AdPolicyV1, AdSlotV1,
   ConsentCapabilityV1, ConsentDecisionV1, ConsentPurposeV1, ConsentSnapshotV1
 } from "../src/index.js";
 
