@@ -222,6 +222,19 @@ importers:
 
   packages/signals: {}
 
+  packages/ssr:
+    dependencies:
+      '@zaakiyjs/core':
+        specifier: workspace:^
+        version: link:../core
+      '@zaakiyjs/router':
+        specifier: workspace:^
+        version: link:../router
+    devDependencies:
+      '@types/node':
+        specifier: 22.15.30
+        version: 22.15.30
+
   packages/store:
     dependencies:
       '@zaakiyjs/core':

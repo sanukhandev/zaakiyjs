@@ -2,7 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const expected = new Set(["signals", "core", "dom", "compiler", "styles", "vite-plugin", "cli"]);
-const allowed = new Set([...expected, "compat", "store", "async", "router", "forms", "http", "proxy", "motion", "templates", "ui-primitives", "ui", "ads"]);
+const allowed = new Set([...expected, "compat", "store", "async", "router", "forms", "http", "proxy", "motion", "templates", "ui-primitives", "ui", "ads", "ssr"]);
 const scriptNames = ["lint", "typecheck", "build", "test"];
 const manifestByName = new Map();
 let errors = 0;
