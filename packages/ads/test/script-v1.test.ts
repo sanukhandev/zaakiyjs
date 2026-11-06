@@ -62,6 +62,32 @@ describe("P3 v1 authorized script lifecycle", () => {
     expect(document.querySelectorAll('script[src="https://provider.example.test/dedupe.js"]')).toHaveLength(0);
     await expect(loadAuthorizedProviderScriptV1(opts)).rejects.toThrow("reload");
   });
+  it("cannot bypass SDK reinitialization protection by changing CSP nonce", async () => {
+    const fixture = fakeConsent(); fixture.change("granted");
+    const opts = settings("nonce-bypass", fixture.consent);
+    const initial = loadAuthorizedProviderScriptV1({ ...opts, nonce: "first" });
+    document.querySelector('script[src="https://provider.example.test/nonce-bypass.js"]')
+      ?.dispatchEvent(new Event("load"));
+    const lease = await initial;
+    lease.dispose();
+    await expect(loadAuthorizedProviderScriptV1({ ...opts, nonce: "second" }))
+      .rejects.toThrow("reload");
+    expect(document.querySelectorAll('script[src="https://provider.example.test/nonce-bypass.js"]'))
+      .toHaveLength(0);
+  });
+  it("rejects duplicate active vendor URL with conflicting script options", async () => {
+    const fixture = fakeConsent(); fixture.change("granted");
+    const opts = settings("same-vendor", fixture.consent);
+    const pending = loadAuthorizedProviderScriptV1({ ...opts, nonce: "a" });
+    await expect(loadAuthorizedProviderScriptV1({ ...opts, nonce: "b" }))
+      .rejects.toThrow("already owned");
+    expect(document.querySelectorAll('script[src="https://provider.example.test/same-vendor.js"]'))
+      .toHaveLength(1);
+    document.querySelector('script[src="https://provider.example.test/same-vendor.js"]')
+      ?.dispatchEvent(new Event("load"));
+    const lease = await pending;
+    lease.dispose();
+  });
   it("revocation removes loaded scripts and invalidates the lease", async () => {
     const fixture = fakeConsent(); fixture.change("granted");
     const opts = settings("revoked", fixture.consent);

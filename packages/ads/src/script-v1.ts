@@ -65,7 +65,12 @@ export async function loadAuthorizedProviderScriptV1(options: AdScriptOptionsV1)
   const registry = registries.get(options.document) ?? { entries: new Map(), exhausted: new Set() };
   registries.set(options.document, registry);
   const key = [src, options.nonce ?? "", options.integrity ?? "", options.crossOrigin ?? ""].join("|");
-  if (registry.exhausted.has(key)) throw new Error("Provider script requires a page reload before reinitialization");
+  // Vendor SDK side effects survive script-tag removal. Changing CSP nonce/SRI
+  // attributes must not bypass the session-level no-reinitialization rule.
+  if (registry.exhausted.has(src)) throw new Error("Provider script requires a page reload before reinitialization");
+  if ([...registry.entries.values()].some(e => e.url === src && !registry.entries.has(key))) {
+    throw new Error("Provider script URL is already owned with different loading options");
+  }
   let resource = registry.entries.get(key);
   if (resource && (resource.consent !== options.consent ||
       resource.purposes.join(",") !== options.purposes.join(","))) {
@@ -99,7 +104,7 @@ export async function loadAuthorizedProviderScriptV1(options: AdScriptOptionsV1)
       cleanup(); unsubscribe();
       node.remove();
       registry.entries.delete(key);
-      if (loaded) registry.exhausted.add(key);
+      if (loaded) registry.exhausted.add(src);
       else reject(new Error("Advertising script cancelled before load"));
     };
     const success = (): void => {
