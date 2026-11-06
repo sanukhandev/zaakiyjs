@@ -72,9 +72,9 @@ export function createNativeWebVitalsSource(): DisposableWebVitalsSource {
       let previousShift = -1;
       let sessionValue = 0;
       let cycle = 0;
-      let inpEligible = supported.includes('event');
+      const inpEligible = supported.includes('event');
       let interactionBaseline = (performance as Performance & { readonly interactionCount?: number }).interactionCount;
-      let seenInteractionIds = new Set<number>();
+      const seenInteractionIds = new Set<number>();
       let interactionCountOverflow = false;
       const topInteractions = new Map<number, number>();
       const observedMetrics = new Map<Name, number>();
