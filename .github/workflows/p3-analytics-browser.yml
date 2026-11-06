@@ -1,0 +1,41 @@
+name: P3 Analytics Browser Privacy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: p3-analytics-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  browser:
+    name: analytics / chromium-firefox-webkit
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Frozen install, typecheck, package build
+        run: pnpm install --frozen-lockfile && pnpm --filter @zaakiyjs/analytics typecheck && pnpm --filter @zaakiyjs/analytics build
+      - name: Install pinned Playwright Chromium Firefox WebKit
+        run: |
+          python3 -m pip install 'playwright==1.64.1'
+          python3 -m playwright install --with-deps chromium firefox webkit
+      - name: Validate consent, lifecycle and real PerformanceObserver delivery in browsers
+        run: python3 packages/analytics/test/browser/acceptance.py
