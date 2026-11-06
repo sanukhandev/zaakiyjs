@@ -84,6 +84,7 @@ These assertions are **not claimed to have been run**. The document title/head A
 | Stale/wrong-build hydration marker | safe abort or configured owned-boundary replacement; no double listener or focus loss |
 | User grants **analytics only** | analytics may initialize and emit one committed pageview; ads remain blocked |
 | User grants **advertising only** | compliant nonpersonalized placement may load, personalized placement remains blocked |
+| Provider requires **advertising + ad-personalization** but slot requires **advertising only** | permission **union** requires both grants; block until personalization granted |
 | User grants **advertising + ad-personalization** | personalized placement may load if provider/placement policy also allows |
 | User revokes while vendor loads | cancel network/work; drop telemetry queue; remove ad iframe; disconnect observers; dispose exactly once |
 | Provider blocked or times out | reserved ad region retains geometry; navigation and content continue normally |

@@ -29,7 +29,7 @@
 | SSR -> Client hydration | `HydrationEnvelopeV1` and stable owned markers | exact schema/buildId/route/template, no duplicate marker, safe JSON | abort adoption or explicit owned-boundary recovery |
 | Server/CMP -> Consent | `ConsentSnapshotV1` from policy/storage adapter | schema, region policy, monotonic revision, trusted request scope | optional grants unknown/false |
 | Consent -> Analytics | injected `ConsentCapabilityV1` `can("analytics")` and subscription | check before load, enqueue, flush; recheck on change | no send; abort, clear, dispose |
-| Consent -> Ads | injected `ConsentCapabilityV1` and slot/provider purpose intersection | `advertising` + optional `ad-personalization` before any vendor call | reserved placeholder only; teardown on revoke |
+| Consent -> Ads | injected `ConsentCapabilityV1` and union of all slot and provider required purposes (check every one) | `advertising` + optional `ad-personalization` before any vendor call | reserved placeholder only; teardown on revoke |
 | Router -> Analytics | app adapter listening only to committed navigation | sanitized route ID/path, opt-in analytics consent | no event for attempted/blocked navigation |
 | Ads -> Analytics | **no automatic integration** | if app explicitly bridges, both independent policies must allow | no implicit measurement |
 
