@@ -20,3 +20,7 @@ export type {
   AdPlacementOptionsV1, AdsEventV1, AdsManagerOptionsV1, AdMountedPlacementV1,
   AdsManagerV1
 } from "./contract-v1.js";
+
+export { renderAdSlotPlaceholderV1 } from "./placeholder-v1.js";
+export { bindAdsV1ToRoutes } from "./route-v1.js";
+export type { AdRouteSourceV1, RouteAdsOptionsV1, RoutePlacementOptionsV1, AdRouteHandleV1 } from "./route-v1.js";
