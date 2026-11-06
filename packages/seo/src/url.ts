@@ -19,7 +19,7 @@ function siteOrigin(siteURL: string): URL {
 }
 export function normalizeCanonical(input: string, policy: CanonicalPolicy): string {
   const site = siteOrigin(policy.siteURL);
-  if (input.trim() === "" || /[\u0000-\u001f\u007f]/.test(input) ||
+  if (input.trim() === "" || [...input].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) ||
     /^[a-z][a-z0-9+.-]*:/i.test(input) && !/^https?:/i.test(input) ||
     input.startsWith("//") || input.includes("\\")) {
     throw new TypeError("Unsafe canonical URL");

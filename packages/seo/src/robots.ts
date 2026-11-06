@@ -11,7 +11,7 @@ export interface RobotsTxtOptions extends CanonicalPolicy {
   readonly sitemaps?: readonly string[];
 }
 function safeToken(value: string): string {
-  if (!value.trim() || /[\r\n\x00-\x1f]/.test(value)) throw new TypeError("Invalid robots.txt token");
+  if (!value.trim() || [...value].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) throw new TypeError("Invalid robots.txt token");
   return value;
 }
 export function generateRobotsTxt(options: RobotsTxtOptions): string {
