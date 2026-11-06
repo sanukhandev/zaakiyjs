@@ -297,6 +297,8 @@ describe("P3-00 frozen AdSlotV1 / ConsentCapabilityV1", () => {
     current = "account"; notify(current);
     expect(shell.state.peek()).toBe("disposed");
     expect(f.manager.get(baseSlot.id)).toBeUndefined();
+    expect(() => adapter.register({ ...baseSlot, id: "privateShell" }, undefined,
+      { routeId: "public", persistent: true })).toThrow("not authorized");
     await adapter.dispose(); await f.manager.dispose();
   });
   it("keeps app scopes and providers isolated", async () => {

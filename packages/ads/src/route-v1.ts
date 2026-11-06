@@ -45,7 +45,7 @@ export function bindAdsV1ToRoutes(
     register(slot, slotOptions, routeOptions = {}) {
       if (ended) throw new Error("Ad route adapter disposed");
       const routeId = routeOptions.routeId ?? active;
-      if (!permitted(routeId) || (!routeOptions.persistent && routeId !== active)) {
+      if (!permitted(active) || !permitted(routeId) || (!routeOptions.persistent && routeId !== active)) {
         throw new Error("Advertising is not authorized for this route");
       }
       const existing = placements.get(slot.id);
