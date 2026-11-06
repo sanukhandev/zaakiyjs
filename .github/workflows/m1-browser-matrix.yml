@@ -18,7 +18,7 @@ jobs:
     name: browser / chromium-firefox-webkit
     # Stable native browser image during Ubuntu 26.04 latest migration.
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -54,7 +54,7 @@ jobs:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-ubuntu2404-playwright-python-1.64.1
       - name: Install pinned Playwright and all three browser engines
-        timeout-minutes: 18
+        timeout-minutes: 26
         run: bash scripts/ci/install-playwright-browsers.sh
       - name: Exercise M1 semantics, cleanup and security in all browser engines
         shell: bash
