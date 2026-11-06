@@ -40,11 +40,13 @@ The manager uses reserved `minWidth`, `minHeight` and optional `aspectRatio` dir
 
 **Refresh is disabled by default.** A provider must explicitly implement the `AdProviderWithRefreshV1` extension and declare `minRefreshIntervalMs >= 30000`, and the slot must also opt in with `refreshMinIntervalMs >= 30000`. Intervals are enforced; no timer or navigation automatically refreshes a placement. Provider-specific refresh policies still need validation. A slot-level async timeout uses `policy.loadTimeoutMs` and aborts on expiration. No raw provider exception or account credential is copied to slot state or public events.
 
-## Legacy draft API
+## Public exports and integration
 
-The earlier `createAdsManager` and `AdsConsentGate.check` source API remain only for migration/testing of the initial draft branch. They are **not** the P3-00 frozen protocol. Prefer `createAdsManagerV1` for all new code and integrations; remove or migrate the legacy draft before independent first publication. Do not wire the provisional check() interface directly to `@zaakiyjs/consent` without an explicit adapter.
+Only the frozen P3 v1 interfaces are exported from the package root. `createAdsManager`, `bindAdsToRoutes`, `renderAdSlotPlaceholder` and `loadAuthorizedProviderScript` are convenient aliases of their versioned `*V1` counterparts. Earlier draft `check(purposes)` code is retained privately for regression tests only; it is not a supported public integration boundary.
 
-The `loadAuthorizedProviderScript` helper is a low-level allowlisted HTTPS loader (nonce, SRI, authorization, concurrency limit); it does not sandbox an SDK. Its older draft consent signature is still provisional and must be reconciled before release. Scripts are never loaded at package import or manager creation.
+`renderAdSlotPlaceholderV1(slot)` produces escaped, width/height-reserved SSR markup matching the browser's `data-zaakiy-ad-slot` identity. No vendor scripts run on the server. Use `bindAdsV1ToRoutes(manager, committedRouteSource, { allowRoutes })` to opt into page-scoped placements; non-allowlisted private routes cannot register ads. Persistent shell placements are explicit.
+
+`loadAuthorizedProviderScriptV1` requires an injected frozen Consent capability, `advertising` purpose, approved HTTPS origins, a cancellation signal and optional nonce/SRI attributes. It deduplicates authorized requests, bounds concurrent script loads, rechecks consent on changes and returns an explicit disposable script lease. Once a previously loaded SDK script is released, further injection of the same script in that document is blocked: a new page load is required because removing a script tag cannot unload evaluated SDK globals. **No real advertising provider SDK is shipped or called automatically.**
 
 ## Validation / release gates
 
