@@ -272,7 +272,7 @@ describe('P3 analytics contract and privacy', () => {
     c.set('ad-personalization', false);
     expect(engine.diagnostics().queueLength).toBe(0);
     expect(engine.identify('new-source')).toBe(false);
-    expect(engine.track('identify', { opaqueId: 'bypass_12345' })).toThrow();
+    expect(() => engine.track('identify', { opaqueId: 'bypass_12345' })).toThrow();
     expect(engine.track('viewed', { productId: 'still-allowed' })).toBe(true);
     await engine.flush();
     expect(memory.events).toHaveLength(1);
