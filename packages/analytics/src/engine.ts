@@ -5,7 +5,7 @@ import type {
 import { safeMetadata, safeName, safePath, safeOpaqueId } from './privacy.js';
 
 type EventMapConstraint<M> = { [K in keyof M]: EventMetadata };
-interface Queued { readonly event: AnalyticsRecordV1; attempts: number }
+interface Queued { readonly event: AnalyticsRecordV1; attempts: number; readonly requiredPurpose?: ConsentPurposeV1 }
 interface Runtime {
   readonly id: string;
   readonly purpose: ConsentPurposeV1;
@@ -14,6 +14,7 @@ interface Runtime {
   provider?: AnalyticsProviderV1;
   opening?: Promise<AnalyticsProviderV1 | undefined>;
   sending?: Promise<void>;
+  inFlight?: readonly Queued[];
   abort?: AbortController;
   flushAbort?: AbortController;
   timer?: ReturnType<typeof setTimeout>;
@@ -112,6 +113,17 @@ export function createAnalytics<M extends EventMapConstraint<M>>(options: Analyt
   function permitted(runtime: Runtime): boolean {
     return !disposed && runtime.allowed && permission('analytics') && permission(runtime.purpose);
   }
+  function authorized(entry: Queued): boolean {
+    return !entry.requiredPurpose || permission(entry.requiredPurpose);
+  }
+  /** Consent changes can revoke an identity independently of the analytics provider. */
+  function purgeUnauthorized(runtime: Runtime): void {
+    if (runtime.inFlight?.some(entry => !authorized(entry))) runtime.abort?.abort('identity-consent-revoked');
+    for (let i = runtime.queue.length - 1; i >= 0; i--) {
+      if (!authorized(runtime.queue[i]!)) { runtime.queue.splice(i, 1); dropped++; }
+    }
+    if (runtime.queue.length === 0) clearTimer(runtime);
+  }
   function schedule(runtime: Runtime, waitMs: number): void {
     if (!permitted(runtime) || runtime.timer !== undefined || runtime.queue.length === 0) return;
     runtime.timer = setTimeout(() => {
@@ -149,7 +161,9 @@ export function createAnalytics<M extends EventMapConstraint<M>>(options: Analyt
   }
   async function flushOne(runtime: Runtime): Promise<void> {
     if (runtime.sending) return runtime.sending;
-    if (!permitted(runtime) || runtime.queue.length === 0) return;
+    if (!permitted(runtime)) return;
+    purgeUnauthorized(runtime);
+    if (runtime.queue.length === 0) return;
     clearTimer(runtime);
     const revision = runtime.revision;
     const selected: Queued[] = [];
@@ -168,13 +182,20 @@ export function createAnalytics<M extends EventMapConstraint<M>>(options: Analyt
     }
     const controller = new AbortController();
     runtime.abort = controller;
+    runtime.inFlight = selected;
     let failed = false;
     const sending = (async () => {
       const deadline = setTimeout(() => controller.abort('delivery-timeout'), timeout);
       try {
         const provider = await cancellable(open(runtime, revision, controller.signal), controller.signal);
         if (!provider || !permitted(runtime) || runtime.revision !== revision || controller.signal.aborted) return;
-        await cancellable(Promise.resolve().then(() => provider.send(selected.map(x => x.event), controller.signal)), controller.signal);
+        if (selected.some(entry => !authorized(entry))) { purgeUnauthorized(runtime); return; }
+        const sent = await cancellable(Promise.resolve().then(() => {
+          if (controller.signal.aborted || !permitted(runtime) || runtime.revision !== revision ||
+              selected.some(entry => !authorized(entry))) return false;
+          return provider.send(selected.map(x => x.event), controller.signal).then(() => true);
+        }), controller.signal);
+        if (!sent) { purgeUnauthorized(runtime); return; }
         if (!permitted(runtime) || runtime.revision !== revision || controller.signal.aborted) return;
         const done = new Set(selected);
         for (let i = runtime.queue.length - 1; i >= 0; i--) if (done.has(runtime.queue[i]!)) runtime.queue.splice(i, 1);
@@ -193,6 +214,7 @@ export function createAnalytics<M extends EventMapConstraint<M>>(options: Analyt
     try { await sending; }
     finally {
       if (runtime.abort === controller) runtime.abort = undefined;
+      if (runtime.inFlight === selected) runtime.inFlight = undefined;
       if (runtime.sending === sending) runtime.sending = undefined;
       if (runtime.queue.length && permitted(runtime)) {
         const attempts = runtime.queue[0]?.attempts ?? 0;
@@ -228,8 +250,8 @@ export function createAnalytics<M extends EventMapConstraint<M>>(options: Analyt
         break;
       }
       case 'pageview':
-        if (!input.routeId) throw new TypeError('Route ID required');
-        output = { ...base, kind: 'pageview', routeId: /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/.test(input.routeId) ? input.routeId : (() => { throw new TypeError('Invalid route ID'); })(), path: safePath(input.path),
+        if (!input.routeId || !/^[\w.-]+$/.test(input.routeId)) throw new TypeError('Invalid route ID');
+        output = { ...base, kind: 'pageview', routeId: input.routeId, path: safePath(input.path),
           ...(input.referrerOrigin ? { referrerOrigin: safeReferrerOrigin(input.referrerOrigin) } : {}) };
         break;
       case 'conversion': {
@@ -263,15 +285,16 @@ export function createAnalytics<M extends EventMapConstraint<M>>(options: Analyt
     if (!['https:', 'http:'].includes(u.protocol) || u.username || u.password || u.search || u.hash || u.pathname !== '/') throw new TypeError('Referrer must be origin only');
     return u.origin;
   }
-  function emit(record: AnalyticsRecordV1, onlyPurpose?: ConsentPurposeV1): TrackResultV1 {
-    if (disposed) return 'blocked';
+  function emit(record: AnalyticsRecordV1, onlyPurpose?: ConsentPurposeV1,
+    requiredPurpose?: ConsentPurposeV1): TrackResultV1 {
+    if (disposed || (requiredPurpose && !permission(requiredPurpose))) return 'blocked';
     const targets = runtimes.filter(r => permitted(r) && (!onlyPurpose || r.purpose === onlyPurpose));
     if (targets.length === 0) return 'blocked';
     if (record.dedupeKey && dedup.has(record.dedupeKey)) return 'blocked';
     if (rate < 1 && Math.random() >= rate) { dropped++; return 'sampled-out'; }
     for (const runtime of targets) {
       if (runtime.queue.length >= max) { runtime.queue.shift(); dropped++; }
-      runtime.queue.push({ event: record, attempts: 0 });
+      runtime.queue.push({ event: record, attempts: 0, ...(requiredPurpose ? { requiredPurpose } : {}) });
       if (runtime.queue.length >= batch) void flushOne(runtime);
       else schedule(runtime, interval);
     }
@@ -282,8 +305,15 @@ export function createAnalytics<M extends EventMapConstraint<M>>(options: Analyt
     }
     return 'accepted';
   }
-  function enqueue(input: AnalyticsRecordV1, purpose?: ConsentPurposeV1): TrackResultV1 {
-    try { return emit(sanitize(input), purpose); } catch { return 'invalid'; }
+  function enqueue(input: AnalyticsRecordV1, purpose?: ConsentPurposeV1,
+    requiredPurpose?: ConsentPurposeV1): TrackResultV1 {
+    try {
+      const record = sanitize(input);
+      // The identity event is reserved; public track() cannot bypass extra identity consent.
+      if (record.kind === 'event' && record.name === 'identify' &&
+          (!options.identity || requiredPurpose !== options.identity.purpose)) return 'invalid';
+      return emit(record, purpose, requiredPurpose);
+    } catch { return 'invalid'; }
   }
   function revoke(runtime: Runtime): void {
     runtime.revision++;
@@ -303,9 +333,11 @@ export function createAnalytics<M extends EventMapConstraint<M>>(options: Analyt
   function onConsent(): void {
     for (const runtime of runtimes) {
       const allowed = permission('analytics') && permission(runtime.purpose);
-      if (runtime.allowed === allowed) continue;
-      runtime.allowed = allowed;
-      if (!allowed) revoke(runtime);
+      if (runtime.allowed !== allowed) {
+        runtime.allowed = allowed;
+        if (!allowed) { revoke(runtime); continue; }
+      }
+      if (allowed) purgeUnauthorized(runtime);
     }
   }
   const unsubscribe = consent.subscribe(() => onConsent());
@@ -344,7 +376,7 @@ export function createAnalytics<M extends EventMapConstraint<M>>(options: Analyt
       try { opaque = safeOpaqueId(options.identity.encode(identity)); } catch { return false; }
       // Identity is an explicit custom event requiring an application schema.
       return enqueue({ schema: 'zaakiy.analytics/1', kind: 'event', name: 'identify',
-        timestampMs: Date.now(), properties: { opaqueId: opaque } }, 'analytics') === 'accepted';
+        timestampMs: Date.now(), properties: { opaqueId: opaque } }, 'analytics', options.identity.purpose) === 'accepted';
     },
     measure(name, value, id, path, details): boolean {
       if (!Number.isFinite(value) || value < 0) return false;
