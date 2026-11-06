@@ -147,6 +147,16 @@ describe("frozen P3 SEO v1", () => {
               nextCursor: "page2" };
       }
     };
+    const invalidFeed = {
+      schema: "zaakiy.sitemap/1" as const,
+      async entries() {
+        return { items: [{ loc: "/relative-not-allowed", visibility: "public" as const }] };
+      }
+    };
+    await expect(generateSitemapsFromFeedV1(invalidFeed, new AbortController().signal,
+      { siteURL: siteOrigin.href })).rejects.toThrow("absolute HTTPS");
+    await expect(generateSitemapsFromFeedV1(feed, new AbortController().signal,
+      { siteURL: "http://shop.example.test" })).rejects.toThrow("HTTPS origin");
     const generated = await generateSitemapsFromFeedV1(feed, new AbortController().signal,
       { siteURL: siteOrigin.href });
     expect(generated.files[0]?.count).toBe(2);
