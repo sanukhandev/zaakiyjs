@@ -51,6 +51,39 @@ const metadata = resolveRouteMetadata("product", [
 
 Defaults apply before parent layouts, then deeper layouts and the route override. Nested robots, Open Graph, Twitter and language-alternate maps merge by field. A private or HTTP error response always forces noindex and nofollow; the host owns proper 404/410 status and authorization. No network calls occur inside the resolver.
 
+## P3 versioned SEO/SSR protocol
+
+P3 contract PR #50 reserves `zaakiy.seo/1` and `zaakiy.sitemap/1`. The package exposes `SeoDocumentV1`, `SeoFactoryV1<Data>`, `SeoResolveInputV1<Data>`, `SeoResolutionV1`, `SitemapFeedV1`, and the data-only `RenderHeadAdapterV1` structural interface. These are provisional until P3-00 merges.
+
+~~~ts
+import { resolveSeoV1, seoToRenderHeadV1, createSeoHeadAdapterV1 } from "@zaakiyjs/seo";
+
+const siteOrigin = new URL("https://shop.example.test");
+const productSeo = ({ loaderData }: { loaderData: { title: string } }) => ({
+  version: 1 as const,
+  title: loaderData.title,
+  canonical: "/products/sku-7",
+  jsonLd: [{ "@type": "Product", name: loaderData.title }]
+});
+
+const resolution = await resolveSeoV1({
+  routeId: "product", url: new URL("/products/sku-7", siteOrigin),
+  params: { slug: "sku-7" }, loaderData: { title: "Safe Lamp" },
+  status: 200, visibility: "public", siteOrigin
+}, productSeo);
+
+const headEntries = seoToRenderHeadV1(resolution);
+const adapter = createSeoHeadAdapterV1({
+  siteOrigin,
+  routes: [{ routeId: "product", visibility: "public",
+    params: { slug: "sku-7" }, factory: productSeo }]
+});
+~~~
+
+The host/SSR integration must consume `headEntries` as **structured data**, apply its own safe head serialization and CSP, and preserve authoritative HTTP status and redirects. The SEO package never renders server HTML, imports SSR/Router internals, or reruns loaders. 3xx requires an explicitly approved redirect; 404/410/private/draft output omits canonical and JSON-LD and forces noindex. Schema/metadata audit consumers use `auditSeoV1`.
+
+For paginated published content, `generateSitemapsFromFeedV1(feed, signal, options)` requires the `zaakiy.sitemap/1` schema; it traverses bounded cursors with an `AbortSignal`, then reuses deterministic sitemap serialization. The feed implementation is responsible for returning only authorized public records and correct meaningful `lastmod` fields.
+
 ## SPA navigation
 
 ~~~ts
