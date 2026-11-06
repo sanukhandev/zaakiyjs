@@ -41,6 +41,8 @@ const response = await handler.handle(new Request("https://app.example.test/"), 
 | Multi-node/conditional/keyed hydration + focus recovery | **Blocked — no runtime claiming ABI** |
 | Deployment-neutral edge streaming | Deferred |
 
+Hydration serialization requires explicit **leaf-level** public paths (for example `["page.title", "products[].sku"]`). A parent path does not authorize every nested field. Serialization does not imply hydration adoption is implemented.
+
 ### Security and lifecycle
 
 All requests use a fresh Core owner. Auth identity is supplied only through trusted host \`resolvePrincipal\`; route guards are never a substitute for backend authorization. Cache defaults to \`no-store\`, and public sharing requires an explicit policy. Private partitions require validated opaque keys; user-specific content must never enter public cache. Invalidation is an injected authorized service, not an open HTTP endpoint. Set CSP/security headers at the deployment boundary; \`serializeHead\` requires a nonce for JSON-LD and validates same-origin HTTPS links. Compiled modules must escape untrusted interpolations. No request-time compiler, DOM emulator, \`eval\`, dynamic remote imports or process-global owner.

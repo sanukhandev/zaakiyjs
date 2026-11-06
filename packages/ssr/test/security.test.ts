@@ -27,6 +27,22 @@ describe("SSR serialization and policy hardening", () => {
     expect(() => safeJson({ public: "a".repeat(1000) }, ["public"], 10)).toThrow();
     expect(safeJson({ public: "</script>" }, ["public"])).toContain("\\u003c");
   });
+  it("only serializes explicitly allowed nested hydration leaf paths", () => {
+    const payload = { page: { title: "</script>", products: [{ sku: "a-1" }] } };
+    const paths = ["page.title", "page.products[].sku"];
+    expect(JSON.parse(safeJson(payload, paths))).toEqual(payload);
+    expect(() => safeJson({ page: { title: "Safe", internalNote: "private" } },
+      ["page.title"])).toThrow(/Unapproved/);
+    expect(() => safeJson({ page: { products: [{ sku: "a", secret: "session" }] } },
+      paths)).toThrow();
+    expect(() => safeJson({ page: { title: "Visible" } }, ["page"])).toThrow();
+    const envelope = { schema: "zaakiy.hydration/1" as const, buildId: "a".repeat(64),
+      domAbiVersion: 1 as const, routeId: "product",
+      boundaries: [{ markerId: "b".repeat(32), templateDigest: "c".repeat(64) }], payload };
+    const data = serializeHydration(envelope, paths);
+    expect(data).toContain("\\u003c/script\\u003e");
+    expect(JSON.parse(data).payload).toEqual(payload);
+  });
   it("enforces hydration version and duplicate identity", () => {
     expect(() => serializeHydration({ schema: "zaakiy.hydration/1", buildId: "a".repeat(64),
       domAbiVersion: 1, routeId: "p", boundaries: [

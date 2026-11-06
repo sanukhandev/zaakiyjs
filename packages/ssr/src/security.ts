@@ -6,36 +6,60 @@ export function escapeHtml(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;")
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
-export function safeJson(value: unknown, allowedRootKeys: readonly string[], maxBytes = 65_536): string {
-  if (!Array.isArray(allowedRootKeys) || allowedRootKeys.length === 0) {
-    throw new TypeError("Hydration requires an explicit public-field allowlist");
+/** Serialize strictly allowlisted PUBLIC leaf paths. Parent names do not authorize
+ * whole subtrees; arrays require [] notation (e.g. products[].title).
+ */
+export function safeJson(value: unknown, allowedPaths: readonly string[], maxBytes = 65_536): string {
+  const validPath = /^[A-Za-z_$][\w$-]*(?:\[\])?(?:\.[A-Za-z_$][\w$-]*(?:\[\])?)*$/;
+  if (!Array.isArray(allowedPaths) || allowedPaths.length < 1 || allowedPaths.length > 256 ||
+      allowedPaths.some(path => typeof path !== "string" || path.length > 256 || !validPath.test(path)) ||
+      !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 1_048_576) {
+    throw new TypeError("Hydration requires a bounded public-leaf path allowlist");
   }
-  const allowed = new Set(allowedRootKeys);
+  const allowed = new Set(allowedPaths);
+  const paths = [...allowed];
+  const admits = (path: string): boolean => allowed.has(path) ||
+    paths.some(candidate => candidate.startsWith(path + ".") || candidate.startsWith(path + "[]"));
   const seen = new Set<object>();
-  const walk = (item: unknown, depth: number, root: boolean): unknown => {
+  const walk = (item: unknown, depth: number, path: string): unknown => {
     if (depth > 8) throw new TypeError("Hydration payload exceeds depth limit");
-    if (item === null || typeof item === "string" || typeof item === "boolean") return item;
-    if (typeof item === "number" && Number.isFinite(item)) return item;
+    if (!admits(path) && path !== "") throw new TypeError("Unapproved hydration path: " + path);
+    if (item === null || typeof item === "string" || typeof item === "boolean" ||
+        (typeof item === "number" && Number.isFinite(item))) {
+      if (!allowed.has(path)) throw new TypeError("Unapproved hydration leaf: " + path);
+      return item;
+    }
     if (typeof item !== "object") throw new TypeError("Unsupported hydration data");
     if (seen.has(item)) throw new TypeError("Cyclic hydration data");
     seen.add(item);
     let output: unknown;
     if (Array.isArray(item)) {
-      if (Object.getPrototypeOf(item) !== Array.prototype ||
-          Object.values(Object.getOwnPropertyDescriptors(item)).some(d => !("value" in d))) {
+      if (Object.getPrototypeOf(item) !== Array.prototype || item.length > 4096) {
         throw new TypeError("Unsafe hydration array");
       }
-      if (item.length > 4096) throw new TypeError("Hydration array exceeds limit");
-      output = item.map(value => walk(value, depth + 1, false));
+      const descriptors = Object.getOwnPropertyDescriptors(item);
+      if (Object.keys(descriptors).some(key => key !== "length" && !/^(?:0|[1-9][0-9]*)$/.test(key))) {
+        throw new TypeError("Unexpected hydration array property");
+      }
+      const result: unknown[] = [];
+      for (let i = 0; i < item.length; i++) {
+        const property = descriptors[String(i)];
+        if (!property || !("value" in property)) throw new TypeError("Sparse or accessor hydration array");
+        result.push(walk(property.value, depth + 1, path + "[]"));
+      }
+      output = result;
     } else {
       const proto: unknown = Object.getPrototypeOf(item);
       if (proto !== null && proto !== Object.prototype) throw new TypeError("Unsafe hydration object prototype");
       const record: Record<string, unknown> = Object.create(null);
       for (const [key, descriptor] of Object.entries(Object.getOwnPropertyDescriptors(item))) {
-        if (FORBIDDEN.test(key)) throw new TypeError("Sensitive hydration key");
-        if (root && !allowed.has(key)) throw new TypeError("Unapproved hydration field: " + key);
+        if (FORBIDDEN.test(key) || !/^[A-Za-z_$][\w$-]{0,127}$/.test(key)) {
+          throw new TypeError("Sensitive or malformed hydration key");
+        }
         if (!("value" in descriptor)) throw new TypeError("Hydration getters are forbidden");
-        record[key] = walk(descriptor.value, depth + 1, false);
+        const childPath = path ? path + "." + key : key;
+        if (!admits(childPath)) throw new TypeError("Unapproved hydration field: " + childPath);
+        record[key] = walk(descriptor.value, depth + 1, childPath);
       }
       output = record;
     }
@@ -45,7 +69,7 @@ export function safeJson(value: unknown, allowedRootKeys: readonly string[], max
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError("Hydration root must be an object");
   }
-  const json = JSON.stringify(walk(value, 0, true))
+  const json = JSON.stringify(walk(value, 0, ""))
     .replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026")
     .replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
   if (new TextEncoder().encode(json).byteLength > maxBytes) throw new TypeError("Hydration exceeds byte limit");
@@ -53,19 +77,30 @@ export function safeJson(value: unknown, allowedRootKeys: readonly string[], max
 }
 export function serializeHydration(envelope: HydrationEnvelopeV1, publicFields: readonly string[]): string {
   if (envelope.schema !== "zaakiy.hydration/1" || envelope.domAbiVersion !== 1 ||
-      !/^[a-f0-9]{64}$/.test(envelope.buildId)) throw new TypeError("Incompatible hydration envelope");
+      !/^[a-f0-9]{64}$/.test(envelope.buildId) ||
+      typeof envelope.routeId !== "string" ||
+      !/^[a-zA-Z0-9][\w.-]{0,199}$/.test(envelope.routeId) ||
+      !Array.isArray(envelope.boundaries) || envelope.boundaries.length > 4096) {
+    throw new TypeError("Incompatible hydration envelope");
+  }
   const markers = new Set<string>();
+  const boundaries: { markerId: string; templateDigest: string }[] = [];
   for (const boundary of envelope.boundaries) {
     if (!/^[a-f0-9]{32,64}$/.test(boundary.markerId) ||
         !/^[a-f0-9]{64}$/.test(boundary.templateDigest) ||
         markers.has(boundary.markerId)) throw new TypeError("Invalid or duplicate hydration marker");
     markers.add(boundary.markerId);
+    boundaries.push({ markerId: boundary.markerId, templateDigest: boundary.templateDigest });
   }
-  return safeJson({
-    schema: envelope.schema, buildId: envelope.buildId,
-    domAbiVersion: envelope.domAbiVersion, routeId: envelope.routeId,
-    boundaries: envelope.boundaries, payload: JSON.parse(safeJson(envelope.payload, publicFields))
-  }, ["schema", "buildId", "domAbiVersion", "routeId", "boundaries", "payload"]);
+  // Only an explicitly allowed public payload is embedded in the envelope.
+  const payload: unknown = JSON.parse(safeJson(envelope.payload, publicFields));
+  const json = JSON.stringify({
+    schema: "zaakiy.hydration/1", buildId: envelope.buildId, domAbiVersion: 1,
+    routeId: envelope.routeId, boundaries, payload
+  }).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+  if (new TextEncoder().encode(json).byteLength > 70_000) throw new TypeError("Hydration envelope exceeds byte limit");
+  return json;
 }
 export function safeLocation(value: string, origin: string): string {
   if (value.includes("\\") || [...value].some(c => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127) ||
