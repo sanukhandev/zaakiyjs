@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { gzipSync, brotliCompressSync } from "node:zlib";
