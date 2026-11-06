@@ -5,6 +5,8 @@ export { normalizeCanonical, escapeHtml, escapeXml } from "./url.js";
 export { defineStructuredData, validateStructuredData, serializeJsonLd } from "./structured.js";
 export { generateRobotsTxt } from "./robots.js";
 export { generateSitemaps, generateSitemapIndex, planSitemapRebuild, auditHreflang } from "./sitemap.js";
+export { resolveRouteMetadata } from "./routes.js";
+export type { RouteSeoConfig } from "./routes.js";
 export type {
   Metadata, MetadataDefinition, PageMetadataContext, ResolveMetadataOptions,
   ResolvedMetadata, CanonicalPolicy, SocialMetadata, TwitterMetadata, RobotsDirectives,
