@@ -35,6 +35,8 @@ describe("frozen P3 SEO v1", () => {
     for (const input of [
       { ...productInput, status: 404 },
       { ...productInput, status: 410 },
+      { ...productInput, status: 204 },
+      { ...productInput, status: 304 },
       { ...productInput, status: 401, visibility: "private" as const },
       { ...productInput, status: 200, visibility: "draft" as const }
     ]) {
