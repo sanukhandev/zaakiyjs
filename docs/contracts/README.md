@@ -57,3 +57,13 @@ The documents below describe **reserved interfaces for future implementations**,
 12. [Templates and generators](12-templates.md) — portable editable source, metadata and deterministic file plans.
 
 There are no implementation packages, API/IR changes, or npm releases in P2-00.
+
+## P3 contracts — proposed packages, frozen on reviewed merge
+
+The following are **design interfaces only**, not existing package exports; they depend on the [P3 boundary ADR](../adr/0009-p3-rendering-privacy-boundaries.md), [dependency matrix](p3-dependency-integration-matrix.md) and [page-ownership fixture](p3-page-ownership-example.md). They preserve IR v1 and DOM ABI v1 and do not implement server rendering, hydration, SEO, telemetry, ads or consent.
+
+13. [SSR/rendering/hydration](13-rendering-ssr.md) — request ownership, trusted server manifests, streamed HTTP results and isolated caches.
+14. [SEO metadata/discovery](14-seo.md) — pure route data, JSON-LD, statuses, canonicals and sitemaps.
+15. [Consent](15-consent.md) — policy adapters, fail-closed purposes, versioned change notifications.
+16. [Analytics](16-analytics.md) — optional provider lifecycle, typed events, Web Vitals and pageviews.
+17. [Ads](17-ads.md) — reserved placements, provider state and revocation teardown.
