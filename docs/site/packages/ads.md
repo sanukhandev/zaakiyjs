@@ -139,7 +139,7 @@ Only the frozen P3 v1 interfaces are exported from the package root. `createAdsM
 
 ### Validation / release gates
 
-Workspace integration is intentionally reviewed in a separate stacked PR; the Ads package branch only owns `packages/ads/**` and its independent Changeset. Unit and jsdom mock tests are not substitutes for real-browser CSP, CLS, keyboard-focus and provider-policy tests. No SDK integration, ad-block bypass, network analytics transport or automatic monetization exists. Independent npm `pack`, no-Ads browser tree-shake, npm scope/ownership and release metadata must pass before publication.
+Ads is present in the current source workspace. Review package integrations and independently validate published artifacts before release. Unit and jsdom mock tests are not substitutes for real-browser CSP, CLS, keyboard-focus and provider-policy tests. No SDK integration, ad-block bypass, network analytics transport or automatic monetization exists. Independent npm `pack`, no-Ads browser tree-shake, npm scope/ownership and release metadata must pass before publication.
 
 ## Integrate with neighboring packages
 

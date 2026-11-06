@@ -115,7 +115,7 @@ Structured HttpError codes: HTTP_STATUS, NETWORK, TIMEOUT, CANCELLED, REQUEST_VA
 
 Node requires an absolute base URL; relative base URLs resolve using browser location. No global HTTP singleton, alternate Promise, reactive state engine, cache or owner tracking is provided.
 
-The HTTP package is registered in the root workspace verifier allowlist and pnpm lockfile. Merge requires green CI, completed review, and explicit authorization; first npm publication remains a separate approval.
+The HTTP package is present in the current workspace. Validate current CI and package artifacts for each change; independent npm publication requires separate release approval.
 
 ## Integrate with neighboring packages
 
