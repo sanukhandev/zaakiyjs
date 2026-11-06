@@ -20,7 +20,7 @@
   "scripts": {
     "lint": "eslint src test",
     "typecheck": "tsc --noEmit --project tsconfig.json",
-    "build": "tsc --project tsconfig.build.json",
+    "build": "node scripts/clean.mjs && tsc --project tsconfig.build.json",
     "test": "vitest run --root ../.. packages/ads/test",
     "pack:check": "npm pack --dry-run --json",
     "size:report": "node scripts/size.mjs"
