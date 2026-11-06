@@ -35,6 +35,21 @@ describe("metadata/canonical", () => {
     }
     expect(resolveMetadata([{ robots: { index: true } }], { ...policy, private: true }).robots.index).toBe(false);
   });
+  it("does not leak canonical, social or JSON-LD on private, 404 or redirected documents", () => {
+    const page = { title: "Private Product", canonical: "/private", openGraph: { title: "Secret" },
+      structuredData: { "@type": "Product", name: "Secret" } };
+    for (const status of [301, 302, 404, 410, 500]) {
+      const rendered = renderMetadata(page, { ...policy, status });
+      expect(rendered.metadata.robots.index).toBe(false);
+      expect(rendered.html).not.toContain("application/ld+json");
+      expect(rendered.html).not.toContain('rel="canonical"');
+      expect(rendered.html).not.toContain("Secret");
+    }
+    const privateOutput = renderMetadata(page, { ...policy, status: 200, private: true });
+    expect(privateOutput.html).not.toContain("Private Product");
+    expect(privateOutput.html).not.toContain("Secret");
+    expect(privateOutput.headers["X-Robots-Tag"]).toContain("noindex");
+  });
   it("escapes malicious head text and produces exactly one canonical", () => {
     const result = renderMetadata([{ title: "A", canonical: "/a" },
       { title: "<script>", canonical: "/b", description: 'A & "B"' }], policy);
