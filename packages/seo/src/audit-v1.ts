@@ -39,7 +39,7 @@ export function auditSeoV1(input: SeoAuditInputV1): readonly SeoDiagnostic[] {
     report("SEO307", "error", "Nonindexable page appears in sitemap");
   if (input.existingCanonicalCount && input.existingCanonicalCount > 1)
     report("SEO308", "error", "Duplicate canonical tags in rendered document");
-  if (resolution.status >= 300 && resolution.status < 400 && !resolution.redirect)
+  if ([301, 302, 307, 308].includes(resolution.status) && !resolution.redirect)
     report("SEO309", "error", "Redirect status without validated Location");
   if (metadata.jsonLd) {
     try {
