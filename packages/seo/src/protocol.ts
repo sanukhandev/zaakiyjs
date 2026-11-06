@@ -302,7 +302,7 @@ export async function generateSitemapsFromFeedV1(
       entries.push({
         loc: entry.loc, lastmod: entry.lastmod,
         changefreq: entry.changefreq, priority: entry.priority,
-        alternates: Object.fromEntries((entry.alternates ?? []).map(a => [a.hreflang, a.url])),
+        alternates: Object.fromEntries((entry.alternates ?? []).map((a: { readonly hreflang: string; readonly url: string }) => [a.hreflang, a.url])),
         published: true, authorized: true
       });
     }
