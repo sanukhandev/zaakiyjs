@@ -33,7 +33,9 @@ export function bindAdsV1ToRoutes(
     if (ended || next === active) return;
     active = next;
     for (const [id, entry] of placements) {
-      if (!entry.persistent && entry.routeId !== next) {
+      // A persistent shell placement is only permitted while the *active*
+      // committed route remains on the explicit public allowlist.
+      if (!permitted(next) || (!entry.persistent && entry.routeId !== next)) {
         void entry.slot.dispose();
         placements.delete(id);
       }

@@ -279,6 +279,26 @@ describe("P3-00 frozen AdSlotV1 / ConsentCapabilityV1", () => {
     await route.dispose(); await f.manager.dispose();
     expect(unsubscribe).toHaveBeenCalledTimes(1);
   });
+  it("disposes persistent shell advertisements when navigating onto an unapproved private route", async () => {
+    const f = fixture(); f.consent.grant("advertising");
+    let current = "public";
+    let notify!: (id: string) => void;
+    const adapter = bindAdsV1ToRoutes(f.manager, {
+      currentRouteId: () => current,
+      subscribe: listener => { notify = listener; return () => undefined; }
+    }, { allowRoutes: ["public", "article"] });
+    const shell = adapter.register(baseSlot, undefined, { persistent: true });
+    const host = document.createElement("aside");
+    shell.mount(host);
+    await flush();
+    expect(shell.state.peek()).toBe("ready");
+    current = "article"; notify(current);
+    expect(shell.state.peek()).toBe("ready");
+    current = "account"; notify(current);
+    expect(shell.state.peek()).toBe("disposed");
+    expect(f.manager.get(baseSlot.id)).toBeUndefined();
+    await adapter.dispose(); await f.manager.dispose();
+  });
   it("keeps app scopes and providers isolated", async () => {
     const a = fixture(), b = fixture();
     a.consent.grant("advertising");
