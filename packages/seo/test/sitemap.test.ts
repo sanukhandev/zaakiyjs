@@ -13,9 +13,9 @@ describe("robots/sitemap", () => {
     const inputs = [{ loc: "/public" }, { loc: "/private", private: true },
       { loc: "/draft", published: false }, { loc: "/auth", authorized: false },
       { loc: "/noindex", noindex: true }, { loc: "/redirect", redirect: true },
-      { loc: "/soft404", soft404: true }, { loc: "/404", status: 404 }];
+      { loc: "/soft404", soft404: true }, { loc: "/404", status: 404 }, { loc: "/nocontent", status: 204 }];
     const result = await generateSitemaps(inputs, policy);
-    expect(result.excluded).toBe(7);
+    expect(result.excluded).toBe(8);
     expect(result.files[0]?.count).toBe(1);
     expect(result.files[0]?.xml).not.toContain("/private");
   });
@@ -41,6 +41,12 @@ describe("robots/sitemap", () => {
   });
   it("rejects invalid lastmod, foreign links and excessive protocol limits", async () => {
     await expect(generateSitemaps([{ loc: "/a", lastmod: "today" }], policy)).rejects.toThrow();
+    await expect(generateSitemaps([{ loc: "/a", lastmod: "2026-02-30" }], policy)).rejects.toThrow("calendar");
+    await expect(generateSitemaps([{ loc: "/a", lastmod: "2025-02-29" }], policy)).rejects.toThrow("calendar");
+    const leap = await generateSitemaps([{ loc: "/a", lastmod: "2024-02-29" }], policy);
+    expect(leap.files[0]?.xml).toContain("2024-02-29");
+    await expect(generateSitemaps([{ loc: "/" + "a".repeat(2_048) }], policy))
+      .rejects.toThrow("2048");
     await expect(generateSitemaps([{ loc: "https://evil.test/a" }], policy)).rejects.toThrow();
     await expect(generateSitemaps([{ loc: "/a" }], { ...policy, maxEntries: 50001 })).rejects.toThrow();
     expect(() => generateSitemapIndex([{ loc: "/sitemap.xml", lastmod: "now" }], policy)).toThrow();
