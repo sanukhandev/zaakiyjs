@@ -123,7 +123,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-${{ runner.arch }}-playwright-python-1.64.1
+          key: ${{ runner.os }}-${{ runner.arch }}-ubuntu2404-playwright-python-1.64.1
       - name: Install pinned Playwright and three matching browsers
         timeout-minutes: 18
         run: bash scripts/ci/install-playwright-browsers.sh
