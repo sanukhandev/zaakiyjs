@@ -15,3 +15,8 @@ export type {
 } from "./types.js";
 export type { RobotsGroup, RobotsTxtOptions } from "./robots.js";
 export type { SitemapEntry, SitemapOptions, GeneratedSitemap, SitemapIndexEntry, SitemapBuild, HreflangPage } from "./sitemap.js";
+
+export { resolveSeoV1, seoToRenderHeadV1, seoRobotsHeaderV1, createSeoHeadAdapterV1, generateSitemapsFromFeedV1 } from "./protocol.js";
+export type { JsonLdValueV1, SeoRobotsV1, SeoDocumentV1, SeoResolveInputV1, SeoFactoryV1,
+  SeoResolutionV1, SitemapEntryV1, SitemapFeedV1, RenderHeadEntryV1, RenderHeadAdapterV1,
+  SeoResolveOptionsV1, SeoRouteBindingV1, SitemapFeedOptionsV1 } from "./protocol.js";
