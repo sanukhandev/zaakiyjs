@@ -207,6 +207,12 @@ importers:
         specifier: workspace:^
         version: link:../signals
 
+  packages/seo:
+    devDependencies:
+      jsdom:
+        specifier: ^26.1.0
+        version: 26.1.0
+
   packages/signals: {}
 
   packages/store:
