@@ -165,9 +165,14 @@ export function analyze(request: CompileRequest): Analysis {
       report("ZC1011", "JSX key is reserved; keyed reconciliation requires the coordinated DOM ABI.", node);
       return null;
     }
-    if (name === "ref" || name === "dangerouslySetInnerHTML" ||
+    if ((name === "ref" && component) || name === "dangerouslySetInnerHTML" ||
         name === "innerHTML" || name === "outerHTML" || name === "srcdoc") {
       report("ZC1003", "Unsupported or unsafe JSX sink: " + name, node);
+      return null;
+    }
+    if (name === "ref" && (!node.initializer || !ts.isJsxExpression(node.initializer) ||
+        !node.initializer.expression)) {
+      report("ZC2211", "Native JSX ref requires a typed callback expression.", node);
       return null;
     }
     let value: IRExpression;
@@ -197,7 +202,7 @@ export function analyze(request: CompileRequest): Analysis {
         report("ZC1005", "Unsafe or unverified JSX URL. Only inspectable safe string literals are supported.", node);
       }
     }
-    const target: PropertyBinding["target"] = component || ["value", "checked", "disabled", "selected"].includes(name)
+    const target: PropertyBinding["target"] = component || name === "ref" || ["value", "checked", "disabled", "selected"].includes(name)
       ? "property" : name === "class" ? "class" : name === "style" ? "style" : "attribute";
     const span = spanOf(source, node);
     // JSX htmlFor maps to the native HTML for attribute, not a custom DOM property.

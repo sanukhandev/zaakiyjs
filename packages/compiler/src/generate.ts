@@ -57,6 +57,7 @@ interface AbiAliases {
   readonly setAttribute: string;
   readonly bindText: string;
   readonly bindProperty: string;
+  readonly bindMountedRef: string;
   readonly listen: string;
   readonly createRegion: string;
   readonly bindConditionalRegion: string;
@@ -91,6 +92,7 @@ function allocateRuntimeAliases(source: ts.SourceFile): {
       setAttribute: free("__zSetAttribute"),
       bindText: free("__zBindText"),
       bindProperty: free("__zBindProperty"),
+      bindMountedRef: free("__zBindMountedRef"),
       listen: free("__zListen"),
       createRegion: free("__zCreateRegion"),
       bindConditionalRegion: free("__zBindConditionalRegion"),
@@ -126,6 +128,9 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
         node.body.forEach(child => visit(child, true));
         break;
       case "PropertyBinding":
+        if (node.name === "ref" && node.expression.reactive) {
+          error("ZC2211", "Native JSX ref callback must remain stable for the owner lifetime.", node.span);
+        }
         if (node.expression.reactive && node.target !== "property") {
           error("ZC2203", "Reactive class, style and attributes need a distinct safe DOM binding ABI.", node.span);
         }
@@ -210,6 +215,12 @@ class Builder {
   private attribute(el: string, node: PropertyBinding): void {
     const resolved = this.resolveExpression(node.expression.source, node.expression.reactive);
     const expr = "(" + resolved.source + ")";
+    if (node.name === "ref") {
+      const reference = this.variable("ref");
+      this.push("const " + reference + " = " + expr + ";", node.expression.span);
+      this.push(this.abi.bindMountedRef + "(" + this.owner + ", " + el + ", " + reference + ");", node.span);
+      return;
+    }
     if (resolved.reactive) {
       if (node.target !== "property") {
         throw new Error("ZC2203: reactive keyed class/attribute requires a specialized safe DOM binding");
@@ -437,14 +448,27 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
     };
     const visited = ts.visitEachChild(file, visit, context);
     if (!loweredJsx) return visited;
-    const dom = runtimeImport("@zaakiyjs/dom/compiler", [
+    const containsRef = (nodes: readonly IRNode[]): boolean => nodes.some(node => {
+      if (node.kind === "PropertyBinding" && node.name === "ref") return true;
+      if (node.kind === "StaticElement") return containsRef(node.children);
+      if (node.kind === "ConditionalBlock") return containsRef(node.whenTrue) || containsRef(node.whenFalse);
+      if (node.kind === "KeyedLoop") return containsRef(node.body);
+      return false;
+    });
+    const domBindings: Array<readonly [string, string]> = [
       ["createElement", aliases.createElement], ["createText", aliases.createText],
       ["setProperty", aliases.setProperty], ["setAttribute", aliases.setAttribute],
       ["bindText", aliases.bindText], ["bindProperty", aliases.bindProperty],
       ["listen", aliases.listen], ["createRegion", aliases.createRegion],
       ["bindConditionalRegion", aliases.bindConditionalRegion],
       ["bindKeyedRegion", aliases.bindKeyedRegion]
-    ]);
+    ];
+    // Keep old compiled consumers ABI-compatible: only ref-using modules
+    // import the new opt-in helper, never unrelated TSX modules.
+    if (containsRef(optimized.nodes)) {
+      domBindings.push(["bindMountedRef", aliases.bindMountedRef]);
+    }
+    const dom = runtimeImport("@zaakiyjs/dom/compiler", domBindings);
     const needsKeyed = (nodes: readonly IRNode[]): boolean => nodes.some(node => {
       if (node.kind === "KeyedLoop") return true;
       if (node.kind === "StaticElement") return needsKeyed(node.children);
