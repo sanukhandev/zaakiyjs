@@ -70,6 +70,34 @@ def connected_native_ref_lifecycle(page: Page) -> None:
     assert events["conditional"] == ["connected", "cleared", "connected", "cleared"], events
 
 
+
+def exit_aware_region(page: Page) -> None:
+    """Exit/reentry retains one native node, then disposes with bounded ownership."""
+    page.evaluate("window.__zaakiyAcceptance.exitStart()")
+    button = page.locator("#exit-demo-button")
+    expect(button).to_be_visible()
+    page.evaluate("window.__exitOriginal = document.getElementById('exit-demo-button')")
+    page.evaluate("window.__zaakiyAcceptance.exitHide()")
+    expect(button).to_have_count(1)
+    page.evaluate("window.__zaakiyAcceptance.exitShow()")
+    assert page.evaluate("document.getElementById('exit-demo-button') === window.__exitOriginal")
+    assert page.evaluate("window.__zaakiyAcceptance.exitAborts()") == [True]
+    page.evaluate("window.__zaakiyAcceptance.exitFinish()")
+    expect(button).to_have_count(1)
+    page.evaluate("window.__zaakiyAcceptance.exitHide()")
+    expect(button).to_have_count(1)
+    page.evaluate("window.__zaakiyAcceptance.exitFinish()")
+    expect(button).to_have_count(0)
+    page.evaluate("window.__zaakiyAcceptance.exitDispose()")
+
+    # Parent disposal aborts a hanging exit immediately, without a stale node.
+    page.evaluate("window.__zaakiyAcceptance.exitStart()")
+    page.evaluate("window.__zaakiyAcceptance.exitHide()")
+    assert page.evaluate("window.__zaakiyAcceptance.exitDispose()") == [True]
+    expect(page.locator("#exit-demo")).to_have_count(0)
+
+
+
 def conditional_ownership(page: Page) -> None:
     page.evaluate("window.__detachedShown = document.querySelector('#shown')")
     page.locator("#shown").click()
@@ -282,6 +310,7 @@ CASES = (
     ("native_label_association", native_label_association),
     ("connected_native_ref_lifecycle", connected_native_ref_lifecycle),
     ("finite_reactive_variants", finite_reactive_variants),
+    ("exit_aware_region", exit_aware_region),
     ("conditional_ownership", conditional_ownership),
     ("precise_mutations", precise_mutations),
     ("reorder_focus", reorder_focus),
