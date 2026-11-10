@@ -32,6 +32,10 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: ESLint and workspace contract
         run: pnpm lint
+      - name: Validate workspace inventory and dependency graph
+        run: |
+          node --test scripts/ci/workspace-inventory.test.mjs
+          node scripts/ci/workspace-inventory.mjs > /tmp/zaakiy-workspace-inventory.json
       - name: Validate site Markdown, imports and documented APIs
         run: node scripts/docs/validate-site.mjs
 
