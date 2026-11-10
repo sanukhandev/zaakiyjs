@@ -751,3 +751,19 @@ describe("signal-aware component-root keyed templates", () => {
     expect(result.diagnostics.some(d=>d.code==="ZC2206")).toBe(true);
   });
 });
+
+
+describe("native label attribute lowering", () => {
+  it("emits the HTML for attribute for intrinsic labels", () => {
+    const result = execute('function App() { return <main><label htmlFor="email">Email</label><input id="email" /></main>; }', "App");
+    const label = result.elements.find(element => element.tag === "label");
+    expect(label?.attributes.for).toBe("email");
+    expect(label?.attributes.htmlFor).toBeUndefined();
+  });
+
+  it("preserves htmlFor on custom component props", () => {
+    const result = execute('function Field(props: { htmlFor: string }) { return <label htmlFor={props.htmlFor}>Email</label>; } function App() { return <main><Field htmlFor="email" /></main>; }', "App");
+    const label = result.elements.find(element => element.tag === "label");
+    expect(label?.attributes.for).toBe("email");
+  });
+});
