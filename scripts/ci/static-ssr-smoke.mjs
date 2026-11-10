@@ -19,13 +19,13 @@ assert.equal(result.js.length, 1);
 const emitted = result.js[0].code;
 assert.ok(!emitted.includes("@zaakiyjs/compiler"));
 assert.ok(!emitted.includes("@zaakiyjs/dom"));
-const bytes = new TextEncoder().encode(emitted);
+const bytes = new globalThis.TextEncoder().encode(emitted);
 const manifest = buildVerifiedManifestV1([
   { routeId: "home", moduleId: "compiled/home", bytes }
 ]);
 // The import is authorized by this deterministic build/test fixture, not an
 // HTTP request. Production must use an immutable attested module registry.
-const module = await import("data:text/javascript;base64," + Buffer.from(bytes).toString("base64"));
+const module = await import("data:text/javascript;base64," + globalThis.Buffer.from(bytes).toString("base64"));
 assert.equal(module.protocol, "zaakiy.render/1");
 assert.equal(typeof module.render, "function");
 const modules = { "compiled/home": {
@@ -41,8 +41,8 @@ const options = {
 };
 const server = createByteAttestedNodeServerAdapter(options, { "compiled/home": bytes });
 const request = (method = "GET") => server.handle(
-  new Request("https://zaa.example.test/", { method }),
-  { signal: new AbortController().signal }
+  new globalThis.Request("https://zaa.example.test/", { method }),
+  { signal: new globalThis.AbortController().signal }
 );
 const response = await request();
 assert.equal(response.status, 200);
@@ -53,11 +53,11 @@ const head = await request("HEAD");
 assert.equal(head.status, 200);
 assert.equal(await head.text(), "");
 const notFound = await server.handle(
-  new Request("https://zaa.example.test/unregistered"),
-  { signal: new AbortController().signal }
+  new globalThis.Request("https://zaa.example.test/unregistered"),
+  { signal: new globalThis.AbortController().signal }
 );
 assert.equal(notFound.status, 404);
 assert.throws(() => createByteAttestedNodeServerAdapter(options, {
-  "compiled/home": new TextEncoder().encode(emitted + "\n// modified")
+  "compiled/home": new globalThis.TextEncoder().encode(emitted + "\n// modified")
 }), /bytes do not match/);
 console.log("STATIC_SSR_HTTP_SMOKE PASS: build bytes, manifest, HTTP response, HEAD, 404 and tamper rejection");
