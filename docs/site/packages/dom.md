@@ -129,3 +129,7 @@ See [ADR 0004](../../adr/0004-dom-region-abi.md) for the frozen protocol and its
 ### Connected native refs versus eager refs
 
 `bindRef(owner, node, callback)` retains its existing eager callback semantics for compatibility with legacy DOM ABI consumers. The additive `bindMountedRef(owner, node, callback)` is designed for compiler-generated native JSX and invokes the callback only once the node is connected. A disconnected mount uses a scoped `MutationObserver` until connection; owner disposal disconnects the observer and sends a single `null` after a successful attachment. It does not provide a component-instance ref, slot ownership protocol, or server hydration support. Native TSX `ref` lowering is conditional, so modules not using refs do not import the extension.
+
+### Compiler-generated reactive classes and attributes
+
+The hardening compiler now emits `bindClass` for finite class-variant expressions and `bindAttribute` for reactive non-URL attributes. These reuse established owner-scoped effects and the native `setAttribute` URL/sink policy, retaining element identity across updates. The compiler never accepts arbitrary user-generated utility names or bypasses the verified Vite CSS token-offset contract. Dynamic URL expressions and inline style objects remain unsupported; runtime `setStyle` is not an implicit authorization for compiler-generated inline styles under strict CSP.

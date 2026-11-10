@@ -5,13 +5,64 @@ import { signal, flushSync } from "@zaakiyjs/signals";
 import { createOwner, disposeOwner, initializeOwnedComponent, mountOwner, onCleanup, onMount } from "@zaakiyjs/core";
 import { mount } from "../src/index.js";
 import {
-  bindAttribute, bindClass, bindProperty, bindRef, bindStyle, bindText,
+  bindAttribute, bindClass, bindMountedRef, bindProperty, bindRef, bindStyle, bindText,
   cloneStatic, createElement, createText, listen, listenStable, setAttribute,
   setProperty, setStyle
 } from "../src/compiler.js";
 import { bindConditionalRegion, bindKeyedRegion, createRegion } from "../src/compiler.js";
 
 afterEach(() => { document.body.replaceChildren(); });
+
+describe("connected native JSX ref lifecycle", () => {
+  it("waits for a detached mount to connect before invoking its callback", async () => {
+    const host = document.createElement("div");
+    const events: Array<HTMLButtonElement | null> = [];
+    const button = document.createElement("button");
+    const app = mount(owner => {
+      bindMountedRef(owner, button, value => { events.push(value); });
+      return button;
+    }, host);
+    expect(events).toEqual([]);
+    document.body.append(host);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(events).toEqual([button]);
+    host.remove();
+    app.dispose();
+    app.dispose();
+    expect(events).toEqual([button, null]);
+  });
+
+  it("disconnects a pending ref on disposal without a late attachment", async () => {
+    const host = document.createElement("div");
+    const callback = vi.fn();
+    const app = mount(owner => {
+      const button = document.createElement("button");
+      bindMountedRef(owner, button, callback);
+      return button;
+    }, host);
+    app.dispose();
+    document.body.append(host);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(callback).not.toHaveBeenCalled();
+    expect(host.childNodes).toHaveLength(0);
+  });
+
+  it("rolls back mount ownership and DOM if a connected ref callback throws", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const events: string[] = [];
+    expect(() => mount(owner => {
+      const button = document.createElement("button");
+      bindMountedRef(owner, button, value => {
+        events.push(value ? "attach" : "detach");
+        if (value) throw new Error("ref failed");
+      });
+      return button;
+    }, host)).toThrow("ref failed");
+    expect(events).toEqual(["attach", "detach"]);
+    expect(host.childNodes).toHaveLength(0);
+  });
+});
 
 describe("compiler-lowered native DOM runtime", () => {
   it("preserves user-edited input when a keyed item object changes but bound value is equal", () => {

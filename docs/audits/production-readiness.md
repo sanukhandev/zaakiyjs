@@ -63,3 +63,9 @@ The PR has production code changes; earlier statements that it contains only doc
 **Verified earlier head:** `46a5abeb244862ed71d245a862b9e476363378d5` passed eight workflows including Quality, M1 browser, Release Hardening, Templates, Router, CLI, Motion and Analytics Privacy. This does not certify later commits or close milestone gates.
 
 **Remaining architectural blockers:** #37 component children/slots, safe dynamic class/style variants and exit-aware regions; #59 compiler-generated SSR and real hydration; #24 independent release authorization. The automated audits do not prove manual screen-reader coverage or legal/npm credentials. No milestone is marked fully accepted by this ledger.
+
+### Finite CSS variants and ref lifecycle (hardening follow-up)
+
+- Compiled JSX supports owner-scoped finite literal-branch class variants and non-URL reactive attributes. Every dynamic CSS candidate is source-spanned and verified by the Vite stylesheet bridge. Arbitrary class names, escaped/unverifiable source tokens, inline style and dynamic URLs fail closed.
+- The DOM tests now cover disconnected mounts, pending ref cancellation on owner disposal and exception-triggered mount rollback, in addition to connected/ref-reorder browser coverage.
+- Earlier hardening CI exposed and led to correction of unverifiable style token offsets and a legacy static `class={'...'}` manifest compatibility regression. These are *not* accepted until final-head CI passes.
