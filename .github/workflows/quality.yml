@@ -80,4 +80,5 @@ jobs:
           node --test scripts/ci/package-exports.test.mjs
           node scripts/ci/package-exports.mjs
           node scripts/ci/static-ssr-smoke.mjs
+          node scripts/ci/data-ssr-smoke.mjs
           pnpm test

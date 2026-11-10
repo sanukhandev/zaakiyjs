@@ -17,7 +17,7 @@ export interface StaticServerCompileResult {
   readonly html?: string;
 }
 
-const TAGS = new Set([
+export const SSR_STATIC_TAGS = new Set([
   "main", "div", "section", "article", "header", "footer", "nav", "aside",
   "p", "span", "strong", "em", "small", "h1", "h2", "h3", "h4", "h5", "h6",
   "ul", "ol", "li", "dl", "dt", "dd", "a", "label", "button", "input",
@@ -25,7 +25,7 @@ const TAGS = new Set([
   "br", "hr", "table", "thead", "tbody", "tfoot", "tr", "td", "th",
   "blockquote", "pre", "code", "time", "details", "summary"
 ]);
-const VOID = new Set(["input", "img", "br", "hr"]);
+export const SSR_VOID_TAGS = new Set(["input", "img", "br", "hr"]);
 const BOOLEAN = new Set(["checked", "disabled", "selected", "required", "readonly",
   "multiple", "hidden", "open", "autofocus", "novalidate"]);
 const GLOBAL = new Set(["id", "class", "title", "role", "lang", "dir", "tabindex",
@@ -37,7 +37,7 @@ const ATTRIBUTE_MAP: Readonly<Record<string, string>> = {
   tabIndex: "tabindex", readOnly: "readonly", autoComplete: "autocomplete",
   colSpan: "colspan", rowSpan: "rowspan", noValidate: "novalidate"
 };
-const escapeHtml = (raw: string): string =>
+export const escapeStaticHtml = (raw: string): string =>
   raw.replace(/&/g, "&amp;").replace(/</g, "&lt;")
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
@@ -77,7 +77,7 @@ function safeUrl(value: string): boolean {
   return false;
 }
 
-function renderAttribute(binding: PropertyBinding): string {
+export function renderLiteralAttribute(binding: PropertyBinding): string {
   if (binding.target === "style" || binding.name === "ref") {
     throw new Error("Static SSR does not support inline styles or refs");
   }
@@ -94,24 +94,24 @@ function renderAttribute(binding: PropertyBinding): string {
   if ((name === "href" || name === "src" || name === "action") && !safeUrl(string)) {
     throw new Error("Static SSR rejects unsafe or unverified URLs");
   }
-  return " " + name + '="' + escapeHtml(string) + '"';
+  return " " + name + '="' + escapeStaticHtml(string) + '"';
 }
 
 function renderNode(node: IRNode): string {
-  if (node.kind === "StaticText") return escapeHtml(node.text);
+  if (node.kind === "StaticText") return escapeStaticHtml(node.text);
   if (node.kind === "StyleToken") return "";
   if (node.kind !== "StaticElement" || node.namespace !== "html" ||
-      !TAGS.has(node.tag)) throw new Error("Static SSR requires a supported literal HTML element");
+      !SSR_STATIC_TAGS.has(node.tag)) throw new Error("Static SSR requires a supported literal HTML element");
   let attrs = "";
   let children = "";
   for (const item of node.children) {
-    if (item.kind === "PropertyBinding") attrs += renderAttribute(item);
+    if (item.kind === "PropertyBinding") attrs += renderLiteralAttribute(item);
     else if (item.kind === "StyleToken") continue;
     else if (item.kind === "EventBinding") {
       throw new Error("Static SSR cannot emit unhydrated event handlers");
     } else children += renderNode(item);
   }
-  if (VOID.has(node.tag)) {
+  if (SSR_VOID_TAGS.has(node.tag)) {
     if (children) throw new Error("Void HTML elements cannot have children");
     return "<" + node.tag + attrs + ">";
   }

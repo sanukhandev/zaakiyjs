@@ -93,3 +93,15 @@ Keyed component-root templates are supported when each varying item prop is a si
 `compileStaticServer({ fileName, source, routeId })` is an additive, build-time **literal-only** TSX-to-HTML server compiler. It emits an ES module exporting `protocol = "zaakiy.render/1"` and a `render(context)` function returning `no-store` HTML. The compiler does not import browser DOM or ship any TSX/IR interpreter to Node HTTP requests. Static HTML text and values are escaped, and unsafe HTML elements, attributes, URLs, styles, event handlers, dynamic text, reactive state, components and keyed loops are rejected rather than silently degraded.
 
 The emitted `js[0].code` is the exact module source. Encode it to bytes at build time and pass those bytes to `@zaakiyjs/ssr/build`'s `buildVerifiedManifestV1` and `verifyTrustedArtifactBytes`, then activate the byte-attested Node adapter. The compiler does **not** produce hydration markers or claim to reuse server DOM; see [ADR 0010](../../docs/adr/0010-static-server-compiler-slice.md). Full compiler SSR/hydration remains issue #59.
+
+## Request-scoped data SSR — experimental
+
+`compileDataServer({ fileName, source, routeId })` generates a Node server renderer from supported **read-only typed props paths** without interpreting TSX during HTTP requests. Example source:
+
+```tsx
+function Product(props: { customer: { name: string }; order: number }) {
+  return <main class="item"><h1>{props.customer.name}</h1><p>{props.order}</p></main>;
+}
+```
+
+The renderer reads the corresponding paths from `ServerRequestContextV1.loaderData` via own-property descriptors, disallowing accessors and nonplain objects, and escapes primitive values before returning HTML. It uses the established `zaakiy.render/1` protocol with `no-store` caching. The deployment must pin the emitted module bytes through `buildVerifiedManifestV1`, `verifyTrustedArtifactBytes` and the byte-attested SSR Node adapter. Compiled source cannot access arbitrary context fields or invoke JS expressions. This **does not** hydrate browser DOM or support dynamic attributes/components/slots; issue #59 remains open. See [ADR 0012](../../docs/adr/0012-data-bound-ssr.md).

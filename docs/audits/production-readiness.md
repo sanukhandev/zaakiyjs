@@ -92,3 +92,7 @@ An additive `@zaakiyjs/dom/compiler` helper retains exactly one native Element a
 ### Component slots — owner-scoped DOM precursor
 
 An opt-in native slot factory preserves logical Core owner ancestry and anchored multi-root DOM cleanup, even when placed in a portal. Compiler JSX component children and named slots remain unsupported on IR v1 until a separately reviewed versioned contract and browser integration are complete (ADR 0011, issue #37).
+
+## Dynamic data SSR integration increment
+
+A dedicated `compileDataServer` target accepts a single native HTML root and constrained `props.*` property paths as request-scoped text, mapped to `context.loaderData` without evaluating arbitrary source expressions. Runtime text is escaped, own-data-only, bounded, route-pinned and no-store. CI includes a byte-attested real HTTP smoke test for concurrent requests, injection, getter traps and tamper rejection. This is **not** full compiler-backed component SSR or native DOM hydration, and M4 remains open (ADR 0012).

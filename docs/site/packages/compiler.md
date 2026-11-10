@@ -52,6 +52,8 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `CompatFeature`
 - `CompileRequest`
 - `CompileResult`
+- `DataServerCompileResult`
+- `DataServerRequest`
 - `CompilerDiagnostic`
 - `ComponentCall`
 - `ConditionalBlock`
@@ -76,6 +78,7 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `StyleToken`
 - `compile`
 - `compileStaticServer`
+- `compileDataServer`
 - `foundationStatus`
 - `parseToIR`
 - `optimizeIR`
@@ -178,3 +181,17 @@ The compiler supports `class={active.value ? "pill active" : "pill inactive"}` b
 ### Literal-only server target
 
 `compileStaticServer(request)` emits an executable `zaakiy.render/1` Node server module from a limited, validated static TSX root. The output has escaped HTML and no browser/compiler imports. Its generated code can be independently SHA-256 attested using `@zaakiyjs/ssr/build` and served through `createByteAttestedNodeServerAdapter`. Dynamic expressions, components, event handlers, SVG, inline styles and untrusted URLs fail closed. This **does not** implement general component SSR or client-side DOM hydration. Details: [ADR 0010](../../adr/0010-static-server-compiler-slice.md).
+
+### Read-only data-bound server rendering (experimental hardening branch)
+
+`compileDataServer({ fileName, routeId, source })` compiles a **restricted** TSX view into a server-only `zaakiy.render/1` module with request-scoped text interpolation. For example:
+
+```tsx
+function Product(props: { customer: { name: string }; order: number }) {
+  return <main><h1>{props.customer.name}</h1><p>{props.order}</p></main>;
+}
+```
+
+The generated renderer maps `props.customer.name` to `context.loaderData.customer.name`. It supports only named own-data property paths (maximum four levels), rejects getter-backed/prototype-bearing values, escapes all text, limits lengths, and never evaluates the source expression or imports a compiler during HTTP requests. Static attributes are checked by the same allowlist as `compileStaticServer`; dynamic attributes, URL values, components, event handlers, loops and reactive signals are unsupported. The output uses `no-store` and is meant to be pinned using `@zaakiyjs/ssr/build` and served through a byte-attested adapter.
+
+This is **server rendering only**, not native DOM hydration or component composition; it does not close SSR issue #59. See [ADR 0012](../../adr/0012-data-bound-ssr.md).
