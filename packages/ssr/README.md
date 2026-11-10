@@ -67,3 +67,8 @@ The Node-only `@zaakiyjs/ssr/build` subpath exports `buildVerifiedManifestV1(art
 Run both the bytes check and the existing `verifyTrustedManifest` runtime registration check before activating SSR. **This is a build integrity gate, not proof that a host module loader imported the checked bytes**. Deployments must bind an immutable registry to the exact attested artifacts. There is still no compiler TSX-to-server target or live DOM hydration adoption; issue #59 remains open.
 
 The browser-only `@zaakiyjs/ssr/client` `inspectHydration` preflight now requires comment markers of the form `zaakiy-h:<markerId>:<templateDigest>`, validates digests, order, uniqueness, build/route identity and bounded cardinality, and fails closed on legacy ID-only markers. It inspects only; it neither hydrates nodes nor attaches listeners. Do not render these markers without an independently reviewed server compiler and hydration adapter.
+
+
+### Byte-attested Node adapter
+
+The `@zaakiyjs/ssr/node` subpath also exports `createByteAttestedNodeServerAdapter(options, bytesByModuleId)`. This factory validates the pinned manifest's SHA-256 build identity and each server module's exact artifact bytes *before* creating the request handler. It rejects missing/tampered bytes rather than serving through an unchecked factory. The original `createNodeServerAdapter` remains available for compatibility and does not imply byte attestation. The deployment must still guarantee that its immutable module registry loads the same verified bytes.

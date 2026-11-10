@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createContext, getOwner, onCleanup, provide as coreProvide } from "@zaakiyjs/core";
-import { createNodeServerAdapter, MemoryRenderCache, createCacheInvalidator } from "../src/node.js";
+import { createByteAttestedNodeServerAdapter, createNodeServerAdapter, MemoryRenderCache, createCacheInvalidator } from "../src/node.js";
+import { buildVerifiedManifestV1 } from "../src/build.js";
 import type { ServerOptions } from "../src/node.js";
 import type { RenderResponseV1, TrustedServerBuildManifestV1, ServerRequestContextV1 } from "../src/protocol.js";
 
@@ -29,6 +30,34 @@ async function get(options: ServerOptions, path = "/products/a", signal = new Ab
   return createNodeServerAdapter(options).handle(new Request("https://shop.example.test" + path), { signal });
 }
 describe("SSR request / trusted-module boundary", () => {
+  it("requires matching real server artifact bytes before starting a byte-attested adapter", async () => {
+    const sourceBytes = new TextEncoder().encode("compiled trusted render module");
+    const verified = buildVerifiedManifestV1([
+      { routeId: "item", moduleId: "built/item", bytes: sourceBytes }
+    ]);
+    const options = fixture(undefined, {
+      manifest: verified,
+      modules: { "built/item": {
+        sourceDigest: verified.routes.item!.sourceDigest,
+        module: {
+          protocol: "zaakiy.render/1",
+          render: () => ({
+            version: 1, status: 200, headers: {}, body: "<main>attested</main>",
+            cache: { scope: "no-store", tags: [] }
+          })
+        }
+      } }
+    });
+    const adapter = createByteAttestedNodeServerAdapter(options, { "built/item": sourceBytes });
+    const response = await adapter.handle(new Request("https://shop.example.test/products/a"),
+      { signal: new AbortController().signal });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("<main>attested</main>");
+    expect(() => createByteAttestedNodeServerAdapter(options, {
+      "built/item": new TextEncoder().encode("tampered module")
+    })).toThrow(/bytes do not match/);
+    expect(() => createByteAttestedNodeServerAdapter(options, {})).toThrow(/Missing trusted/);
+  });
   it("uses the existing Router matcher and passes dynamic loader data", async () => {
     const response = await get(fixture());
     expect(response.status).toBe(200);
