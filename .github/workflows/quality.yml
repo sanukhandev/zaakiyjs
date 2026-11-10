@@ -75,4 +75,8 @@ jobs:
       - name: Install frozen workspace dependencies
         run: pnpm install --frozen-lockfile
       - name: Compile ESM packages and test contracts
-        run: pnpm build && pnpm test
+        run: |
+          pnpm build
+          node --test scripts/ci/package-exports.test.mjs
+          node scripts/ci/package-exports.mjs
+          pnpm test
