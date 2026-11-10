@@ -200,7 +200,9 @@ export function analyze(request: CompileRequest): Analysis {
     const target: PropertyBinding["target"] = component || ["value", "checked", "disabled", "selected"].includes(name)
       ? "property" : name === "class" ? "class" : name === "style" ? "style" : "attribute";
     const span = spanOf(source, node);
-    // JSX htmlFor is the DOM label association attribute "for". Preserve component prop spelling.\n    const domName = !component && name === "htmlFor" ? "for" : name;\n    return { kind: "PropertyBinding", id: idOf("PropertyBinding", span), span, name: domName, target, expression: value };
+    // JSX htmlFor maps to the native HTML for attribute, not a custom DOM property.
+    const domName = !component && name === "htmlFor" ? "for" : name;
+    return { kind: "PropertyBinding", id: idOf("PropertyBinding", span), span, name: domName, target, expression: value };
   };
 
   const childrenOf = (children: ts.NodeArray<ts.JsxChild>, namespace: StaticElement["namespace"]): IRNode[] => {
