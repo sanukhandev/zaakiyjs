@@ -186,7 +186,7 @@ export function bindExitAwareConditionalRegion(
   };
 
   return ownEffect(owner, () => {
-    if (Boolean(when())) {
+    if (when()) {
       stopExit();
       if (current) return; // Same connected native node and scoped owner.
       const child = createOwner(owner);
@@ -213,7 +213,9 @@ export function bindExitAwareConditionalRegion(
     if (!current || pending) return;
     const ticket = ++revision;
     const controller = new AbortController();
-    const timer = setTimeout(() => settle(ticket, true), maxExitMs);
+    const timer = setTimeout(() => {
+      try { settle(ticket, true); } catch (error) { failed(error); }
+    }, maxExitMs);
     pending = { revision: ticket, controller, timer };
     let completion: void | Promise<void>;
     try {
@@ -226,10 +228,12 @@ export function bindExitAwareConditionalRegion(
     void Promise.resolve(completion).then(
       () => settle(ticket),
       error => {
+        // Superseded callbacks must not report stale cancellation errors.
+        if (!pending || pending.revision !== ticket) return;
         failed(error);
         settle(ticket);
       }
-    );
+    ).catch(failed);
   }, clear);
 }
 

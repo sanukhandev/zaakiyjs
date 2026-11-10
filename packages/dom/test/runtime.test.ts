@@ -76,7 +76,7 @@ describe("opt-in exit-aware conditional DOM regions", () => {
     const finish: Array<() => void> = [];
     let mounts = 0;
     let cleanups = 0;
-    bindExitAwareConditionalRegion(owner, region, () => visible.value, child => {
+    bindExitAwareConditionalRegion(owner, region, () => visible.value, () => {
       mounts++;
       onCleanup(() => { cleanups++; });
       const button = document.createElement("button");
