@@ -43,7 +43,7 @@ The compiler lowers this supported pattern to owner-scoped native nodes and a te
 
 - The IR schema is versioned; introducing incompatible nodes requires a coordinated ADR and ABI tests.
 - Unknown calls in reactive expressions are conservatively rejected when purity cannot be proven.
-- JSX spreads, arbitrary component children, certain refs/dynamic classes/styles and general hydration are not part of the currently supported compiler slice.
+- JSX spreads, arbitrary component children, component refs, reactive ref replacement, dynamic classes/styles and general hydration remain unsupported. Native element callback refs use an opt-in connected-mount helper on the hardening branch.
 
 ## Public API index
 
@@ -122,7 +122,7 @@ Generated output imports helpers from @zaakiyjs/dom/compiler and owners from @za
 ### Explicit unsupported behavior
 
 - Root-level conditional/keyed regions, component-root templates that capture stale item snapshots (use live zero-arg getters), complex/deconstructed map parameters, and unsupported reactive keyed attributes/props fail closed. Nested keyed loops and multi-root fragment templates are supported within native host parents. Supported conditional/keyed forms use the reviewed additive DOM region ABI (ADR 0004).
-- JSX spreads, top-level fragments, refs, component children, dynamic attributes/classes/styles, **all inline style attributes**, dynamic handler replacement, SVG foreignObject, unsafe HTML sinks and untrusted URL schemes produce focused diagnostics.
+- JSX spreads, top-level fragments, component refs, string refs, reactive ref replacement, component children, dynamic attributes/classes/styles, **all inline style attributes**, dynamic handler replacement, SVG foreignObject, unsafe HTML sinks and untrusted URL schemes produce focused diagnostics. Native element callback refs compile to opt-in `bindMountedRef` and do not modify the frozen eager `bindRef` semantics.
 - Reactivity analysis recognizes `.value` reads from aliases and nested props, but cannot prove all indirect reactive dependencies (for example, an unknown function that internally reads a signal). Calls in detected reactive text expressions fail closed without purity proof; destructured snapshot reads do not become magically reactive.
 - Dynamic text child expressions must have primitive TS types; arrays, object views and prebuilt JSX nodes require an explicit child/view semantics contract.
 - No CSS generation, browser compatibility lowering, SSR, hydration, or tree-shaking of unrelated source declarations. The compiler does not claim to be a bundler. Supplying explicit `targetBrowsers` fails with ZC2301 until a tested browser compatibility profile is frozen.
@@ -163,3 +163,7 @@ Keyed component-root templates are supported when each varying item prop is a si
 - [Public exports](https://github.com/sanukhandev/zaakiyjs/blob/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/compiler/src/index.ts)
 - [Package tests](https://github.com/sanukhandev/zaakiyjs/tree/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/compiler/test) (some packages use `tests/`)
 - Update this guide in the same PR that changes public APIs, compiler/DOM behavior, security rules or feature support.
+
+### Connected native JSX refs (integration branch)
+
+A native element accepts a stable typed callback such as `<button ref={node => { /* node is HTMLButtonElement | null */ }} />`. The generated helper waits until the node is connected, delivers the node once per mount, and sends `null` on owner disposal; keyed reorders do not create another attachment. A detached `DocumentFragment` mount is observed until connection or disposal. A string ref, component ref, or reactive replacement of the ref callback is rejected. Previous TSX without refs keeps the original DOM helper import surface. This extension is not a substitute for the still-open component slot, variant or hydration contracts.

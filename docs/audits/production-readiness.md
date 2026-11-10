@@ -55,3 +55,11 @@ These are initial repository-documentation findings, **not** proof that a comple
 ## Merge-ready definition
 
 All in-scope P0/P1 defects resolved; unchanged supported contracts or approved migrations; baseline and downstream regressions green; real-browser, security, accessibility, SSR/hydration and clean consumer evidence recorded; no unexplained performance regression; final PR mergeable with required CI passing; explicit human approval.
+
+## Integration implementation ledger (November 10, 2026)
+
+The PR has production code changes; earlier statements that it contains only documentation are superseded. The branch adds native `htmlFor` lowering with 3-browser label association acceptance, connected native JSX refs (opt-in, preserving eager `bindRef`), and SSR cache rejection of responses with undeclared HTTP `Vary` dimensions. It also adds workspace graph/integrity and post-build export/CLI/type declaration validation. Each new head requires its own Quality and browser evidence.
+
+**Verified earlier head:** `46a5abeb244862ed71d245a862b9e476363378d5` passed eight workflows including Quality, M1 browser, Release Hardening, Templates, Router, CLI, Motion and Analytics Privacy. This does not certify later commits or close milestone gates.
+
+**Remaining architectural blockers:** #37 component children/slots, safe dynamic class/style variants and exit-aware regions; #59 compiler-generated SSR and real hydration; #24 independent release authorization. The automated audits do not prove manual screen-reader coverage or legal/npm credentials. No milestone is marked fully accepted by this ledger.

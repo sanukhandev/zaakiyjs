@@ -72,7 +72,7 @@ Sections below retain capability explanations and examples from the package's so
 
 - `@zaakiyjs/dom`: `mount(compiledFactory, container)` initializes a fresh owner once; `dispose()` cleans up and removes only its mounted range.
 - `@zaakiyjs/dom/compiler`: frozen v1 primitives `createElement`, `createText`, `setText`, `setProperty`, `setAttribute`, `bindText`, `bindProperty`, and `listen`.
-- Additional browser helpers: `setClass`, `setStyle`, `bindAttribute`, `bindClass`, `bindStyle`, `bindRef`, `listenStable`, and `cloneStatic`.
+- Additional browser helpers: `setClass`, `setStyle`, `bindAttribute`, `bindClass`, `bindStyle`, `bindRef`, `bindMountedRef`, `listenStable`, and `cloneStatic`.
 
 `bind*` functions connect render-phase signal effects to core owner cleanup. A read tracks only signals accessed by that binding. `setText` updates `Text.data` only when changed. Reactive boolean or nullish JSX children normalize to empty text, matching the compiler's nonreactive lowering. Immutable templates are constructed DOM nodes cloned with `cloneNode(true)`; HTML strings are never parsed.
 
@@ -125,3 +125,7 @@ See [ADR 0004](../../adr/0004-dom-region-abi.md) for the frozen protocol and its
 - [Public exports](https://github.com/sanukhandev/zaakiyjs/blob/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/dom/src/index.ts)
 - [Package tests](https://github.com/sanukhandev/zaakiyjs/tree/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/dom/test) (some packages use `tests/`)
 - Update this guide in the same PR that changes public APIs, compiler/DOM behavior, security rules or feature support.
+
+### Connected native refs versus eager refs
+
+`bindRef(owner, node, callback)` retains its existing eager callback semantics for compatibility with legacy DOM ABI consumers. The additive `bindMountedRef(owner, node, callback)` is designed for compiler-generated native JSX and invokes the callback only once the node is connected. A disconnected mount uses a scoped `MutationObserver` until connection; owner disposal disconnects the observer and sends a single `null` after a successful attachment. It does not provide a component-instance ref, slot ownership protocol, or server hydration support. Native TSX `ref` lowering is conditional, so modules not using refs do not import the extension.
