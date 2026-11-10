@@ -138,3 +138,7 @@ The hardening compiler now emits `bindClass` for finite class-variant expression
 ### Additive exit-aware DOM integration
 
 `@zaakiyjs/dom/compiler` additionally exposes `bindExitAwareConditionalRegion` for direct native DOM integration. It retains one element/owner while `exit(element, signal)` settles, cancels pending exit on re-entry, and enforces a bounded 1–30000ms lifetime. Parent disposal is synchronous and aborts pending exits. Existing `bindConditionalRegion` and keyed-region behavior remain unchanged; this helper is not emitted automatically by TSX and does not support fragments, slots or nested keyed exit choreography.
+
+### Owner-scoped native slot integration
+
+The additive `createOwnedNativeSlot(owner, factory)` helper at `@zaakiyjs/dom/compiler` owns one native Node or DocumentFragment via logical Core ancestry and an exact anchored DOM range. The same slot cannot mount twice, portals do not change its DI ancestry, and parent disposal cleans up child owners and nodes. This is not compiler-generated component children/named slots yet; see [ADR 0011](../../adr/0011-native-slot-ownership.md).

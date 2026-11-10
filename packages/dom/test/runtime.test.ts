@@ -9,7 +9,7 @@ import {
   cloneStatic, createElement, createText, listen, listenStable, setAttribute,
   setProperty, setStyle
 } from "../src/compiler.js";
-import { bindConditionalRegion, bindExitAwareConditionalRegion, bindKeyedRegion, createRegion } from "../src/compiler.js";
+import { bindConditionalRegion, bindExitAwareConditionalRegion, bindKeyedRegion, createOwnedNativeSlot, createRegion } from "../src/compiler.js";
 
 afterEach(() => { document.body.replaceChildren(); });
 
@@ -192,6 +192,89 @@ describe("opt-in exit-aware conditional DOM regions", () => {
       () => true, () => document.createTextNode("unsupported") as unknown as Element,
       () => undefined)).toThrow(/one native Element/);
     disposeOwner(brokenOwner);
+  });
+});
+
+
+describe("opt-in native slot ownership and portaled placement", () => {
+  it("creates a child once and tears down only its native range on parent disposal", () => {
+    const owner = createOwner();
+    const host = document.createElement("section");
+    const sibling = document.createElement("aside");
+    host.append(sibling);
+    document.body.append(host);
+    const order: string[] = [];
+    let called = 0;
+    const slot = createOwnedNativeSlot(owner, scope => {
+      called++;
+      onMount(() => order.push("mounted"));
+      onCleanup(() => order.push("cleanup"));
+      const fragment = document.createDocumentFragment();
+      fragment.append(document.createElement("strong"), document.createTextNode("second"));
+      expect(scope.parent).toBe(owner);
+      return fragment;
+    });
+    slot.mount(host, sibling);
+    mountOwner(owner);
+    expect(order).toEqual(["mounted"]);
+    expect(called).toBe(1);
+    expect(host.querySelector("strong")).not.toBeNull();
+    expect(host.lastChild).toBe(sibling);
+    expect(() => slot.mount(host)).toThrow(/only once/);
+    disposeOwner(owner);
+    expect(order).toEqual(["mounted", "cleanup"]);
+    expect(slot.disposed).toBe(true);
+    expect(host.childNodes).toHaveLength(1);
+    expect(host.firstChild).toBe(sibling);
+    slot.dispose();
+    expect(order).toHaveLength(2);
+  });
+
+  it("keeps lexical ownership even if a slot is placed in a portal host", () => {
+    const owner = createOwner();
+    const portal = document.createElement("aside");
+    document.body.append(portal);
+    mountOwner(owner);
+    const events: string[] = [];
+    const slot = createOwnedNativeSlot(owner, scope => {
+      expect(scope.parent).toBe(owner);
+      onMount(() => events.push("mounted"));
+      onCleanup(() => events.push("disposed"));
+      const button = document.createElement("button");
+      button.textContent = "Owned";
+      return button;
+    });
+    slot.mount(portal);
+    expect(events).toEqual(["mounted"]);
+    expect(portal.querySelector("button")?.textContent).toBe("Owned");
+    disposeOwner(owner);
+    expect(events).toEqual(["mounted", "disposed"]);
+    expect(portal.childNodes).toHaveLength(0);
+  });
+
+  it("rolls back a failing slot factory without touching unrelated siblings", () => {
+    const owner = createOwner();
+    const host = document.createElement("div");
+    const keep = document.createElement("p");
+    host.append(keep);
+    const slot = createOwnedNativeSlot(owner, () => {
+      onCleanup(() => { /* owner must still unwind */ });
+      throw new Error("slot creation failed");
+    });
+    expect(() => slot.mount(host)).toThrow("slot creation failed");
+    expect(slot.disposed).toBe(true);
+    expect([...host.childNodes]).toEqual([keep]);
+    expect(() => slot.mount(host)).toThrow(/disposed/);
+    disposeOwner(owner);
+  });
+
+  it("does not mount a slot after owner disposal", () => {
+    const owner = createOwner();
+    const slot = createOwnedNativeSlot(owner, () => document.createElement("div"));
+    disposeOwner(owner);
+    const host = document.createElement("div");
+    expect(() => slot.mount(host)).toThrow(/disposed/);
+    expect(host.childNodes).toHaveLength(0);
   });
 });
 

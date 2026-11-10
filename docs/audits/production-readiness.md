@@ -88,3 +88,7 @@ An additive `@zaakiyjs/dom/compiler` helper retains exactly one native Element a
 
 - Introduced an explicit literal-only `@zaakiyjs/compiler` server output API returning a `zaakiy.render/1` module. It compiles static HTML at build time, without JS/TSX evaluation at request time, and rejects unsafe/dynamic constructs.
 - Its emitted JavaScript bytes are suitable for the SSR build layer's SHA-256 trusted-artifact check. There is no HTML hydration or component rendering in this slice, so M4 and issue #59 remain open pending broader integration.
+
+### Component slots — owner-scoped DOM precursor
+
+An opt-in native slot factory preserves logical Core owner ancestry and anchored multi-root DOM cleanup, even when placed in a portal. Compiler JSX component children and named slots remain unsupported on IR v1 until a separately reviewed versioned contract and browser integration are complete (ADR 0011, issue #37).
