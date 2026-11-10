@@ -284,7 +284,8 @@ export function createNodeServerAdapter(options: ServerOptions): NodeServerAdapt
             cleanQuery.toString(), cacheScope, part ?? "", vary].join("\0"));
           result = await abortRace(options.cache.getOrRender(key, {
             routeId: leaf.route.id, buildId,
-            scope: cacheScope, partitionKey: part, tags: cachePolicy.tags, ttlSeconds: cachePolicy.ttlSeconds
+            scope: cacheScope, partitionKey: part, tags: cachePolicy.tags, ttlSeconds: cachePolicy.ttlSeconds,
+            ...(cachePolicy.vary ? { vary: cachePolicy.vary } : {})
           }, render), controller.signal);
         } else result = await render();
         streaming = typeof result.body !== "string" && request.method === "GET";
