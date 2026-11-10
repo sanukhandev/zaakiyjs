@@ -34,6 +34,8 @@ export function App() {
   return (
     <main>
       <h1>ZaakiyJS M1 browser acceptance</h1>
+      <label htmlFor="email">Email address</label>
+      <input id="email" type="email" />
       <button id="counter" type="button" onClick={() => { fixture.counter.value++; }}>
         Count: {fixture.counter.value}
       </button>

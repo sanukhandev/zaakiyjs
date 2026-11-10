@@ -20,6 +20,18 @@ def counter_keyboard(page: Page) -> None:
     expect(page.get_by_role("textbox", name="Row label")).to_have_count(2)
 
 
+def native_label_association(page: Page) -> None:
+    """Compiler emits native for=; the accessible name and label-click focus work."""
+    field = page.get_by_role("textbox", name="Email address")
+    expect(field).to_be_visible()
+    expect(page.locator('label[for="email"]')).to_have_count(1)
+    page.get_by_text("Email address", exact=True).click()
+    assert field.evaluate("(node) => document.activeElement === node"), "Label click did not focus input"
+    page.evaluate("window.__zaakiyAcceptance.dispose()")
+    expect(page.locator('label[for="email"]')).to_have_count(0)
+    expect(page.locator("#email")).to_have_count(0)
+
+
 def conditional_ownership(page: Page) -> None:
     page.evaluate("window.__detachedShown = document.querySelector('#shown')")
     page.locator("#shown").click()
@@ -229,6 +241,7 @@ def keyed_component_live_getter(page: Page) -> None:
 
 CASES = (
     ("counter_keyboard", counter_keyboard),
+    ("native_label_association", native_label_association),
     ("conditional_ownership", conditional_ownership),
     ("precise_mutations", precise_mutations),
     ("reorder_focus", reorder_focus),
