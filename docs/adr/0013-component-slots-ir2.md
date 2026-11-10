@@ -13,7 +13,8 @@ The native JSX compiler rejects `<Panel><button>Open</button></Panel>` with `ZC2
 Add **explicit** `componentSlots: true` to `CompileRequest` and `ZaakiyViteOptions`. This opts into IR document version **2**, adding only:
 
 - An optional `children: readonly IRNode[]` field to `ComponentCall`, representing direct JSX child nodes under the caller's logical ownership.
-- A `SlotOutlet` node representing the exact recognized native child expression `{props.children}`.
+- Optional `ComponentCall.slots` named JSX prop factories, each with a safe static slot name and compiled child IR nodes.
+- A `SlotOutlet` node representing the exact recognized native child expression `{props.children}` or the compile-only intrinsic `<Slot name="header" />`.
 
 No v1 IR node shape, compiler result, generated JS helper selection or existing control-flow semantics change when the flag is omitted. `validateIR` rejects `children` or `SlotOutlet` nodes in a v1 document and rejects any other unsupported version. IR optimizer, style-token extraction, source offsets and compiler diagnostics traverse the v2 child subtree.
 
@@ -37,7 +38,7 @@ The `JSXChild` is an authoring-time type; the opt-in compiler lowers it to a nat
 
 ### Explicit exclusions
 
-- Named slots (`header`, `footer`) and JSX elements nested in arbitrary named props.
+- Arbitrary dynamic JSX-in-props, runtime slot names and non-JSX slot prop values. Only explicit named JSX values (for example `header={<h2>Title</h2>}`) are supported, paired with a static `<Slot name="header" />` outlet.
 - JSX spread attributes and dynamic JSX node expressions other than the exact default `props.children` outlet.
 - Multiple mounts of the same slot, implicit slot duplication, untrusted handles, or runtime JSX interpreters.
 - Automatic backwards migration of existing IR v1 serialized documents.
@@ -51,8 +52,12 @@ Unknown expressions still produce existing diagnostics. An explicit `children` p
 - v2 validation must reject v1 slot-field leakage and unknown IR versions.
 - Typed compiler tests assert real slot-factory helper generation, deterministic source output, and conflicting child props rejection.
 - DOM unit tests assert brand provenance, one-shot mount, exact range cleanup, parent ownership and portal ancestry.
-- The maintained M1 browser fixture opts in only for that test app, and runs `<SlotPanel><button>...</button><span>...</span></SlotPanel>` across Chromium, Firefox and WebKit. It verifies node identity, focus preservation on unrelated keyed reorder, event behavior and disposal. The expected matrix is 17 cases per browser.
+- The maintained M1 browser fixture opts in only for that test app, and runs `<SlotPanel><button>...</button><span>...</span></SlotPanel>` across Chromium, Firefox and WebKit. It verifies node identity, focus preservation on unrelated keyed reorder, event behavior and disposal. The expected matrix is 18 cases per browser, including named slots.
 
 ## Follow-on work
 
 A separately versioned named-slot and arbitrary-child-expression contract is still required. It must address nested slot binding names, typed prop ownership and compiler diagnostics without weakening the default v1 or the existing security policy. M4 dynamic SSR and real hydration remain independent. Issue #37 is partially addressed, not closed. Production publishing remains subject to issue #24.
+
+## Restricted named slots extension
+
+IR v2 supports static JSX-valued named component props through `ComponentCall.slots`, and named `SlotOutlet` nodes imported via the trusted Core `Slot` intrinsic. Names must be statically known and unique, never user-derived. The owner-scoped factory receives exactly one native mount and is disposed with the caller, including portal placement. Default IR v1 and all existing compiler outputs remain unchanged. Named slots are tested in the expanded 18-case-per-engine browser matrix. General JSX spreads and arbitrary JSX-valued expressions remain out of scope.

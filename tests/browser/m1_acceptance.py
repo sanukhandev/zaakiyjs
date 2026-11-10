@@ -115,6 +115,23 @@ def compiled_component_slot_children(page: Page) -> None:
     expect(page.locator("#compiled-slot-child")).to_have_count(0)
 
 
+def compiled_named_jsx_slot(page: Page) -> None:
+    """Named JSX prop uses a native owned slot rather than a runtime JSX tree."""
+    title = page.locator("#named-slot-heading")
+    expect(title).to_have_text("Named heading")
+    action = page.get_by_role("button", name="Named action")
+    expect(action).to_be_visible()
+    page.evaluate("window.__namedSlotIdentity = document.getElementById('named-slot-button')")
+    action.focus()
+    action.click()
+    expect(page.locator("#active-clicks")).to_have_text("1")
+    page.locator("#reorder").click()
+    assert page.evaluate("document.getElementById('named-slot-button') === window.__namedSlotIdentity")
+    page.evaluate("window.__zaakiyAcceptance.dispose()")
+    expect(page.locator("#named-slot-panel")).to_have_count(0)
+    expect(page.locator("#named-slot-button")).to_have_count(0)
+
+
 def native_slot_ownership(page: Page) -> None:
     """One native slot factory, portal ownership, anchored range and cleanup."""
     page.evaluate("window.__zaakiyAcceptance.slotStart()")
@@ -343,6 +360,7 @@ CASES = (
     ("exit_aware_region", exit_aware_region),
     ("native_slot_ownership", native_slot_ownership),
     ("compiled_component_slot_children", compiled_component_slot_children),
+    ("compiled_named_jsx_slot", compiled_named_jsx_slot),
     ("conditional_ownership", conditional_ownership),
     ("precise_mutations", precise_mutations),
     ("reorder_focus", reorder_focus),

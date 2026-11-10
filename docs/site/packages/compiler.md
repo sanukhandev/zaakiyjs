@@ -70,6 +70,7 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `KeyedLoop`
 - `PropertyBinding`
 - `Purity`
+- `NamedSlot`
 - `SlotOutlet`
 - `SourceSpan`
 - `StaticElement`

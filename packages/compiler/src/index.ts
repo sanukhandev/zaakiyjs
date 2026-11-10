@@ -14,8 +14,9 @@ export interface PropertyBinding extends IRNodeBase { readonly kind: "PropertyBi
 export interface EventBinding extends IRNodeBase { readonly kind: "EventBinding"; readonly name: string; readonly expression: IRExpression }
 export interface ConditionalBlock extends IRNodeBase { readonly kind: "ConditionalBlock"; readonly condition: IRExpression; readonly whenTrue: readonly IRNode[]; readonly whenFalse: readonly IRNode[] }
 export interface KeyedLoop extends IRNodeBase { readonly kind: "KeyedLoop"; readonly collection: IRExpression; readonly key: IRExpression; readonly body: readonly IRNode[]; readonly itemParameter?: string }
-export interface ComponentCall extends IRNodeBase { readonly kind: "ComponentCall"; readonly component: string; readonly props: readonly PropertyBinding[]; readonly children?: readonly IRNode[] }
-export interface SlotOutlet extends IRNodeBase { readonly kind: "SlotOutlet"; readonly name: "children" }
+export interface NamedSlot { readonly name: string; readonly children: readonly IRNode[] }
+export interface ComponentCall extends IRNodeBase { readonly kind: "ComponentCall"; readonly component: string; readonly props: readonly PropertyBinding[]; readonly children?: readonly IRNode[]; readonly slots?: readonly NamedSlot[] }
+export interface SlotOutlet extends IRNodeBase { readonly kind: "SlotOutlet"; readonly name: string }
 export interface StyleToken extends IRNodeBase { readonly kind: "StyleToken"; readonly token: string; readonly variant?: string }
 export interface CompatFeature extends IRNodeBase { readonly kind: "CompatFeature"; readonly feature: string; readonly targets: readonly string[] }
 export type IRNode = StaticText | StaticElement | DynamicText | PropertyBinding | EventBinding | ConditionalBlock | KeyedLoop | ComponentCall | SlotOutlet | StyleToken | CompatFeature;
@@ -64,7 +65,10 @@ function styleTokenManifest(nodes: readonly IRNode[], source: string): readonly 
       node.whenTrue.forEach(visit);
       node.whenFalse.forEach(visit);
     } else if (node.kind === "KeyedLoop") node.body.forEach(visit);
-    else if (node.kind === "ComponentCall") node.children?.forEach(visit);
+    else if (node.kind === "ComponentCall") {
+      node.children?.forEach(visit);
+      node.slots?.forEach(slot => slot.children.forEach(visit));
+    }
   };
   nodes.forEach(visit);
   return collectStyleTokens(nodes).map(token => {

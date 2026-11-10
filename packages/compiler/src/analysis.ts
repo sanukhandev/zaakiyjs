@@ -122,7 +122,7 @@ export function analyze(request: CompileRequest): Analysis {
 
   // Only imports from the reserved core entrypoint opt in to compiler intrinsics.
   // An unrelated user component named Show or For is never silently hijacked.
-  const intrinsics = new Map<string, "Show" | "For">();
+  const intrinsics = new Map<string, "Show" | "For" | "Slot">();
   for (const statement of source.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier) ||
         statement.moduleSpecifier.text !== "@zaakiyjs/core") continue;
@@ -132,7 +132,7 @@ export function analyze(request: CompileRequest): Analysis {
     for (const specifier of clause.namedBindings.elements) {
       if (specifier.isTypeOnly) continue;
       const imported = specifier.propertyName?.text ?? specifier.name.text;
-      if (imported === "Show" || imported === "For") intrinsics.set(specifier.name.text, imported);
+      if (imported === "Show" || imported === "For" || imported === "Slot") intrinsics.set(specifier.name.text, imported);
     }
   }
 
@@ -319,7 +319,8 @@ export function analyze(request: CompileRequest): Analysis {
     const intrinsic = intrinsics.get(tag);
     if (intrinsic && !isShadowed(opening, tag)) {
       const attrs = opening.attributes.properties;
-      const expected = intrinsic === "Show" ? ["when", "fallback"] : ["each", "by"];
+      const expected = intrinsic === "Show" ? ["when", "fallback"] :
+        intrinsic === "For" ? ["each", "by"] : ["name"];
       const names = new Set<string>();
       for (const attr of attrs) {
         if (!ts.isJsxAttribute(attr)) {
@@ -363,6 +364,20 @@ export function analyze(request: CompileRequest): Analysis {
       const children = ts.isJsxElement(node)
         ? node.children.filter(child => !(ts.isJsxText(child) && !child.text.trim()))
         : [];
+      if (intrinsic === "Slot") {
+        const nameAttr = getAttribute("name");
+        const rawName = nameAttr?.initializer && ts.isStringLiteral(nameAttr.initializer)
+          ? nameAttr.initializer.text : null;
+        if (!request.componentSlots) {
+          report("ZC2503", "Named Slot requires componentSlots: true.", node);
+          return { kind: "StaticText", id: idOf("StaticText", span), span, text: "" };
+        }
+        if (children.length || !rawName || !/^[a-z][a-z0-9_-]{0,31}$/.test(rawName)) {
+          report("ZC2503", "Named Slot requires a static safe name and no JSX children.", node);
+        }
+        return { kind: "SlotOutlet", id: idOf("SlotOutlet", span), span,
+          name: rawName && /^[a-z][a-z0-9_-]{0,31}$/.test(rawName) ? rawName : "children" };
+      }
       if (intrinsic === "Show") {
         const when = getValue("when", true);
         const fallback = getValue("fallback", false);
@@ -426,6 +441,7 @@ export function analyze(request: CompileRequest): Analysis {
     const namespace = tag === "svg" ? "svg" : parentNamespace;
     if (tag === "foreignObject") report("ZC2107", "SVG foreignObject namespace switching is not supported.", node);
     const props: PropertyBinding[] = [];
+    const namedSlots: Array<{ name: string; children: IRNode[] }> = [];
     const attributes: IRNode[] = [];
     for (const attr of opening.attributes.properties) {
       if (ts.isJsxSpreadAttribute(attr)) {
@@ -435,6 +451,23 @@ export function analyze(request: CompileRequest): Analysis {
       const name = attr.name.getText(source);
       // Key is consumed as a stable compiler loop identity; never emit to DOM.
       if (inKeyedLoop && name === "key") continue;
+      if (request.componentSlots && isComponent && attr.initializer &&
+          ts.isJsxExpression(attr.initializer) && attr.initializer.expression &&
+          (isJsx(attr.initializer.expression) || ts.isJsxFragment(attr.initializer.expression))) {
+        const sourceNode = attr.initializer.expression;
+        const nodes = isJsx(sourceNode) ? [element(sourceNode, parentNamespace)]
+          : childrenOf(sourceNode.children, parentNamespace).filter(
+            child => child.kind !== "StaticText" || Boolean(child.text.trim())
+          );
+        if (name === "children" || !/^[a-z][a-z0-9_-]{0,31}$/.test(name) ||
+            namedSlots.some(slot => slot.name === name) ||
+            props.some(prop => prop.name === name) || !nodes.length) {
+          report("ZC2504", "Named JSX slot props must be unique safe names with JSX content; children is reserved.", attr);
+        } else {
+          namedSlots.push({ name, children: nodes });
+        }
+        continue;
+      }
       if (!isComponent && /^on/i.test(name) && !/^on[A-Z]/.test(name)) {
         report("ZC1006", "Inline event attributes must use typed onEvent handlers, not HTML on* strings.", attr);
         continue;
@@ -499,11 +532,15 @@ export function analyze(request: CompileRequest): Analysis {
       const children = ts.isJsxElement(node) ? childrenOf(node.children, parentNamespace).filter(
         child => child.kind !== "StaticText" || Boolean(child.text.trim())
       ) : [];
+      if (namedSlots.some(slot => props.some(prop => prop.name === slot.name))) {
+        report("ZC2504", "A named slot cannot also be assigned a regular component prop.", opening);
+      }
       if (children.length && props.some(prop => prop.name === "children")) {
         report("ZC2501", "Explicit children prop conflicts with compiled JSX child slot.", opening);
       }
       return { kind: "ComponentCall", id: idOf("ComponentCall", span), span, component: tag, props,
-        ...(children.length ? { children } : {}) };
+        ...(children.length ? { children } : {}),
+        ...(namedSlots.length ? { slots: namedSlots } : {}) };
     }
     const children = ts.isJsxElement(node) ? childrenOf(node.children, namespace) : [];
     return { kind: "StaticElement", id: idOf("StaticElement", span), span, tag, namespace,

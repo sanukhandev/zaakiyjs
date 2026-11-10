@@ -1,4 +1,4 @@
-import { For, Show, onCleanup } from "@zaakiyjs/core";
+import { For, Show, Slot, onCleanup } from "@zaakiyjs/core";
 import { computed, flushSync, signal } from "@zaakiyjs/signals";
 import type { JSXChild } from "@zaakiyjs/core/jsx-runtime";
 
@@ -34,6 +34,14 @@ function SlotPanel(props: { readonly children?: JSXChild }) {
   return <section id="compiled-slot-panel"><div id="compiled-slot-host">{props.children}</div></section>;
 }
 
+/** IR v2 named JSX prop slot, inserted under caller ownership at a native host. */
+function NamedSlotPanel(props: { readonly header?: JSXChild; readonly children?: JSXChild }) {
+  return <section id="named-slot-panel">
+    <Slot name="header" />
+    <div id="named-slot-body">{props.children}</div>
+  </section>;
+}
+
 /** Compiled by the production Vite plugin, never rendered by a test-only JSX interpreter. */
 export function App() {
   fixture.lifecycle.setups += 1;
@@ -47,6 +55,9 @@ export function App() {
         </button>
         <span id="compiled-slot-sibling">Sibling</span>
       </SlotPanel>
+      <NamedSlotPanel header={<h2 id="named-slot-heading">Named heading</h2>}>
+        <button id="named-slot-button" type="button" onClick={() => { fixture.activeClicks.value++; }}>Named action</button>
+      </NamedSlotPanel>
       <div id="variant-state" role="status"
         class={fixture.visible.value ? "status-pill is-visible" : "status-pill is-hidden"}
         aria-label={fixture.visible.value ? "Visible state" : "Hidden state"}

@@ -123,3 +123,7 @@ function App() {
 ```
 
 This compiles a lazily mounted, caller-owned native slot factory. Each slot is single-use; the callee's outlet mounts it at a native parent and it disposes with the caller's lexical scope. Default `compile()` continues to emit IR v1 and reject component JSX children. Explicit `children` props conflicting with nested JSX, named slots, arbitrary JSX-in-props and runtime JSX interpretation remain rejected. See [ADR 0013](../../docs/adr/0013-component-slots-ir2.md).
+
+### Restricted named JSX prop slots
+
+`<Panel header={<h2>Title</h2>}>...</Panel>` is supported under `componentSlots: true` when the callee inserts `<Slot name="header" />` imported from Core. The compiler extracts the JSX into a lazy caller-owned native factory. Dynamic names, duplicate names, JSX spreads and arbitrary JSX-in-props are rejected. Named slots share the one-shot lifetime semantics of default children and do not imply hydration.

@@ -152,6 +152,7 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
         break;
       case "ComponentCall":
         node.children?.forEach(child => visit(child, insideKeyed));
+        node.slots?.forEach(slot => slot.children.forEach(child => visit(child, insideKeyed)));
         node.props.forEach(prop => {
           if (prop.expression.reactive) {
             error("ZC2206", "Passing a signal value as a component prop would become stale. Pass the signal or introduce an agreed reactive prop contract.", prop.span);
@@ -340,6 +341,14 @@ class Builder {
             node.span);
           compiledProps += (compiledProps ? ", " : "") + '"children": ' + slot;
         }
+        for (const named of node.slots ?? []) {
+          const slot = this.variable("named_slot");
+          const slotOwner = this.variable("named_slot_owner");
+          this.push("const " + slot + " = " + this.abi.createOwnedNativeSlot + "(" +
+            this.owner + ", (" + slotOwner + ") => " + this.branch(named.children, slotOwner) + ");",
+            node.span);
+          compiledProps += (compiledProps ? ", " : "") + jsLiteral(named.name) + ": " + slot;
+        }
         this.push("const " + scope + " = " + this.abi.createOwner + "(" + this.owner + ");");
         this.push("const " + name + " = " + this.abi.initializeOwnedComponent + "(" + scope + ", () => " +
           node.component + "({" + compiledProps + "}));");
@@ -347,7 +356,7 @@ class Builder {
       }
       case "SlotOutlet":
         if (!parent) throw new Error("ZC2502: slot outlet requires a native host element");
-        this.push(this.abi.mountOwnedSlot + "(props.children, " + parent + ");", node.span);
+        this.push(this.abi.mountOwnedSlot + "(props[" + jsLiteral(node.name) + "], " + parent + ");", node.span);
         return undefined;
       case "ConditionalBlock": {
         const literal = node.condition.source.trim();
@@ -485,7 +494,8 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
     const containsSlot = (nodes: readonly IRNode[]): boolean => nodes.some(node => {
       if (node.kind === "SlotOutlet") return true;
       if (node.kind === "ComponentCall") return Boolean(node.children?.length) ||
-        containsSlot(node.children ?? []);
+        Boolean(node.slots?.length) || containsSlot(node.children ?? []) ||
+        (node.slots?.some(slot => containsSlot(slot.children)) ?? false);
       if (node.kind === "StaticElement") return containsSlot(node.children);
       if (node.kind === "ConditionalBlock") return containsSlot(node.whenTrue) || containsSlot(node.whenFalse);
       if (node.kind === "KeyedLoop") return containsSlot(node.body);
@@ -496,7 +506,8 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
       if (node.kind === "StaticElement") return containsRef(node.children);
       if (node.kind === "ConditionalBlock") return containsRef(node.whenTrue) || containsRef(node.whenFalse);
       if (node.kind === "KeyedLoop") return containsRef(node.body);
-      if (node.kind === "ComponentCall") return containsRef(node.children ?? []);
+      if (node.kind === "ComponentCall") return containsRef(node.children ?? []) ||
+        (node.slots?.some(slot => containsRef(slot.children)) ?? false);
       return false;
     });
     const domBindings: Array<readonly [string, string]> = [
@@ -520,7 +531,8 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
     const dom = runtimeImport("@zaakiyjs/dom/compiler", domBindings);
     const needsKeyed = (nodes: readonly IRNode[]): boolean => nodes.some(node => {
       if (node.kind === "KeyedLoop") return true;
-      if (node.kind === "ComponentCall") return needsKeyed(node.children ?? []);
+      if (node.kind === "ComponentCall") return needsKeyed(node.children ?? []) ||
+        (node.slots?.some(slot => needsKeyed(slot.children)) ?? false);
       if (node.kind === "StaticElement") return needsKeyed(node.children);
       if (node.kind === "ConditionalBlock") return needsKeyed(node.whenTrue) || needsKeyed(node.whenFalse);
       return false;

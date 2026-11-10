@@ -78,7 +78,7 @@ export function validateIR(value: unknown): readonly CompilerDiagnostic[] {
       EventBinding: ["name", "expression"],
       ConditionalBlock: ["condition", "whenTrue", "whenFalse"],
       KeyedLoop: ["collection", "key", "body", "itemParameter"],
-      ComponentCall: value.irVersion === 2 ? ["component", "props", "children"] : ["component", "props"],
+      ComponentCall: value.irVersion === 2 ? ["component", "props", "children", "slots"] : ["component", "props"],
       SlotOutlet: value.irVersion === 2 ? ["name"] : [],
       StyleToken: ["token", "variant"],
       CompatFeature: ["feature", "targets"]
@@ -134,9 +134,28 @@ export function validateIR(value: unknown): readonly CompilerDiagnostic[] {
         }
         descendants(node.props, path + ".props");
         if (node.children !== undefined && value.irVersion === 2) descendants(node.children, path + ".children");
+        if (node.slots !== undefined && value.irVersion === 2) {
+          if (!Array.isArray(node.slots)) {
+            fail(path + ".slots must be an array.");
+          } else {
+            const names = new Set<string>();
+            for (const slot of node.slots) {
+              if (!record(slot) || !string(slot.name) ||
+                  !/^[a-z][a-z0-9_-]{0,31}$/.test(slot.name) ||
+                  slot.name === "children" || names.has(slot.name) ||
+                  Object.keys(slot).some(key => key !== "name" && key !== "children")) {
+                fail(path + " has a duplicate or malformed named slot.");
+                continue;
+              }
+              names.add(slot.name);
+              descendants(slot.children, path + ".slots." + slot.name + ".children");
+            }
+          }
+        }
         break;
       case "SlotOutlet":
-        if (value.irVersion !== 2 || node.name !== "children") {
+        if (value.irVersion !== 2 || !string(node.name) ||
+            !/^[a-z][a-z0-9_-]{0,31}$/.test(node.name)) {
           fail(path + " has an invalid or v1-only slot outlet.");
         }
         break;
@@ -198,8 +217,13 @@ function optimizeNode(node: IRNode): IRNode {
     case "KeyedLoop":
       return { ...node, body: node.body.map(optimizeNode) };
     case "ComponentCall":
-      return node.children === undefined ? node
-        : { ...node, children: node.children.map(optimizeNode) };
+      return node.children === undefined && node.slots === undefined ? node : {
+        ...node,
+        ...(node.children !== undefined ? { children: node.children.map(optimizeNode) } : {}),
+        ...(node.slots !== undefined ? { slots: node.slots.map(slot => ({
+          ...slot, children: slot.children.map(optimizeNode)
+        })) } : {})
+      };
     default:
       return node;
   }
@@ -227,7 +251,10 @@ export function collectStyleTokens(nodes: readonly IRNode[]): readonly string[] 
         node.whenFalse.forEach(visit);
         break;
       case "KeyedLoop": node.body.forEach(visit); break;
-      case "ComponentCall": node.children?.forEach(visit); break;
+      case "ComponentCall":
+        node.children?.forEach(visit);
+        node.slots?.forEach(slot => slot.children.forEach(visit));
+        break;
       default: break;
     }
   };

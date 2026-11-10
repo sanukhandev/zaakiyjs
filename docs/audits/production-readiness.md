@@ -104,3 +104,7 @@ A dedicated `compileDataServer` target accepts a single native HTML root and con
 - The DOM outlet validates branded slot provenance; caller disposal tears down the exact anchored child range, including portal-host placement.
 - Automated regression and three-engine browser acceptance include a compiled `<SlotPanel><button>...</button><span>...</span></SlotPanel>` and native input/focus behavior. These must pass on the final head before acceptance.
 - Named slots, nested arbitrary JSX-in-props, SSR of live components, client hydration and exit choreography remain open. See ADR 0013 and issue #37.
+
+### Restricted named JSX slots
+
+Opt-in IR v2 supports static JSX-valued named props and `<Slot name="header" />` outlets with caller-owned native factories. Dynamic names and invalid/duplicate props fail compilation. The browser matrix covers native focus, event handling, keyed reorders and teardown. This does not complete full JSX-in-props, SSR hydration or issue #37's exit choreography.

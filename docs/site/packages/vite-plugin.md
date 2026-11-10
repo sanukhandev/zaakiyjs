@@ -123,4 +123,4 @@ Compiler errors are fatal with original file/line/column; warnings are emitted t
 
 ### Optional compiler IR v2 default slots
 
-Pass `zaakiyPlugin({ componentSlots: true })` to opt a Vite app into the experimental default JSX component-children contract. The plugin includes the mode in transform caching and sends it to the compiler. The default remains frozen IR v1. This does not enable named slots, arbitrary JSX-in-props, SSR transforms or unsafe runtime JSX fallback. See [ADR 0013](../../adr/0013-component-slots-ir2.md).
+Pass `zaakiyPlugin({ componentSlots: true })` to opt a Vite app into the experimental default JSX component-children contract. The plugin includes the mode in transform caching and sends it to the compiler. The default remains frozen IR v1. This enables restricted static JSX-valued named props consumed through `<Slot name="header" />`, but still rejects dynamic slot names, arbitrary JSX-in-props, SSR transforms and unsafe runtime JSX fallback. See [ADR 0013](../../adr/0013-component-slots-ir2.md).
