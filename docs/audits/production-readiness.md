@@ -7,9 +7,7 @@ No npm publishing, repository settings changes, or automatic merge authorized.
 
 ## Baseline inventory
 
-25 existing package directories: ads, analytics, async, cli, compat, compiler, consent, core, dom, forms, http, motion, proxy, router, seo, signals, ssr, store, styles, templates, ui-primitives, ui, vite-plugin, plus **two additional entries?**
-
-Correction: enumerate package paths programmatically and verify count before certification. The GitHub directory listing reviewed at baseline contains 23 package directories (ads, analytics, async, cli, compat, compiler, consent, core, dom, forms, http, motion, proxy, router, seo, signals, ssr, store, styles, templates, ui-primitives, ui, vite-plugin). Prior conversational references to 25 must not be treated as verified.
+23 package directories were verified in the GitHub baseline listing: ads, analytics, async, cli, compat, compiler, consent, core, dom, forms, http, motion, proxy, router, seo, signals, ssr, store, styles, templates, ui-primitives, ui, vite-plugin. This is a directory inventory, not yet a complete public-export or dependency audit.
 
 ## M0 verification tasks
 
@@ -49,7 +47,7 @@ Correction: enumerate package paths programmatically and verify count before cer
 - Compiler native `htmlFor` lowering is tracked in issue #48.
 - SSR package explicitly lacks compiler-generated server TSX and DOM hydration adoption; issue #59.
 - Release authorization, license, SemVer, namespace and provenance remain tracked in issue #24.
-- `docs/site/planned-packages.md` still describes Analytics as pending even though #56 merged.
+- Analytics site documentation was stale after PR #56 merged; this branch updates the source status and public API index.
 - Package READMEs contain stale M0/PR status descriptions.
 
 These are initial repository-documentation findings, **not** proof that a complete source/security/performance audit has been run.
