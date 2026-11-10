@@ -57,6 +57,8 @@ interface AbiAliases {
   readonly setAttribute: string;
   readonly bindText: string;
   readonly bindProperty: string;
+  readonly bindAttribute: string;
+  readonly bindClass: string;
   readonly bindMountedRef: string;
   readonly listen: string;
   readonly createRegion: string;
@@ -92,6 +94,8 @@ function allocateRuntimeAliases(source: ts.SourceFile): {
       setAttribute: free("__zSetAttribute"),
       bindText: free("__zBindText"),
       bindProperty: free("__zBindProperty"),
+      bindAttribute: free("__zBindAttribute"),
+      bindClass: free("__zBindClass"),
       bindMountedRef: free("__zBindMountedRef"),
       listen: free("__zListen"),
       createRegion: free("__zCreateRegion"),
@@ -131,9 +135,8 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
         if (node.name === "ref" && node.expression.reactive) {
           error("ZC2211", "Native JSX ref callback must remain stable for the owner lifetime.", node.span);
         }
-        if (node.expression.reactive && node.target !== "property") {
-          error("ZC2203", "Reactive class, style and attributes need a distinct safe DOM binding ABI.", node.span);
-        }
+        // Class and attribute updates use the existing vetted DOM bindings.
+        // Inline style remains unsupported pending a safe per-property contract.
         if (node.target === "style") {
           error("ZC2204", "Inline style JSX requires a safe per-property style ABI; DOM v1 rejects style attributes.", node.span);
         }
@@ -222,9 +225,17 @@ class Builder {
       return;
     }
     if (resolved.reactive) {
-      if (node.target !== "property") {
-        throw new Error("ZC2203: reactive keyed class/attribute requires a specialized safe DOM binding");
+      if (node.target === "class" || node.target === "attribute") {
+        const value = this.variable("reactive_attribute");
+        const read = "() => { const " + value + " = " + expr +
+          "; return " + value + " == null ? null : String(" + value + "); }";
+        const binding = node.target === "class" ? this.abi.bindClass : this.abi.bindAttribute;
+        const prefix = node.target === "class" ? "" : jsLiteral(node.name) + ", ";
+        this.push(binding + "(" + this.owner + ", " + el + ", " + prefix + read + ");",
+          node.expression.span);
+        return;
       }
+      if (node.target !== "property") throw new Error("ZC2204: inline style is unsupported");
       this.push(this.abi.bindProperty + "(" + this.owner + ", " + el + ", " +
         jsLiteral(node.name) + ", () => " + expr + ");", node.expression.span);
       return;
@@ -459,6 +470,7 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
       ["createElement", aliases.createElement], ["createText", aliases.createText],
       ["setProperty", aliases.setProperty], ["setAttribute", aliases.setAttribute],
       ["bindText", aliases.bindText], ["bindProperty", aliases.bindProperty],
+      ["bindAttribute", aliases.bindAttribute], ["bindClass", aliases.bindClass],
       ["listen", aliases.listen], ["createRegion", aliases.createRegion],
       ["bindConditionalRegion", aliases.bindConditionalRegion],
       ["bindKeyedRegion", aliases.bindKeyedRegion]

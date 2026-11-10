@@ -804,3 +804,45 @@ describe("connected native JSX refs", () => {
     expect(reactiveRef.diagnostics.some(d => d.code === "ZC2211")).toBe(true);
   });
 });
+
+describe("finite class variants and reactive DOM attributes", () => {
+  it("binds finite class variants and extracts every CSS candidate", () => {
+    const source = [
+      signalDecl,
+      'function App() { const active = signal(true);',
+      'return <div class={active.value ? "pill active" : "pill inactive"}',
+      'aria-label={active.value ? "On" : "Off"} data-state={active.value ? "on" : "off"} />; }'
+    ].join("\n");
+    const result = compile({ fileName, source });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.manifest?.styleTokens).toEqual(["active", "inactive", "pill"]);
+    expect(result.js[0]?.code).toContain("bindClass");
+    expect(result.js[0]?.code).toContain("bindAttribute");
+  });
+
+  it("rejects unbounded class strings and reactive URL sinks", () => {
+    const classes = compile({ fileName, source: [
+      signalDecl, 'function App() { const cls = signal("unknown");',
+      'return <div class={cls.value} />; }'
+    ].join("\n") });
+    expect(classes.js).toEqual([]);
+    expect(classes.diagnostics.some(d => d.code === "ZC2212")).toBe(true);
+    const urls = compile({ fileName, source: [
+      signalDecl, 'function App() { const href = signal("https://site.test");',
+      'return <a href={href.value}>Link</a>; }'
+    ].join("\n") });
+    expect(urls.js).toEqual([]);
+    expect(urls.diagnostics.some(d => d.code === "ZC1005")).toBe(true);
+  });
+
+  it("deduplicates class tokens and retains IR v1", () => {
+    const source = [
+      signalDecl, 'function App() { const active = signal(true);',
+      'return <div class={active.value ? "pill" : "pill"} />; }'
+    ].join("\n");
+    const result = compile({ fileName, source });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.irVersion).toBe(1);
+    expect(result.manifest?.styleTokens).toEqual(["pill"]);
+  });
+});

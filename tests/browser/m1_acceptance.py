@@ -32,6 +32,22 @@ def native_label_association(page: Page) -> None:
     expect(page.locator("#email")).to_have_count(0)
 
 
+def finite_reactive_variants(page: Page) -> None:
+    """Reactive classes and ARIA attributes update without replacing their element."""
+    node = page.locator("#variant-state")
+    expect(node).to_have_class("status-pill is-visible")
+    expect(node).to_have_attribute("aria-label", "Visible state")
+    expect(node).to_have_attribute("data-state", "visible")
+    page.evaluate("window.__variantIdentity = document.querySelector('#variant-state')")
+    page.locator("#toggle").click()
+    expect(node).to_have_class("status-pill is-hidden")
+    expect(node).to_have_attribute("aria-label", "Hidden state")
+    expect(node).to_have_attribute("data-state", "hidden")
+    assert page.evaluate("document.querySelector('#variant-state') === window.__variantIdentity")
+    page.locator("#toggle").click()
+    expect(node).to_have_class("status-pill is-visible")
+    assert page.evaluate("document.querySelector('#variant-state') === window.__variantIdentity")
+
 def connected_native_ref_lifecycle(page: Page) -> None:
     """Refs attach only when connected, never on reorder, then clear on owner disposal."""
     events = page.evaluate("window.__zaakiyAcceptance.getRefEvents()")
@@ -265,6 +281,7 @@ CASES = (
     ("counter_keyboard", counter_keyboard),
     ("native_label_association", native_label_association),
     ("connected_native_ref_lifecycle", connected_native_ref_lifecycle),
+    ("finite_reactive_variants", finite_reactive_variants),
     ("conditional_ownership", conditional_ownership),
     ("precise_mutations", precise_mutations),
     ("reorder_focus", reorder_focus),

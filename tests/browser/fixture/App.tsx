@@ -35,6 +35,10 @@ export function App() {
   return (
     <main>
       <h1>ZaakiyJS M1 browser acceptance</h1>
+      <div id="variant-state"
+        class={fixture.visible.value ? "status-pill is-visible" : "status-pill is-hidden"}
+        aria-label={fixture.visible.value ? "Visible state" : "Hidden state"}
+        data-state={fixture.visible.value ? "visible" : "hidden"}>Variant state</div>
       <button id="root-ref" type="button" ref={node => {
         fixture.refEvents.root.push(node === null ? "cleared" : node.isConnected ? "connected" : "detached");
       }}>Ref callback</button>

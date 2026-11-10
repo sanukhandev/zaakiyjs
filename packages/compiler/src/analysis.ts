@@ -87,6 +87,19 @@ function isJsx(node: ts.Node): node is ts.JsxElement | ts.JsxSelfClosingElement 
   return ts.isJsxElement(node) || ts.isJsxSelfClosingElement(node);
 }
 
+/** Finite class branches are required for deterministic CSS token extraction. */
+function finiteClassCandidates(node: ts.Expression): readonly string[] | null {
+  const expression = ts.isParenthesizedExpression(node) ? node.expression : node;
+  if (expression !== node) return finiteClassCandidates(expression);
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return [node.text];
+  if (ts.isConditionalExpression(node)) {
+    const yes = finiteClassCandidates(node.whenTrue);
+    const no = finiteClassCandidates(node.whenFalse);
+    return yes && no ? [...yes, ...no] : null;
+  }
+  return null;
+}
+
 export function analyze(request: CompileRequest): Analysis {
   const fileName = normalizedFile(request.fileName, request.rootDir);
   const source = ts.createSourceFile(fileName, request.source, ts.ScriptTarget.ES2022, true, ts.ScriptKind.TSX);
@@ -431,13 +444,17 @@ export function analyze(request: CompileRequest): Analysis {
         if (isComponent) props.push(b);
         else attributes.push(b);
         if (!isComponent && name === "class") {
-          const classLiteral = attr.initializer && ts.isStringLiteral(attr.initializer)
-            ? attr.initializer.text
+          const candidates = attr.initializer && ts.isStringLiteral(attr.initializer)
+            ? [attr.initializer.text]
             : attr.initializer && ts.isJsxExpression(attr.initializer) &&
-              attr.initializer.expression && ts.isStringLiteral(attr.initializer.expression)
-              ? attr.initializer.expression.text : null;
-          if (classLiteral !== null) {
-            for (const token of classLiteral.trim().split(/\s+/).filter(Boolean)) {
+              attr.initializer.expression ? finiteClassCandidates(attr.initializer.expression) : null;
+          if (!candidates) {
+            report("ZC2212",
+              "Dynamic classes require finite string-literal branches for deterministic CSS extraction.",
+              attr);
+          } else {
+            const tokens = new Set(candidates.flatMap(value => value.trim().split(/\s+/).filter(Boolean)));
+            for (const token of tokens) {
               attributes.push({ kind: "StyleToken", id: idOf("StyleToken:" + token, b.span),
                 span: b.span, token });
             }
