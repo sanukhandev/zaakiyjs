@@ -1,6 +1,6 @@
-import { createOwner, disposeOwner, mountOwner } from "@zaakiyjs/core";
+import { createOwner, disposeOwner, mountOwner, onCleanup, onMount } from "@zaakiyjs/core";
 import { mount } from "@zaakiyjs/dom";
-import { bindExitAwareConditionalRegion, createRegion } from "@zaakiyjs/dom/compiler";
+import { bindExitAwareConditionalRegion, createOwnedNativeSlot, createRegion } from "@zaakiyjs/dom/compiler";
 import { flushSync, signal } from "@zaakiyjs/signals";
 import { App, fixture } from "./App";
 import "virtual:zaakiy-styles.css";
@@ -55,6 +55,61 @@ function startExitFixture(): void {
   };
 }
 
+
+interface SlotFixture {
+  events: string[];
+  creations(): number;
+  remountRejected(): boolean;
+  dispose(): void;
+}
+let activeSlot: SlotFixture | null = null;
+function slotFixture(): SlotFixture {
+  if (!activeSlot) throw new Error("No active slot fixture");
+  return activeSlot;
+}
+function startSlotFixture(): void {
+  if (activeSlot) throw new Error("Slot fixture already running");
+  const host = document.createElement("section");
+  host.id = "slot-demo";
+  const unrelated = document.createElement("aside");
+  unrelated.id = "slot-unrelated";
+  host.append(unrelated);
+  document.body.append(host);
+  const owner = createOwner();
+  const events: string[] = [];
+  let constructions = 0;
+  const slot = createOwnedNativeSlot(owner, scope => {
+    if (scope.parent !== owner) throw new Error("Slot lost logical owner");
+    constructions++;
+    onMount(() => events.push("mounted"));
+    onCleanup(() => events.push("disposed"));
+    const fragment = document.createDocumentFragment();
+    const strong = document.createElement("strong");
+    strong.id = "slot-child";
+    strong.textContent = "Portal child";
+    fragment.append(strong, document.createTextNode(" tail"));
+    return fragment;
+  });
+  slot.mount(host, unrelated);
+  mountOwner(owner);
+  activeSlot = {
+    events,
+    creations: () => constructions,
+    remountRejected: () => {
+      try { slot.mount(host); return false; }
+      catch { return true; }
+    },
+    dispose() {
+      try {
+        disposeOwner(owner);
+        if (host.querySelector("#slot-child") || host.querySelector("#slot-unrelated") !== unrelated) {
+          throw new Error("Slot disposal touched unrelated host DOM");
+        }
+      } finally { activeSlot = null; host.remove(); }
+    }
+  };
+}
+
 // Test-only diagnostics, never part of any published ZaakiyJS runtime API.
 const testWindow = window as unknown as {
   __zaakiyAcceptance?: {
@@ -69,6 +124,11 @@ const testWindow = window as unknown as {
     exitFinish: () => void;
     exitAborts: () => boolean[];
     exitDispose: () => boolean[];
+    slotStart: () => void;
+    slotEvents: () => string[];
+    slotCreations: () => number;
+    slotRemountRejected: () => boolean;
+    slotDispose: () => void;
     getRefEvents: () => { root: string[]; conditional: string[] };
     mutateDisposedSignals: () => void;
     cycleMount: (iterations: number) => void;
@@ -86,6 +146,11 @@ testWindow.__zaakiyAcceptance = {
   exitFinish: () => exitFixture().finish(),
   exitAborts: () => exitFixture().aborts(),
   exitDispose: () => exitFixture().dispose(),
+  slotStart: startSlotFixture,
+  slotEvents: () => [...slotFixture().events],
+  slotCreations: () => slotFixture().creations(),
+  slotRemountRejected: () => slotFixture().remountRejected(),
+  slotDispose: () => slotFixture().dispose(),
   getRefEvents: () => ({ root: [...fixture.refEvents.root], conditional: [...fixture.refEvents.conditional] }),
   cycleMount: (iterations: number) => {
     if (!Number.isInteger(iterations) || iterations < 0 || iterations > 2000) {

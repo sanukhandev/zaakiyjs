@@ -98,6 +98,20 @@ def exit_aware_region(page: Page) -> None:
 
 
 
+
+def native_slot_ownership(page: Page) -> None:
+    """One native slot factory, portal ownership, anchored range and cleanup."""
+    page.evaluate("window.__zaakiyAcceptance.slotStart()")
+    expect(page.locator("#slot-demo #slot-child")).to_have_text("Portal child")
+    expect(page.locator("#slot-demo #slot-unrelated")).to_have_count(1)
+    assert page.evaluate("window.__zaakiyAcceptance.slotCreations()") == 1
+    assert page.evaluate("window.__zaakiyAcceptance.slotEvents()") == ["mounted"]
+    assert page.evaluate("window.__zaakiyAcceptance.slotRemountRejected()")
+    page.evaluate("window.__zaakiyAcceptance.slotDispose()")
+    expect(page.locator("#slot-demo")).to_have_count(0)
+
+
+
 def conditional_ownership(page: Page) -> None:
     page.evaluate("window.__detachedShown = document.querySelector('#shown')")
     page.locator("#shown").click()
@@ -311,6 +325,7 @@ CASES = (
     ("connected_native_ref_lifecycle", connected_native_ref_lifecycle),
     ("finite_reactive_variants", finite_reactive_variants),
     ("exit_aware_region", exit_aware_region),
+    ("native_slot_ownership", native_slot_ownership),
     ("conditional_ownership", conditional_ownership),
     ("precise_mutations", precise_mutations),
     ("reorder_focus", reorder_focus),
