@@ -88,10 +88,10 @@ function isJsx(node: ts.Node): node is ts.JsxElement | ts.JsxSelfClosingElement 
 }
 
 /** Finite class branches are required for deterministic CSS token extraction. */
-function finiteClassCandidates(node: ts.Expression): readonly string[] | null {
+function finiteClassCandidates(node: ts.Expression): readonly ts.StringLiteralLike[] | null {
   const expression = ts.isParenthesizedExpression(node) ? node.expression : node;
   if (expression !== node) return finiteClassCandidates(expression);
-  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return [node.text];
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return [node];
   if (ts.isConditionalExpression(node)) {
     const yes = finiteClassCandidates(node.whenTrue);
     const no = finiteClassCandidates(node.whenFalse);
@@ -444,8 +444,9 @@ export function analyze(request: CompileRequest): Analysis {
         if (isComponent) props.push(b);
         else attributes.push(b);
         if (!isComponent && name === "class") {
-          const candidates = attr.initializer && ts.isStringLiteral(attr.initializer)
-            ? [attr.initializer.text]
+          const isDirect = attr.initializer && ts.isStringLiteral(attr.initializer);
+          const candidates = isDirect
+            ? [attr.initializer as ts.StringLiteral]
             : attr.initializer && ts.isJsxExpression(attr.initializer) &&
               attr.initializer.expression ? finiteClassCandidates(attr.initializer.expression) : null;
           if (!candidates) {
@@ -453,10 +454,25 @@ export function analyze(request: CompileRequest): Analysis {
               "Dynamic classes require finite string-literal branches for deterministic CSS extraction.",
               attr);
           } else {
-            const tokens = new Set(candidates.flatMap(value => value.trim().split(/\s+/).filter(Boolean)));
-            for (const token of tokens) {
-              attributes.push({ kind: "StyleToken", id: idOf("StyleToken:" + token, b.span),
-                span: b.span, token });
+            const tokens = new Map<string, SourceSpan>();
+            for (const literal of candidates) {
+              const raw = literal.getText(source).slice(1, -1);
+              // Escapes cannot be assigned an exact unambiguous stylesheet offset.
+              if (raw !== literal.text) {
+                report("ZC2213", "Class literal escapes require a verifiable source token span.", literal);
+                continue;
+              }
+              for (const match of raw.matchAll(/\S+/g)) {
+                const token = match[0];
+                if (token && !tokens.has(token)) {
+                  const offset = literal.getStart(source) + 1 + (match.index ?? 0);
+                  tokens.set(token, isDirect ? b.span : sourceSpan(source, offset, offset + token.length));
+                }
+              }
+            }
+            for (const [token, span] of tokens) {
+              attributes.push({ kind: "StyleToken", id: idOf("StyleToken:" + token, span),
+                span, token });
             }
           }
         }

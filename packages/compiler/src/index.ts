@@ -36,6 +36,36 @@ export function parseToIR(request: CompileRequest): { document: IRDocument; diag
   return { document: parsed.document, diagnostics: parsed.diagnostics };
 }
 
+/**
+ * Emit exact offsets for finite dynamic class candidates. Legacy static CSS
+ * tokens remain strings and can be recovered by the stable styles extractor.
+ * No incorrect source offset is ever fabricated for the build pipeline.
+ */
+function styleTokenManifest(nodes: readonly IRNode[], source: string): readonly (
+  string | { readonly token: string; readonly offset: number }
+)[] {
+  const located = new Map<string, number>();
+  const visit = (node: IRNode): void => {
+    if (node.kind === "StyleToken") {
+      const offset = node.span.start.offset;
+      if (node.span.end.offset - offset === node.token.length &&
+          source.slice(offset, offset + node.token.length) === node.token &&
+          !located.has(node.token)) {
+        located.set(node.token, offset);
+      }
+    } else if (node.kind === "StaticElement") node.children.forEach(visit);
+    else if (node.kind === "ConditionalBlock") {
+      node.whenTrue.forEach(visit);
+      node.whenFalse.forEach(visit);
+    } else if (node.kind === "KeyedLoop") node.body.forEach(visit);
+  };
+  nodes.forEach(visit);
+  return collectStyleTokens(nodes).map(token => {
+    const offset = located.get(token);
+    return offset === undefined ? token : { token, offset };
+  });
+}
+
 /** Compile a supported TSX source file. Fatal diagnostics always suppress generated assets. */
 export function compile(request: CompileRequest): CompileResult {
   const parsed = analyze(request);
@@ -64,7 +94,7 @@ export function compile(request: CompileRequest): CompileResult {
     domAbiVersion: 1,
     irVersion: IR_SCHEMA_VERSION,
     optimizationPasses: [...OPTIMIZATION_PASSES],
-    styleTokens: collectStyleTokens(ir.nodes),
+    styleTokens: styleTokenManifest(ir.nodes, request.source),
     targetBrowsers: [...(request.targetBrowsers ?? [])].sort()
   } as const;
   if (ordered.some(d => d.severity === "error")) {

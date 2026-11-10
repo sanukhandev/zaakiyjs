@@ -815,7 +815,11 @@ describe("finite class variants and reactive DOM attributes", () => {
     ].join("\n");
     const result = compile({ fileName, source });
     expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
-    expect(result.manifest?.styleTokens).toEqual(["active", "inactive", "pill"]);
+    const tokens = result.manifest?.styleTokens as Array<{ token: string; offset: number }>;
+    expect(tokens.map(x => x.token)).toEqual(["active", "inactive", "pill"]);
+    for (const item of tokens) {
+      expect(source.slice(item.offset, item.offset + item.token.length)).toBe(item.token);
+    }
     expect(result.js[0]?.code).toContain("bindClass");
     expect(result.js[0]?.code).toContain("bindAttribute");
   });
@@ -843,6 +847,8 @@ describe("finite class variants and reactive DOM attributes", () => {
     const result = compile({ fileName, source });
     expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
     expect(result.irVersion).toBe(1);
-    expect(result.manifest?.styleTokens).toEqual(["pill"]);
+    const tokens = result.manifest?.styleTokens as Array<{ token: string; offset: number }>;
+    expect(tokens.map(x => x.token)).toEqual(["pill"]);
+    expect(source.slice(tokens[0]!.offset, tokens[0]!.offset + 4)).toBe("pill");
   });
 });
