@@ -62,7 +62,10 @@ function staticValue(binding: PropertyBinding): string | number | boolean | null
 
 function safeUrl(value: string): boolean {
   // Only trusted relative paths, fragment links and HTTPS absolute links.
-  const normalized = value.trim().replace(/[\u0000-\u0020\u007f]/g, "");
+  const normalized = [...value].filter(char => {
+    const code = char.charCodeAt(0);
+    return code >= 33 && code !== 127;
+  }).join("");
   if (value !== value.trim() || normalized !== value || value.startsWith("//") ||
       value.includes("\\") || /%(?:0[0-9a-f]|1[0-9a-f]|2[0-9a-f])/i.test(value)) return false;
   if (value.startsWith("/")) return true;

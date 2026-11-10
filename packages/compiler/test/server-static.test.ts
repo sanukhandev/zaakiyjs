@@ -39,10 +39,8 @@ describe("build-time literal-only SSR compiler target", () => {
   });
 
   it("escapes literal text and quoted attributes against HTML and script injection", () => {
-    const source = [
-      "function Product(){ return (" ,
-      '  <main><p title={"a\\\"&<tag>"}>{"<script>alert(1)</script> &"}</p></main>); }'
-    ].join("\n");
+    const attrValue = JSON.stringify('a"&<tag>');
+    const source = `function Product(){ return (<main><p title={${attrValue}}>{"<script>alert(1)</script> &"}</p></main>); }`;
     const result = make(source);
     expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
     expect(result.html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
