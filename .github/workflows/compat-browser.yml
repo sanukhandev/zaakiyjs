@@ -20,8 +20,7 @@ permissions:
 jobs:
   playwright:
     name: compat / chromium-firefox-webkit
-    # Use the OS supported by pinned Playwright 1.64 to avoid moving
-    # ubuntu-latest package mirrors stalling browser dependency installation.
+    # Stable native browser image during Ubuntu 26.04 latest migration.
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -66,10 +65,14 @@ jobs:
           }
           console.log("PASS: ESM exports and npm pack contents");
           JS
+      - name: Cache pinned Playwright browser binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-ubuntu2404-playwright-python-1.64.1
       - name: Install pinned Playwright and browser engines
-        run: |
-          python3 -m pip install 'playwright==1.64.1'
-          python3 -m playwright install --with-deps chromium firefox webkit
+        timeout-minutes: 18
+        run: bash scripts/ci/install-playwright-browsers.sh
       - name: Run real-browser abort helper acceptance
         shell: bash
         run: |

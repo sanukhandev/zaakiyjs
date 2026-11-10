@@ -78,6 +78,7 @@ importers:
         specifier: workspace:^
         version: link:../signals
 
+
   packages/http:
     devDependencies:
       '@zaakiyjs/async':
@@ -230,6 +231,14 @@ importers:
       '@zaakiyjs/signals':
         specifier: workspace:^
         version: link:../signals
+
+  packages/seo:
+    devDependencies:
+      jsdom:
+        specifier: ^26.1.0
+        version: 26.1.0
+
+
 
   packages/signals: {}
 

@@ -29,8 +29,7 @@ concurrency:
 jobs:
   playwright:
     name: router / chromium-firefox-webkit
-    # Playwright 1.64 supports Ubuntu 24.04; pin runner to avoid
-    # unbounded dependency downloads from changing ubuntu-latest mirrors.
+    # Stable native browser image during Ubuntu 26.04 latest migration.
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -69,10 +68,14 @@ jobs:
           cp packages/router/test/browser/main.tsx apps/router-app/src/main.tsx
       - name: Typecheck and build production Vite Router application
         run: pnpm --dir apps/router-app typecheck && pnpm --dir apps/router-app build
+      - name: Cache pinned Playwright browser binaries
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-ubuntu2404-playwright-python-1.64.1
       - name: Install pinned Playwright with Chromium, Firefox and WebKit
-        run: |
-          python3 -m pip install 'playwright==1.64.1'
-          python3 -m playwright install --with-deps chromium firefox webkit
+        timeout-minutes: 18
+        run: bash scripts/ci/install-playwright-browsers.sh
       - name: Execute native-browser Router navigation, ownership and security acceptance
         shell: bash
         run: |
