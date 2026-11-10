@@ -18,7 +18,8 @@ export const fixture = {
     { id: "g2", name: "Two", children: [{ id: "c2", label: "Second" }] }
   ]),
   duplicateError: signal(""),
-  lifecycle: { setups: 0, disposals: 0 }
+  lifecycle: { setups: 0, disposals: 0 },
+  refEvents: { root: [] as string[], conditional: [] as string[] }
 };
 
 /** A component root receives a stable getter, never a stale keyed-item snapshot. */
@@ -34,6 +35,9 @@ export function App() {
   return (
     <main>
       <h1>ZaakiyJS M1 browser acceptance</h1>
+      <button id="root-ref" type="button" ref={node => {
+        fixture.refEvents.root.push(node === null ? "cleared" : node.isConnected ? "connected" : "detached");
+      }}>Ref callback</button>
       <label htmlFor="email">Email address</label>
       <input id="email" type="email" />
       <button id="counter" type="button" onClick={() => { fixture.counter.value++; }}>
@@ -43,7 +47,9 @@ export function App() {
         fixture.visible.value = !fixture.visible.value;
       }}>Toggle</button>
       <Show when={fixture.visible.value} fallback={<p id="hidden">Hidden</p>}>
-        <button id="shown" type="button" onClick={() => { fixture.activeClicks.value++; }}>
+        <button id="shown" type="button" ref={node => {
+          fixture.refEvents.conditional.push(node === null ? "cleared" : node.isConnected ? "connected" : "detached");
+        }} onClick={() => { fixture.activeClicks.value++; }}>
           Shown
         </button>
       </Show>

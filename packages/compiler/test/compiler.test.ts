@@ -767,3 +767,40 @@ describe("native label attribute lowering", () => {
     expect(label?.attributes.for).toBe("email");
   });
 });
+
+describe("connected native JSX refs", () => {
+  it("lowers stable native callbacks with opt-in DOM import and no IR version bump", () => {
+    const source = [
+      "function App() {",
+      "const attach = (_el: HTMLButtonElement | null) => {};",
+      "return <main><button ref={attach} type=\"button\">Open</button></main>;",
+      "}"
+    ].join("\n");
+    const result = compile({ fileName, source });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.irVersion).toBe(1);
+    expect(result.js[0]?.code).toContain('bindMountedRef');
+  });
+
+  it("keeps the previous DOM import surface unchanged for JSX without refs", () => {
+    const result = compile({ fileName, source: 'function App() { return <button>Open</button>; }' });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.js[0]?.code).not.toContain("bindMountedRef");
+  });
+
+  it("rejects string refs, component refs and reactive callback replacement", () => {
+    const stringRef = compile({ fileName, source: 'function App() { return <button ref="id" />; }' });
+    expect(stringRef.js).toEqual([]);
+    expect(stringRef.diagnostics.some(d => d.code === "ZC2211")).toBe(true);
+    const componentRef = compile({ fileName, source: 'function Widget() { return <button />; } function App() { return <Widget ref={() => {}} />; }' });
+    expect(componentRef.js).toEqual([]);
+    expect(componentRef.diagnostics.some(d => d.code === "ZC1003")).toBe(true);
+    const reactiveRef = compile({ fileName, source: [
+      'declare function signal<T>(initial: T): {value: T};',
+      'const cb = signal<(node: HTMLButtonElement | null) => void>(() => {});',
+      'function App() { return <button ref={cb.value} />; }'
+    ].join("\n") });
+    expect(reactiveRef.js).toEqual([]);
+    expect(reactiveRef.diagnostics.some(d => d.code === "ZC2211")).toBe(true);
+  });
+});

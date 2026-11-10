@@ -16,6 +16,7 @@ const testWindow = window as unknown as {
     lifecycle: typeof fixture.lifecycle;
     getSelected: () => string;
     getCounter: () => number;
+    getRefEvents: () => { root: string[]; conditional: string[] };
     mutateDisposedSignals: () => void;
     cycleMount: (iterations: number) => void;
   };
@@ -26,6 +27,7 @@ testWindow.__zaakiyAcceptance = {
   lifecycle: fixture.lifecycle,
   getSelected: () => fixture.selected.value,
   getCounter: () => fixture.counter.value,
+  getRefEvents: () => ({ root: [...fixture.refEvents.root], conditional: [...fixture.refEvents.conditional] }),
   cycleMount: (iterations: number) => {
     if (!Number.isInteger(iterations) || iterations < 0 || iterations > 2000) {
       throw new RangeError("Invalid bounded stress iteration count");

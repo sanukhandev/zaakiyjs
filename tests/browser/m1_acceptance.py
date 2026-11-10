@@ -32,6 +32,28 @@ def native_label_association(page: Page) -> None:
     expect(page.locator("#email")).to_have_count(0)
 
 
+def connected_native_ref_lifecycle(page: Page) -> None:
+    """Refs attach only when connected, never on reorder, then clear on owner disposal."""
+    events = page.evaluate("window.__zaakiyAcceptance.getRefEvents()")
+    assert events == {"root": ["connected"], "conditional": ["connected"]}, events
+    page.locator("#toggle").click()
+    expect(page.locator("#shown")).to_have_count(0)
+    events = page.evaluate("window.__zaakiyAcceptance.getRefEvents()")
+    assert events["conditional"] == ["connected", "cleared"], events
+    page.locator("#toggle").click()
+    expect(page.locator("#shown")).to_be_visible()
+    events = page.evaluate("window.__zaakiyAcceptance.getRefEvents()")
+    assert events["conditional"] == ["connected", "cleared", "connected"], events
+    page.locator("#reorder").click()
+    events = page.evaluate("window.__zaakiyAcceptance.getRefEvents()")
+    assert events["root"] == ["connected"], events
+    assert events["conditional"] == ["connected", "cleared", "connected"], events
+    page.evaluate("window.__zaakiyAcceptance.dispose()")
+    events = page.evaluate("window.__zaakiyAcceptance.getRefEvents()")
+    assert events["root"] == ["connected", "cleared"], events
+    assert events["conditional"] == ["connected", "cleared", "connected", "cleared"], events
+
+
 def conditional_ownership(page: Page) -> None:
     page.evaluate("window.__detachedShown = document.querySelector('#shown')")
     page.locator("#shown").click()
@@ -242,6 +264,7 @@ def keyed_component_live_getter(page: Page) -> None:
 CASES = (
     ("counter_keyboard", counter_keyboard),
     ("native_label_association", native_label_association),
+    ("connected_native_ref_lifecycle", connected_native_ref_lifecycle),
     ("conditional_ownership", conditional_ownership),
     ("precise_mutations", precise_mutations),
     ("reorder_focus", reorder_focus),
