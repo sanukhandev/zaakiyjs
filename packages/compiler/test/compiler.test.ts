@@ -509,7 +509,8 @@ function originalLineAt(map: { mappings: string }, generatedLine: number, genera
     }));
     expect(first).toEqual(second);
     expect(hash(first.js[0]?.code ?? "")).toBe(hash(second.js[0]?.code ?? ""));
-    expect(validateIR({ irVersion: 2, sourceFile: fileName, nodes: [] })[0]?.code).toBe("ZC3002");
+    expect(validateIR({ irVersion: 2, sourceFile: fileName, nodes: [] })).toEqual([]);
+    expect(validateIR({ irVersion: 3, sourceFile: fileName, nodes: [] })[0]?.code).toBe("ZC3002");
     expect(parseToIR(request).document.irVersion).toBe(1);
   });
 });

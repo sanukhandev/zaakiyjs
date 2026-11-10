@@ -51,10 +51,11 @@ export async function invokeCompiler(request: CompileRequest): Promise<CompileRe
     );
   }
   const value: unknown = await (compilerExports.compile as CompilerEntry)(request);
-  if (!record(value) || value.irVersion !== 1 ||
+  const expectedVersion = request.componentSlots === true ? 2 : 1;
+  if (!record(value) || value.irVersion !== expectedVersion ||
       !Array.isArray(value.js) || !Array.isArray(value.css) ||
       !Array.isArray(value.diagnostics)) {
-    throw new Error("ZV1002: @zaakiyjs/compiler returned an invalid IR v1 compilation result");
+    throw new Error("ZV1002: @zaakiyjs/compiler returned an invalid IR " + expectedVersion + " compilation result");
   }
   for (const js of value.js) assertAsset(js, "JavaScript");
   for (const css of value.css) assertAsset(css, "CSS");
