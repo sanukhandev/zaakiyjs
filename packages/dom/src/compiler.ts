@@ -397,5 +397,6 @@ export function cloneStatic<T extends Node>(template: T): T {
 }
 
 /** Stable compiler-generated range/keyed ABI v1; no Node/compiler imports. */
-export { createRegion, bindConditionalRegion, bindKeyedRegion } from "./regions.js";
+export { createRegion, bindConditionalRegion, bindExitAwareConditionalRegion, bindKeyedRegion } from "./regions.js";
+export type { ExitAwareConditionalOptions } from "./regions.js";
 export type { DomRegion, KeyedView } from "./regions.js";

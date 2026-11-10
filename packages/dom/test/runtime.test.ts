@@ -9,7 +9,7 @@ import {
   cloneStatic, createElement, createText, listen, listenStable, setAttribute,
   setProperty, setStyle
 } from "../src/compiler.js";
-import { bindConditionalRegion, bindKeyedRegion, createRegion } from "../src/compiler.js";
+import { bindConditionalRegion, bindExitAwareConditionalRegion, bindKeyedRegion, createRegion } from "../src/compiler.js";
 
 afterEach(() => { document.body.replaceChildren(); });
 
@@ -61,6 +61,137 @@ describe("connected native JSX ref lifecycle", () => {
     }, host)).toThrow("ref failed");
     expect(events).toEqual(["attach", "detach"]);
     expect(host.childNodes).toHaveLength(0);
+  });
+});
+
+
+describe("opt-in exit-aware conditional DOM regions", () => {
+  it("retains the same node across exit/reentry and ignores stale completion", async () => {
+    const owner = createOwner();
+    const host = document.createElement("section");
+    document.body.append(host);
+    const region = createRegion(host);
+    const visible = signal(true);
+    const exits: AbortSignal[] = [];
+    const finish: Array<() => void> = [];
+    let mounts = 0;
+    let cleanups = 0;
+    bindExitAwareConditionalRegion(owner, region, () => visible.value, child => {
+      mounts++;
+      onCleanup(() => { cleanups++; });
+      const button = document.createElement("button");
+      button.textContent = "Keep focus";
+      return button;
+    }, (_node, abort) => {
+      exits.push(abort);
+      return new Promise<void>(resolve => { finish.push(resolve); });
+    });
+    mountOwner(owner);
+    const button = host.querySelector("button");
+    expect(button).not.toBeNull();
+    button!.focus();
+    visible.value = false;
+    flushSync();
+    expect(host.querySelector("button")).toBe(button);
+    expect(cleanups).toBe(0);
+    expect(exits[0]?.aborted).toBe(false);
+    visible.value = true;
+    flushSync();
+    expect(exits[0]?.aborted).toBe(true);
+    expect(host.querySelector("button")).toBe(button);
+    expect(document.activeElement).toBe(button);
+    expect(mounts).toBe(1);
+    finish[0]!();
+    await Promise.resolve();
+    expect(host.querySelector("button")).toBe(button);
+    visible.value = false;
+    flushSync();
+    expect(host.querySelector("button")).toBe(button);
+    finish[1]!();
+    await Promise.resolve();
+    expect(host.querySelector("button")).toBeNull();
+    expect(cleanups).toBe(1);
+    disposeOwner(owner);
+    expect(cleanups).toBe(1);
+  });
+
+  it("aborts pending exits and removes owner/DOM synchronously on parent disposal", async () => {
+    const owner = createOwner();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const region = createRegion(host);
+    const visible = signal(true);
+    const finished: Array<() => void> = [];
+    const signals: AbortSignal[] = [];
+    let cleanups = 0;
+    bindExitAwareConditionalRegion(owner, region, () => visible.value, () => {
+      onCleanup(() => { cleanups++; });
+      return document.createElement("span");
+    }, (_, signal) => {
+      signals.push(signal);
+      return new Promise<void>(resolve => { finished.push(resolve); });
+    });
+    mountOwner(owner);
+    visible.value = false;
+    flushSync();
+    expect(host.querySelector("span")).not.toBeNull();
+    disposeOwner(owner);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(host.querySelector("span")).toBeNull();
+    expect(cleanups).toBe(1);
+    finished[0]!();
+    await Promise.resolve();
+    expect(cleanups).toBe(1);
+  });
+
+  it("bounds uncooperative exits without retaining owned nodes indefinitely", () => {
+    vi.useFakeTimers();
+    try {
+      const owner = createOwner();
+      const host = document.createElement("div");
+      document.body.append(host);
+      const visible = signal(true);
+      const aborts: AbortSignal[] = [];
+      bindExitAwareConditionalRegion(owner, createRegion(host), () => visible.value,
+        () => document.createElement("p"), (_node, signal) => {
+          aborts.push(signal);
+          return new Promise<void>(() => undefined);
+        }, { maxExitMs: 20 });
+      mountOwner(owner);
+      visible.value = false;
+      flushSync();
+      expect(host.querySelector("p")).not.toBeNull();
+      vi.advanceTimersByTime(21);
+      expect(aborts[0]?.aborted).toBe(true);
+      expect(host.querySelector("p")).toBeNull();
+      disposeOwner(owner);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails closed on rejected exits and unsupported node factories", async () => {
+    const owner = createOwner();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const visible = signal(true);
+    const failures: unknown[] = [];
+    bindExitAwareConditionalRegion(owner, createRegion(host), () => visible.value,
+      () => document.createElement("button"),
+      () => Promise.reject(new Error("animation failed")),
+      { onExitError: error => failures.push(error) });
+    mountOwner(owner);
+    visible.value = false;
+    flushSync();
+    await Promise.resolve();
+    expect(failures).toHaveLength(1);
+    expect(host.querySelector("button")).toBeNull();
+    disposeOwner(owner);
+    const brokenOwner = createOwner();
+    expect(() => bindExitAwareConditionalRegion(brokenOwner, createRegion(host),
+      () => true, () => document.createTextNode("unsupported") as unknown as Element,
+      () => undefined)).toThrow(/one native Element/);
+    disposeOwner(brokenOwner);
   });
 });
 

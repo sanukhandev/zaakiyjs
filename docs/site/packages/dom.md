@@ -133,3 +133,8 @@ See [ADR 0004](../../adr/0004-dom-region-abi.md) for the frozen protocol and its
 ### Compiler-generated reactive classes and attributes
 
 The hardening compiler now emits `bindClass` for finite class-variant expressions and `bindAttribute` for reactive non-URL attributes. These reuse established owner-scoped effects and the native `setAttribute` URL/sink policy, retaining element identity across updates. The compiler never accepts arbitrary user-generated utility names or bypasses the verified Vite CSS token-offset contract. Dynamic URL expressions and inline style objects remain unsupported; runtime `setStyle` is not an implicit authorization for compiler-generated inline styles under strict CSP.
+
+
+### Additive exit-aware DOM integration
+
+\`@zaakiyjs/dom/compiler\` additionally exposes \`bindExitAwareConditionalRegion\` for direct native DOM integration. It retains one element/owner while \`exit(element, signal)\` settles, cancels pending exit on re-entry, and enforces a bounded 1–30000ms lifetime. Parent disposal is synchronous and aborts pending exits. Existing \`bindConditionalRegion\` and keyed-region behavior remain unchanged; this helper is not emitted automatically by TSX and does not support fragments, slots or nested keyed exit choreography.

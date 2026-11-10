@@ -123,6 +123,116 @@ export function bindConditionalRegion(
   }, clear);
 }
 
+
+/**
+ * Additive, opt-in presence extension for a single native Element.
+ * The existing bindConditionalRegion continues to dispose immediately.
+ * An exit callback retains a live owner and node until it resolves or times
+ * out. Re-entry aborts the exit and reuses the same owner and element.
+ * Not a compiler ABI v1 primitive and not a fragment/keyed exit protocol.
+ */
+export interface ExitAwareConditionalOptions {
+  /** Hard upper bound for pending exit ownership (default 5000; max 30000ms). */
+  readonly maxExitMs?: number;
+  /** Optional nonthrowing diagnostic sink; an exit rejection still cleans up. */
+  readonly onExitError?: (error: unknown) => void;
+}
+
+export function bindExitAwareConditionalRegion(
+  owner: OwnerScope,
+  region: DomRegion,
+  when: () => boolean,
+  create: (child: OwnerScope) => Element,
+  exit: (node: Element, signal: AbortSignal) => void | Promise<void>,
+  options: ExitAwareConditionalOptions = {}
+): BindingHandle {
+  const maxExitMs = options.maxExitMs ?? 5000;
+  if (!Number.isSafeInteger(maxExitMs) || maxExitMs < 1 || maxExitMs > 30_000 ||
+      typeof exit !== "function") {
+    throw new TypeError("Exit-aware region requires a bounded duration and exit callback");
+  }
+  let current: { owner: OwnerScope; node: Element } | null = null;
+  let pending: { revision: number; controller: AbortController; timer: ReturnType<typeof setTimeout> } | null = null;
+  let revision = 0;
+
+  const stopExit = (): void => {
+    const previous = pending;
+    pending = null;
+    if (!previous) return;
+    clearTimeout(previous.timer);
+    previous.controller.abort(new Error("Presence exit superseded or owner disposed"));
+  };
+  const clear = (): void => {
+    stopExit();
+    const previous = current;
+    current = null;
+    if (previous) {
+      try { disposeOwner(previous.owner); }
+      finally { removeBetween(region.start, region.end); }
+    } else removeBetween(region.start, region.end);
+  };
+  const failed = (error: unknown): void => {
+    // Telemetry cannot prevent deterministic cleanup or create unhandled
+    // Promise rejections while a presence exit is unwinding.
+    try { options.onExitError?.(error); } catch { /* diagnostic hook is isolated */ }
+  };
+  const settle = (ticket: number, timedOut = false): void => {
+    if (!pending || pending.revision !== ticket) return;
+    const active = pending;
+    pending = null;
+    clearTimeout(active.timer);
+    if (timedOut) active.controller.abort(new Error("Presence exit timeout"));
+    clear();
+  };
+
+  return ownEffect(owner, () => {
+    if (Boolean(when())) {
+      stopExit();
+      if (current) return; // Same connected native node and scoped owner.
+      const child = createOwner(owner);
+      try {
+        const node = untrack(() => initializeOwnedComponent(child, () => create(child)));
+        if (!node || node.nodeType !== 1) {
+          throw new TypeError("Exit-aware region requires one native Element");
+        }
+        region.parent.insertBefore(node, region.end);
+        current = { owner: child, node };
+        mountChild(owner, child);
+      } catch (error) {
+        let cleanupError: unknown;
+        current = null;
+        try { disposeOwner(child); } catch (caught) { cleanupError = caught; }
+        removeBetween(region.start, region.end);
+        if (cleanupError !== undefined) {
+          throw new AggregateError([error, cleanupError], "Exit-aware region mount failed");
+        }
+        throw error;
+      }
+      return;
+    }
+    if (!current || pending) return;
+    const ticket = ++revision;
+    const controller = new AbortController();
+    const timer = setTimeout(() => settle(ticket, true), maxExitMs);
+    pending = { revision: ticket, controller, timer };
+    let completion: void | Promise<void>;
+    try {
+      completion = untrack(() => exit(current!.node, controller.signal));
+    } catch (error) {
+      failed(error);
+      settle(ticket);
+      return;
+    }
+    void Promise.resolve(completion).then(
+      () => settle(ticket),
+      error => {
+        failed(error);
+        settle(ticket);
+      }
+    );
+  }, clear);
+}
+
 export interface KeyedView<Item> {
   readonly node: Node;
   /** Called when the value for an existing key changes; must not reinitialize the component. */

@@ -76,3 +76,8 @@ The PR has production code changes; earlier statements that it contains only doc
 - Build-side SHA-256 artifact manifests are generated from exact emitted module bytes; a separate verification helper rejects modified, missing or extra artifacts, and tests include malicious getter-backed registries.
 - Browser-side hydration *probe only* now checks marker template digests as well as IDs/order/route/build, refusing to attest older ID-only comments.
 - These additions do not solve issue #59's compiler-generated server output or DOM adoption. Never mark the M4 milestone complete on their account.
+
+
+## Optional exit-aware region integration
+
+An additive \`@zaakiyjs/dom/compiler\` helper retains exactly one native Element and its owner during a bounded cancellable exit, with re-entry reuse and mandatory cleanup on parent disposal. This isolates P2 Motion integration without changing frozen compiler DOM ABI v1 or the immediate-disposal behavior of generated \`<Show>\`/\`<For>\` regions. Full keyed/fragments/portal exit orchestration remains a separate issue #37 acceptance item.
