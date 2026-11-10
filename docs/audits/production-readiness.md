@@ -80,4 +80,4 @@ The PR has production code changes; earlier statements that it contains only doc
 
 ## Optional exit-aware region integration
 
-An additive \`@zaakiyjs/dom/compiler\` helper retains exactly one native Element and its owner during a bounded cancellable exit, with re-entry reuse and mandatory cleanup on parent disposal. This isolates P2 Motion integration without changing frozen compiler DOM ABI v1 or the immediate-disposal behavior of generated \`<Show>\`/\`<For>\` regions. Full keyed/fragments/portal exit orchestration remains a separate issue #37 acceptance item.
+An additive `@zaakiyjs/dom/compiler` helper retains exactly one native Element and its owner during a bounded cancellable exit, with re-entry reuse and mandatory cleanup on parent disposal. This isolates P2 Motion integration without changing frozen compiler DOM ABI v1 or the immediate-disposal behavior of generated `<Show>`/`<For>` regions. Full keyed/fragments/portal exit orchestration remains a separate issue #37 acceptance item.

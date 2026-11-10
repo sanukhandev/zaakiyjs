@@ -66,6 +66,15 @@ describe("byte-attested SSR build manifest", () => {
       { ...entry, bytes: new Uint8Array() }
     ])).toThrow(/bounded/);
     expect(() => buildVerifiedManifestV1([])).toThrow(/count/);
+    expect(() => buildVerifiedManifestV1([
+      { ...entry, routeId: "product/subpath" }
+    ])).toThrow(/Duplicate or invalid/);
+    expect(() => buildVerifiedManifestV1([
+      { ...entry, moduleId: "compiled/../escape" }
+    ])).toThrow(/Duplicate or invalid/);
+    expect(() => buildVerifiedManifestV1([
+      entry, { ...entry, routeId: "other", bytes: alternate }
+    ])).toThrow(/different module bytes/);
   });
 
   it("keeps the established runtime registry gate as a separate requirement", () => {

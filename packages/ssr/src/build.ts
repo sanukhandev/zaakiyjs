@@ -3,6 +3,9 @@ import type { TrustedModuleRegistration, TrustedServerBuildManifestV1 } from "./
 
 const DIGEST = /^[a-f0-9]{64}$/;
 const ID = /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/;
+const ROUTE_ID = /^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,199}$/;
+const moduleIdSafe = (id: string): boolean => ID.test(id) &&
+  id.split("/").every(part => part !== "" && part !== "." && part !== "..");
 
 /** Validate a pinned manifest and a deployment-controlled immutable registry. No dynamic imports. */
 export function verifyTrustedManifest(
@@ -14,8 +17,8 @@ export function verifyTrustedManifest(
     throw new TypeError("SSR manifest schema, build ID or ABI mismatch");
   }
   for (const [routeId, entry] of Object.entries(manifest.routes)) {
-    if (!ID.test(routeId) || entry.routeId !== routeId ||
-        !ID.test(entry.moduleId) || !DIGEST.test(entry.sourceDigest)) {
+    if (!ROUTE_ID.test(routeId) || entry.routeId !== routeId ||
+        !moduleIdSafe(entry.moduleId) || !DIGEST.test(entry.sourceDigest)) {
       throw new TypeError("Invalid trusted render manifest entry");
     }
     const registration = Object.getOwnPropertyDescriptor(registry, entry.moduleId);
@@ -67,15 +70,20 @@ export function buildVerifiedManifestV1(
   }
   const routes: Record<string, { moduleId: string; sourceDigest: string; routeId: string }> =
     Object.create(null) as Record<string, { moduleId: string; sourceDigest: string; routeId: string }>;
+  const moduleHashes = new Map<string, string>();
   for (const item of artifacts) {
-    if (!item || !ID.test(item.routeId) || !ID.test(item.moduleId) ||
+    if (!item || !ROUTE_ID.test(item.routeId) || !moduleIdSafe(item.moduleId) ||
         Object.hasOwn(routes, item.routeId)) {
       throw new TypeError("Duplicate or invalid build route/module identity");
     }
+    const digest = hashBytes(verifiedBytes(item.bytes));
+    const previous = moduleHashes.get(item.moduleId);
+    if (previous && previous !== digest) {
+      throw new TypeError("One server module ID cannot reference different module bytes");
+    }
+    moduleHashes.set(item.moduleId, digest);
     routes[item.routeId] = {
-      moduleId: item.moduleId,
-      sourceDigest: hashBytes(verifiedBytes(item.bytes)),
-      routeId: item.routeId
+      moduleId: item.moduleId, sourceDigest: digest, routeId: item.routeId
     };
   }
   const canonical = Object.keys(routes).sort().map(routeId => {
@@ -113,7 +121,7 @@ export function verifyTrustedArtifactBytes(
   const expectedModules = new Set<string>();
   for (const [routeId, entry] of Object.entries(manifest.routes)) {
     if (!entry || entry.routeId !== routeId ||
-        !ID.test(routeId) || !ID.test(entry.moduleId) ||
+        !ROUTE_ID.test(routeId) || !moduleIdSafe(entry.moduleId) ||
         !DIGEST.test(entry.sourceDigest)) {
       throw new TypeError("Invalid trusted artifact identity/digest");
     }
