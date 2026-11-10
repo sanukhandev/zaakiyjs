@@ -71,8 +71,11 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `SourceSpan`
 - `StaticElement`
 - `StaticText`
+- `StaticServerCompileResult`
+- `StaticServerRequest`
 - `StyleToken`
 - `compile`
+- `compileStaticServer`
 - `foundationStatus`
 - `parseToIR`
 - `optimizeIR`

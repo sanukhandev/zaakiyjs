@@ -79,4 +79,5 @@ jobs:
           pnpm build
           node --test scripts/ci/package-exports.test.mjs
           node scripts/ci/package-exports.mjs
+          node scripts/ci/static-ssr-smoke.mjs
           pnpm test
