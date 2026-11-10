@@ -444,9 +444,13 @@ export function analyze(request: CompileRequest): Analysis {
         if (isComponent) props.push(b);
         else attributes.push(b);
         if (!isComponent && name === "class") {
-          const isDirect = attr.initializer && ts.isStringLiteral(attr.initializer);
-          const candidates = isDirect
-            ? [attr.initializer as ts.StringLiteral]
+          const direct = attr.initializer && ts.isStringLiteral(attr.initializer)
+            ? attr.initializer
+            : attr.initializer && ts.isJsxExpression(attr.initializer) &&
+              attr.initializer.expression && ts.isStringLiteral(attr.initializer.expression)
+              ? attr.initializer.expression : undefined;
+          const isDirect = direct !== undefined;
+          const candidates = direct ? [direct]
             : attr.initializer && ts.isJsxExpression(attr.initializer) &&
               attr.initializer.expression ? finiteClassCandidates(attr.initializer.expression) : null;
           if (!candidates) {
