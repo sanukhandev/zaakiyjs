@@ -1,5 +1,6 @@
 import { For, Show, onCleanup } from "@zaakiyjs/core";
 import { computed, flushSync, signal } from "@zaakiyjs/signals";
+import type { JSXChild } from "@zaakiyjs/core/jsx-runtime";
 
 type Row = { readonly id: string; readonly label: string };
 type Group = { readonly id: string; readonly name: string; readonly children: readonly Row[] };
@@ -28,6 +29,11 @@ function LiveGroup(props: { readonly live: () => Group }) {
   return <h3 class="live-group">{name.value}</h3>;
 }
 
+/** IR v2 default slot outlet: the caller owns the compiled child node factory. */
+function SlotPanel(props: { readonly children?: JSXChild }) {
+  return <section id="compiled-slot-panel"><div id="compiled-slot-host">{props.children}</div></section>;
+}
+
 /** Compiled by the production Vite plugin, never rendered by a test-only JSX interpreter. */
 export function App() {
   fixture.lifecycle.setups += 1;
@@ -35,6 +41,12 @@ export function App() {
   return (
     <main>
       <h1>ZaakiyJS M1 browser acceptance</h1>
+      <SlotPanel>
+        <button id="compiled-slot-child" type="button" onClick={() => { fixture.activeClicks.value++; }}>
+          Owned child
+        </button>
+        <span id="compiled-slot-sibling">Sibling</span>
+      </SlotPanel>
       <div id="variant-state" role="status"
         class={fixture.visible.value ? "status-pill is-visible" : "status-pill is-hidden"}
         aria-label={fixture.visible.value ? "Visible state" : "Hidden state"}

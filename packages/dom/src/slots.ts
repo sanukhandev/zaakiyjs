@@ -13,6 +13,9 @@ import {
 import type { OwnerScope } from "@zaakiyjs/core";
 import { createRegion } from "./regions.js";
 
+/** Only slots produced by this runtime may be mounted through generated outlets. */
+const liveSlots = new WeakSet<object>();
+
 export interface OwnedNativeSlot {
   readonly mounted: boolean;
   readonly disposed: boolean;
@@ -85,6 +88,7 @@ export function createOwnedNativeSlot(
     dispose() {
       if (closed) return;
       closed = true;
+      liveSlots.delete(handle);
       const errors: unknown[] = [];
       if (child) {
         try { disposeOwner(child); } catch (error) { errors.push(error); }
@@ -115,6 +119,15 @@ export function createOwnedNativeSlot(
       if (errors.length > 1) throw new AggregateError(errors, "Slot disposal failed");
     }
   };
+  liveSlots.add(handle);
   runWithOwner(owner, () => onCleanup(() => handle.dispose()));
   return handle;
+}
+
+/** Compiler-facing insertion of a lazy, owner-scoped default JSX child slot. */
+export function mountOwnedSlot(value: unknown, host: Node): void {
+  if (!value || typeof value !== "object" || !liveSlots.has(value)) {
+    throw new TypeError("Only an owned native slot may be inserted as JSX children");
+  }
+  (value as OwnedNativeSlot).mount(host);
 }

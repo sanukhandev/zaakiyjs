@@ -73,3 +73,7 @@ This is intentionally separate from the frozen immediate-disposal `bindCondition
 ### Native slot ownership precursor
 
 `createOwnedNativeSlot(owner, factory)` is available from `@zaakiyjs/dom/compiler`. It creates a lazy single-use factory for native Nodes or DocumentFragments, anchors the inserted range, and disposes child owner and DOM range atomically on parent disposal. The logical owner remains unchanged if the host is inside a portal. Repeated mount and invalid node factories fail closed. This is a **manual compiler-integration primitive**, not automatic JSX `<Component>children</Component>` lowering. See [ADR 0011](../../docs/adr/0011-native-slot-ownership.md); issue #37 remains open.
+
+## Compiler-generated default JSX child outlet (IR v2)
+
+The additive `mountOwnedSlot(value, host)` helper accepts only branded handles created by `createOwnedNativeSlot`. The optional compiler mode `componentSlots: true` turns direct JSX children into a caller-owner-scoped factory, and a callee's `{props.children}` inside a native element into the corresponding outlet call. Owner disposal removes the exact anchored child range. This is not named slot compilation, general child arrays or hydration. See [ADR 0013](../../docs/adr/0013-component-slots-ir2.md).

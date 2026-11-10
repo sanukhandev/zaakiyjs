@@ -11,3 +11,7 @@ A compile request contains `fileName`, `source`, optional `rootDir` and browser 
 **Safety:** preserve observable evaluation order/count and source semantics; static hoisting and constant folding require purity proof. Stable outputs must be content-deterministic for pinned inputs. Compatibility transforms/manifests can be added without importing compat shims into browser code inadvertently.
 
 M0 validates data-shape compatibility only; it does not parse or transform TSX. A concrete IR JSON schema, AST grammar edge cases, and compiler emitted ABI version negotiation require implementation-phase ADR review.
+
+## Versioned experimental default JSX slots
+
+Contract v1 is frozen. An explicitly requested `componentSlots: true` compiler mode may emit IR document version 2, adding optional `ComponentCall.children` and a `SlotOutlet` for the literal `{props.children}` expression in native elements. `validateIR` must reject v2-only fields in version 1, unknown versions, malformed children and duplicate IDs; the optimizer and CSS source-tracing must traverse v2 children without changing version 1 outputs. A DOM slot factory is caller-owned, single-use and lazily mounted by a native outlet. See [ADR 0013](../adr/0013-component-slots-ir2.md). No general named-slot or hydration guarantee is implied.

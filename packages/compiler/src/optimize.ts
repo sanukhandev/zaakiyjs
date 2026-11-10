@@ -1,7 +1,7 @@
 import type {
   CompilerDiagnostic, IRDocument, IRNode, StaticElement, IRExpression
 } from "./index.js";
-import { IR_SCHEMA_VERSION } from "./index.js";
+
 
 export const OPTIMIZATION_PASSES = [
   "literal-text-folding",
@@ -41,11 +41,11 @@ export function validateIR(value: unknown): readonly CompilerDiagnostic[] {
   if (!record(value)) {
     return [{ code: "ZC3001", severity: "error", message: "IR document must be an object." }];
   }
-  if (value.irVersion !== IR_SCHEMA_VERSION) {
+  if (value.irVersion !== 1 && value.irVersion !== 2) {
     return [{
       code: "ZC3002", severity: "error",
       message: "Unsupported IR schema version " + String(value.irVersion) +
-        "; compiler requires version " + IR_SCHEMA_VERSION + "."
+        "; compiler accepts version 1 or opted-in version 2."
     }];
   }
   if (!string(value.sourceFile) || !Array.isArray(value.nodes)) {
@@ -78,7 +78,8 @@ export function validateIR(value: unknown): readonly CompilerDiagnostic[] {
       EventBinding: ["name", "expression"],
       ConditionalBlock: ["condition", "whenTrue", "whenFalse"],
       KeyedLoop: ["collection", "key", "body", "itemParameter"],
-      ComponentCall: ["component", "props"],
+      ComponentCall: value.irVersion === 2 ? ["component", "props", "children"] : ["component", "props"],
+      SlotOutlet: value.irVersion === 2 ? ["name"] : [],
       StyleToken: ["token", "variant"],
       CompatFeature: ["feature", "targets"]
     };
@@ -132,6 +133,12 @@ export function validateIR(value: unknown): readonly CompilerDiagnostic[] {
           fail(path + " has an invalid component name or props.");
         }
         descendants(node.props, path + ".props");
+        if (node.children !== undefined && value.irVersion === 2) descendants(node.children, path + ".children");
+        break;
+      case "SlotOutlet":
+        if (value.irVersion !== 2 || node.name !== "children") {
+          fail(path + " has an invalid or v1-only slot outlet.");
+        }
         break;
       case "StyleToken":
         if (!string(node.token) || (node.variant !== undefined && !string(node.variant))) {
@@ -190,6 +197,9 @@ function optimizeNode(node: IRNode): IRNode {
     }
     case "KeyedLoop":
       return { ...node, body: node.body.map(optimizeNode) };
+    case "ComponentCall":
+      return node.children === undefined ? node
+        : { ...node, children: node.children.map(optimizeNode) };
     default:
       return node;
   }
@@ -200,7 +210,7 @@ export function optimizeIR(document: IRDocument): IRDocument {
   const errors = validateIR(document);
   if (errors.length) throw new Error(errors.map(d => d.message).join("; "));
   return {
-    irVersion: IR_SCHEMA_VERSION,
+    irVersion: document.irVersion,
     sourceFile: document.sourceFile,
     nodes: document.nodes.map(optimizeNode)
   };
@@ -217,6 +227,7 @@ export function collectStyleTokens(nodes: readonly IRNode[]): readonly string[] 
         node.whenFalse.forEach(visit);
         break;
       case "KeyedLoop": node.body.forEach(visit); break;
+      case "ComponentCall": node.children?.forEach(visit); break;
       default: break;
     }
   };

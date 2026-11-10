@@ -285,6 +285,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       const key = JSON.stringify([
         file, source, configRevision,
         styleFingerprint(brand, options.browserTargets ?? []),
+        options.componentSlots === true ? "component-slots-ir2" : "ir1",
         graphStamp(file)
       ]);
       const previous = modules.get(file);
@@ -296,7 +297,8 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         fileName: file,
         source,
         rootDir: resolved?.root,
-        targetBrowsers: options.browserTargets
+        targetBrowsers: options.browserTargets,
+        componentSlots: options.componentSlots === true
       });
       for (const diagnostic of output.diagnostics) {
         const error = diagnosticError(diagnostic, file);

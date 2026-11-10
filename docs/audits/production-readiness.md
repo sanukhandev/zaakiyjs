@@ -96,3 +96,11 @@ An opt-in native slot factory preserves logical Core owner ancestry and anchored
 ## Dynamic data SSR integration increment
 
 A dedicated `compileDataServer` target accepts a single native HTML root and constrained `props.*` property paths as request-scoped text, mapped to `context.loaderData` without evaluating arbitrary source expressions. Runtime text is escaped, own-data-only, bounded, route-pinned and no-store. CI includes a byte-attested real HTTP smoke test for concurrent requests, injection, getter traps and tamper rejection. This is **not** full compiler-backed component SSR or native DOM hydration, and M4 remains open (ADR 0012).
+
+## Opt-in v2 component children implementation
+
+- `CompileRequest.componentSlots` / `zaakiyPlugin({ componentSlots: true })` deliberately select IR document version 2 for default JSX component children and a literal `{props.children}` outlet.
+- The compiler generates caller-owned, single-use native slot factories, traverses their children for CSS candidates, and rejects IR v2 slot fields when presented under version 1. The default v1 runtime ABI and compiler behavior are unchanged.
+- The DOM outlet validates branded slot provenance; caller disposal tears down the exact anchored child range, including portal-host placement.
+- Automated regression and three-engine browser acceptance include a compiled `<SlotPanel><button>...</button><span>...</span></SlotPanel>` and native input/focus behavior. These must pass on the final head before acceptance.
+- Named slots, nested arbitrary JSX-in-props, SSR of live components, client hydration and exit choreography remain open. See ADR 0013 and issue #37.

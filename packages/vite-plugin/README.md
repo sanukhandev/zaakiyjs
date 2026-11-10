@@ -71,3 +71,7 @@ Release intent: independent minor bump via Changesets after the integration gate
 ## Integrated CI gate
 
 After merging Signals, Core, DOM and Compiler, the Vite bridge requires the real `@zaakiyjs/compiler.compile`, `@zaakiyjs/styles.compileStyles` and static token extraction in required CI. The Vite integration suite no longer skips positive TSX/CSS cases when upstream modules are contract-only. Any missing upstream executable API is a build/test failure; no React JSX or Tailwind fallback is permitted.
+
+## Opt-in IR v2 default component slots
+
+`zaakiyPlugin({ componentSlots: true })` selects compiler IR v2 for typed `<Panel><button>Open</button></Panel>` authoring with a `{props.children}` native slot outlet. This option participates in Vite's transform cache key. Without it, the compiler stays on frozen IR v1 and rejects component JSX children. Named slots and JSX-in-props are not enabled. See [ADR 0013](../../docs/adr/0013-component-slots-ir2.md).

@@ -99,6 +99,22 @@ def exit_aware_region(page: Page) -> None:
 
 
 
+def compiled_component_slot_children(page: Page) -> None:
+    """Opt-in IR v2 JSX children compile to an owner-scoped native slot, not a text value."""
+    child = page.get_by_role("button", name="Owned child")
+    expect(child).to_be_visible()
+    expect(page.locator("#compiled-slot-host #compiled-slot-sibling")).to_have_text("Sibling")
+    page.evaluate("window.__compiledSlotIdentity = document.getElementById('compiled-slot-child')")
+    child.focus()
+    child.click()
+    expect(page.locator("#active-clicks")).to_have_text("1")
+    page.locator("#reorder").click()
+    assert page.evaluate("document.getElementById('compiled-slot-child') === window.__compiledSlotIdentity")
+    page.evaluate("window.__zaakiyAcceptance.dispose()")
+    expect(page.locator("#compiled-slot-panel")).to_have_count(0)
+    expect(page.locator("#compiled-slot-child")).to_have_count(0)
+
+
 def native_slot_ownership(page: Page) -> None:
     """One native slot factory, portal ownership, anchored range and cleanup."""
     page.evaluate("window.__zaakiyAcceptance.slotStart()")
@@ -326,6 +342,7 @@ CASES = (
     ("finite_reactive_variants", finite_reactive_variants),
     ("exit_aware_region", exit_aware_region),
     ("native_slot_ownership", native_slot_ownership),
+    ("compiled_component_slot_children", compiled_component_slot_children),
     ("conditional_ownership", conditional_ownership),
     ("precise_mutations", precise_mutations),
     ("reorder_focus", reorder_focus),

@@ -105,3 +105,21 @@ function Product(props: { customer: { name: string }; order: number }) {
 ```
 
 The renderer reads the corresponding paths from `ServerRequestContextV1.loaderData` via own-property descriptors, disallowing accessors and nonplain objects, and escapes primitive values before returning HTML. It uses the established `zaakiy.render/1` protocol with `no-store` caching. The deployment must pin the emitted module bytes through `buildVerifiedManifestV1`, `verifyTrustedArtifactBytes` and the byte-attested SSR Node adapter. Compiled source cannot access arbitrary context fields or invoke JS expressions. This **does not** hydrate browser DOM or support dynamic attributes/components/slots; issue #59 remains open. See [ADR 0012](../../docs/adr/0012-data-bound-ssr.md).
+
+## Experimental component default slots (IR v2)
+
+`compile({ fileName, source, componentSlots: true })` emits IR v2 with `ComponentCall.children` and `SlotOutlet`. Example:
+
+```tsx
+import type { JSXChild } from "@zaakiyjs/core/jsx-runtime";
+
+function Panel(props: { readonly children?: JSXChild }) {
+  return <section>{props.children}</section>;
+}
+
+function App() {
+  return <Panel><button type="button">Open</button></Panel>;
+}
+```
+
+This compiles a lazily mounted, caller-owned native slot factory. Each slot is single-use; the callee's outlet mounts it at a native parent and it disposes with the caller's lexical scope. Default `compile()` continues to emit IR v1 and reject component JSX children. Explicit `children` props conflicting with nested JSX, named slots, arbitrary JSX-in-props and runtime JSX interpretation remain rejected. See [ADR 0013](../../docs/adr/0013-component-slots-ir2.md).

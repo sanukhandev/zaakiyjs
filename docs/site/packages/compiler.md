@@ -70,6 +70,7 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `KeyedLoop`
 - `PropertyBinding`
 - `Purity`
+- `SlotOutlet`
 - `SourceSpan`
 - `StaticElement`
 - `StaticText`
@@ -195,3 +196,7 @@ function Product(props: { customer: { name: string }; order: number }) {
 The generated renderer maps `props.customer.name` to `context.loaderData.customer.name`. It supports only named own-data property paths (maximum four levels), rejects getter-backed/prototype-bearing values, escapes all text, limits lengths, and never evaluates the source expression or imports a compiler during HTTP requests. Static attributes are checked by the same allowlist as `compileStaticServer`; dynamic attributes, URL values, components, event handlers, loops and reactive signals are unsupported. The output uses `no-store` and is meant to be pinned using `@zaakiyjs/ssr/build` and served through a byte-attested adapter.
 
 This is **server rendering only**, not native DOM hydration or component composition; it does not close SSR issue #59. See [ADR 0012](../../adr/0012-data-bound-ssr.md).
+
+### Opt-in default JSX component children — IR v2
+
+Use `componentSlots: true` in `zaakiyPlugin` or `compile` to opt into a separate IR v2 syntax: `<Panel><button>Open</button></Panel>` passes a lazy, caller-owned native slot; `<section>{props.children}</section>` mounts the slot into a native host exactly once. The callee should type the authoring prop as `JSXChild` from `@zaakiyjs/core/jsx-runtime`. Runtime ownership, cleanup and portal placement use `createOwnedNativeSlot`/`mountOwnedSlot` from `@zaakiyjs/dom/compiler`. Dynamic text interpolation of arbitrary JSX node values remains rejected. This is **not** named slots, arbitrary JSX passed as props or SSR hydration. IR v1 remains the default and refuses component JSX children. See [ADR 0013](../../adr/0013-component-slots-ir2.md).

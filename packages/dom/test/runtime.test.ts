@@ -9,7 +9,7 @@ import {
   cloneStatic, createElement, createText, listen, listenStable, setAttribute,
   setProperty, setStyle
 } from "../src/compiler.js";
-import { bindConditionalRegion, bindExitAwareConditionalRegion, bindKeyedRegion, createOwnedNativeSlot, createRegion } from "../src/compiler.js";
+import { bindConditionalRegion, bindExitAwareConditionalRegion, bindKeyedRegion, createOwnedNativeSlot, mountOwnedSlot, createRegion } from "../src/compiler.js";
 
 afterEach(() => { document.body.replaceChildren(); });
 
@@ -197,6 +197,20 @@ describe("opt-in exit-aware conditional DOM regions", () => {
 
 
 describe("opt-in native slot ownership and portaled placement", () => {
+  it("accepts only branded single-use native child handles in compiler outlets", () => {
+    const owner = createOwner();
+    const host = document.createElement("section");
+    const slot = createOwnedNativeSlot(owner, () => document.createElement("button"));
+    expect(() => mountOwnedSlot({ mount() { /* untrusted fake */ } }, host)).toThrow(/owned native slot/);
+    expect(host.childNodes).toHaveLength(0);
+    mountOwnedSlot(slot, host);
+    expect(host.querySelector("button")).not.toBeNull();
+    expect(() => mountOwnedSlot(slot, host)).toThrow(/only once/);
+    disposeOwner(owner);
+    expect(() => mountOwnedSlot(slot, host)).toThrow(/owned native slot/);
+    expect(host.childNodes).toHaveLength(0);
+  });
+
   it("creates a child once and tears down only its native range on parent disposal", () => {
     const owner = createOwner();
     const host = document.createElement("section");

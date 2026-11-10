@@ -60,6 +60,8 @@ interface AbiAliases {
   readonly bindAttribute: string;
   readonly bindClass: string;
   readonly bindMountedRef: string;
+  readonly createOwnedNativeSlot: string;
+  readonly mountOwnedSlot: string;
   readonly listen: string;
   readonly createRegion: string;
   readonly bindConditionalRegion: string;
@@ -97,6 +99,8 @@ function allocateRuntimeAliases(source: ts.SourceFile): {
       bindAttribute: free("__zBindAttribute"),
       bindClass: free("__zBindClass"),
       bindMountedRef: free("__zBindMountedRef"),
+      createOwnedNativeSlot: free("__zCreateOwnedNativeSlot"),
+      mountOwnedSlot: free("__zMountOwnedSlot"),
       listen: free("__zListen"),
       createRegion: free("__zCreateRegion"),
       bindConditionalRegion: free("__zBindConditionalRegion"),
@@ -147,11 +151,14 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
         }
         break;
       case "ComponentCall":
+        node.children?.forEach(child => visit(child, insideKeyed));
         node.props.forEach(prop => {
           if (prop.expression.reactive) {
             error("ZC2206", "Passing a signal value as a component prop would become stale. Pass the signal or introduce an agreed reactive prop contract.", prop.span);
           }
         });
+        break;
+      case "SlotOutlet":
         break;
       case "CompatFeature":
         error("ZC2207", "Compatibility feature transform is not implemented: " + node.feature, node.span);
@@ -161,6 +168,9 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
     }
   };
   for (const node of document.nodes) {
+    if (node.kind === "SlotOutlet") {
+      error("ZC2502", "A slot outlet needs a native host element.", node.span);
+    }
     if (node.kind === "ConditionalBlock" || node.kind === "KeyedLoop") {
       error(node.kind === "ConditionalBlock" ? "ZC2201" : "ZC2202",
         "Dynamic control flow requires a native host parent element in the current DOM ABI.",
@@ -321,11 +331,24 @@ class Builder {
           }
           return jsLiteral(prop.name) + ": (" + mapped.source + ")";
         }).join(", ");
+        let compiledProps = props;
+        if (node.children?.length) {
+          const slot = this.variable("slot");
+          const slotOwner = this.variable("slot_owner");
+          this.push("const " + slot + " = " + this.abi.createOwnedNativeSlot + "(" +
+            this.owner + ", (" + slotOwner + ") => " + this.branch(node.children, slotOwner) + ");",
+            node.span);
+          compiledProps += (compiledProps ? ", " : "") + '"children": ' + slot;
+        }
         this.push("const " + scope + " = " + this.abi.createOwner + "(" + this.owner + ");");
         this.push("const " + name + " = " + this.abi.initializeOwnedComponent + "(" + scope + ", () => " +
-          node.component + "({" + props + "}));");
+          node.component + "({" + compiledProps + "}));");
         break;
       }
+      case "SlotOutlet":
+        if (!parent) throw new Error("ZC2502: slot outlet requires a native host element");
+        this.push(this.abi.mountOwnedSlot + "(props.children, " + parent + ");", node.span);
+        return undefined;
       case "ConditionalBlock": {
         const literal = node.condition.source.trim();
         if (literal === "true" || literal === "false") {
@@ -459,11 +482,21 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
     };
     const visited = ts.visitEachChild(file, visit, context);
     if (!loweredJsx) return visited;
+    const containsSlot = (nodes: readonly IRNode[]): boolean => nodes.some(node => {
+      if (node.kind === "SlotOutlet") return true;
+      if (node.kind === "ComponentCall") return Boolean(node.children?.length) ||
+        containsSlot(node.children ?? []);
+      if (node.kind === "StaticElement") return containsSlot(node.children);
+      if (node.kind === "ConditionalBlock") return containsSlot(node.whenTrue) || containsSlot(node.whenFalse);
+      if (node.kind === "KeyedLoop") return containsSlot(node.body);
+      return false;
+    });
     const containsRef = (nodes: readonly IRNode[]): boolean => nodes.some(node => {
       if (node.kind === "PropertyBinding" && node.name === "ref") return true;
       if (node.kind === "StaticElement") return containsRef(node.children);
       if (node.kind === "ConditionalBlock") return containsRef(node.whenTrue) || containsRef(node.whenFalse);
       if (node.kind === "KeyedLoop") return containsRef(node.body);
+      if (node.kind === "ComponentCall") return containsRef(node.children ?? []);
       return false;
     });
     const domBindings: Array<readonly [string, string]> = [
@@ -480,9 +513,14 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
     if (containsRef(optimized.nodes)) {
       domBindings.push(["bindMountedRef", aliases.bindMountedRef]);
     }
+    if (containsSlot(optimized.nodes)) {
+      domBindings.push(["createOwnedNativeSlot", aliases.createOwnedNativeSlot]);
+      domBindings.push(["mountOwnedSlot", aliases.mountOwnedSlot]);
+    }
     const dom = runtimeImport("@zaakiyjs/dom/compiler", domBindings);
     const needsKeyed = (nodes: readonly IRNode[]): boolean => nodes.some(node => {
       if (node.kind === "KeyedLoop") return true;
+      if (node.kind === "ComponentCall") return needsKeyed(node.children ?? []);
       if (node.kind === "StaticElement") return needsKeyed(node.children);
       if (node.kind === "ConditionalBlock") return needsKeyed(node.whenTrue) || needsKeyed(node.whenFalse);
       return false;
@@ -580,9 +618,13 @@ export function typeDiagnostics(request: CompileRequest, analysis: Analysis): Co
     return ts.forEachChild(node, child => hasMarkup(child) || undefined) ?? false;
   };
   const visit = (node: ts.Node): void => {
+    const isSlotOutlet = request.componentSlots && ts.isJsxExpression(node) &&
+      node.expression && ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "props" && node.expression.name.text === "children";
     if (ts.isJsxExpression(node) && node.expression &&
         (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent)) &&
-        !hasMarkup(node.expression)) {
+        !isSlotOutlet && !hasMarkup(node.expression)) {
       const type = checker.getTypeAtLocation(node.expression);
       if (!canRenderText(type)) {
         errors.push({

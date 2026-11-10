@@ -142,3 +142,7 @@ The hardening compiler now emits `bindClass` for finite class-variant expression
 ### Owner-scoped native slot integration
 
 The additive `createOwnedNativeSlot(owner, factory)` helper at `@zaakiyjs/dom/compiler` owns one native Node or DocumentFragment via logical Core ancestry and an exact anchored DOM range. The same slot cannot mount twice, portals do not change its DI ancestry, and parent disposal cleans up child owners and nodes. This is not compiler-generated component children/named slots yet; see [ADR 0011](../../adr/0011-native-slot-ownership.md).
+
+### Compiler-generated default slots (IR v2)
+
+The `@zaakiyjs/dom/compiler` subpath exports the branded, one-shot `mountOwnedSlot` outlet helper alongside `createOwnedNativeSlot`. With `componentSlots: true`, the compiler creates the slot under the caller's Core owner and inserts it at `{props.children}` in a native callee element. The child owner is disposed with the caller, including portal-host placement. Default IR v1 rendering and manual slot APIs remain unchanged. See [ADR 0013](../../adr/0013-component-slots-ir2.md).

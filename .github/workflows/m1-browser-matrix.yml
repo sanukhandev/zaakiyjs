@@ -46,6 +46,8 @@ jobs:
         run: |
           cp tests/browser/fixture/App.tsx apps/browser-app/src/App.tsx
           cp tests/browser/fixture/main.tsx apps/browser-app/src/main.tsx
+          sed -i 's/zaakiyPlugin()/zaakiyPlugin({ componentSlots: true })/' apps/browser-app/vite.config.ts
+          grep -q 'componentSlots: true' apps/browser-app/vite.config.ts
       - name: Strict fixture typecheck and production Vite build
         run: pnpm --dir apps/browser-app typecheck && pnpm --dir apps/browser-app build
       - name: Cache pinned Playwright browser binaries

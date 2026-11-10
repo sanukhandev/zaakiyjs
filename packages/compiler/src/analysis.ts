@@ -239,6 +239,13 @@ export function analyze(request: CompileRequest): Analysis {
         nodes.push(...childrenOf(child.children, namespace));
       } else if (ts.isJsxExpression(child) && child.expression) {
         const node = child.expression;
+        if (request.componentSlots && ts.isPropertyAccessExpression(node) &&
+            ts.isIdentifier(node.expression) && node.expression.text === "props" &&
+            node.name.text === "children") {
+          const span = spanOf(source, child);
+          nodes.push({ kind: "SlotOutlet", id: idOf("SlotOutlet", span), span, name: "children" });
+          continue;
+        }
         if (ts.isConditionalExpression(node) && (isJsx(node.whenTrue) || isJsx(node.whenFalse))) {
           const span = spanOf(source, child);
           nodes.push({
@@ -483,10 +490,20 @@ export function analyze(request: CompileRequest): Analysis {
       }
     }
     if (isComponent) {
-      if (ts.isJsxElement(node) && node.children.length) {
-        report("ZC2102", "Component children contract is not frozen; pass explicit typed props.", node);
+      if (!request.componentSlots) {
+        if (ts.isJsxElement(node) && node.children.length) {
+          report("ZC2102", "Component children contract is not frozen; pass explicit typed props.", node);
+        }
+        return { kind: "ComponentCall", id: idOf("ComponentCall", span), span, component: tag, props };
       }
-      return { kind: "ComponentCall", id: idOf("ComponentCall", span), span, component: tag, props };
+      const children = ts.isJsxElement(node) ? childrenOf(node.children, parentNamespace).filter(
+        child => child.kind !== "StaticText" || Boolean(child.text.trim())
+      ) : [];
+      if (children.length && props.some(prop => prop.name === "children")) {
+        report("ZC2501", "Explicit children prop conflicts with compiled JSX child slot.", opening);
+      }
+      return { kind: "ComponentCall", id: idOf("ComponentCall", span), span, component: tag, props,
+        ...(children.length ? { children } : {}) };
     }
     const children = ts.isJsxElement(node) ? childrenOf(node.children, namespace) : [];
     return { kind: "StaticElement", id: idOf("StaticElement", span), span, tag, namespace,
@@ -520,6 +537,6 @@ export function analyze(request: CompileRequest): Analysis {
     sourceFile: source,
     roots,
     diagnostics,
-    document: { irVersion: 1, sourceFile: fileName, nodes: [...roots.values()] }
+    document: { irVersion: request.componentSlots ? 2 : 1, sourceFile: fileName, nodes: [...roots.values()] }
   };
 }
