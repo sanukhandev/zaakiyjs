@@ -75,6 +75,9 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `compile`
 - `foundationStatus`
 - `parseToIR`
+- `optimizeIR`
+- `validateIR`
+- `OPTIMIZATION_PASSES`
 
 ## Detailed feature guide
 

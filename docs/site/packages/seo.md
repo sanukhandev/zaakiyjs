@@ -1,63 +1,212 @@
 ---
-title: "@zaakiyjs/seo (planned)"
-description: "P3 SEO contract: metadata, indexability, structured data and sitemaps"
+title: "@zaakiyjs/seo"
+description: "Implemented pure metadata, route SEO, JSON-LD, canonical policies, robots and sitemap protocols"
 sidebar_position: 22
 ---
 
-# @zaakiyjs/seo — design contract
+# @zaakiyjs/seo — metadata and crawler output
 
-> **Status: Not an implemented package on the documented main revision.** This is a detailed guide to the frozen P3 [SEO contract](../../contracts/14-seo.md), **not** an installable API reference. Do not import `@zaakiyjs/seo` or copy reserved type names as runtime exports until implementation and merge are independently verified.
+> **Availability:** Source package merged to `main` in [PR #51](https://github.com/sanukhandev/zaakiyjs/pull/51) (`10df2c23a861`). Unpublished `0.0.0`; use in this repository's workspace until independent npm release approval. This is an SEO data engine, **not** a server HTML renderer, router, hydration runtime or guarantee of search engine indexing.
 
-## Problem and intended use
+## At a glance
 
-SEO must provide reliable metadata for static and dynamically loaded public pages without inventing a second router. Routes and server adapters own the authoritative HTTP status, access decision and loader data; SEO produces **pure metadata data structures** that a trusted rendering adapter serializes safely.
+- **Inputs:** trusted site origin, authoritative HTTP status and route visibility, completed authorized route loader data and optional metadata factories
+- **Outputs:** escaped metadata/head entries, canonical and social URLs, validated JSON-LD, robots headers/directives, robots.txt, deterministic XML sitemap pages and incremental sitemap plans
+- **Runtime boundary:** `@zaakiyjs/seo` is a pure universal data package; only `@zaakiyjs/seo/browser` touches `document` for managed SPA head updates
+- **Source:** [package README](../../../packages/seo/README.md), [exhaustive 16-section integration guide](../../../packages/seo/docs/complete-guide.md), [public exports](../../../packages/seo/src/index.ts), [frozen contract](../../contracts/14-seo.md)
 
-Use cases include catalog/product detail pages with real canonical URLs and JSON-LD, locale alternates, private account areas that must never enter public discovery, dynamic 404/410 responses and sitemaps from published records.
+## Try it from the monorepo
 
-## Reserved feature model
+```sh
+pnpm --filter @zaakiyjs/seo lint
+pnpm --filter @zaakiyjs/seo typecheck
+pnpm --filter @zaakiyjs/seo build
+pnpm --filter @zaakiyjs/seo test
+```
 
-| Feature | Frozen contract | Usage rule |
-| --- | --- | --- |
-| Document metadata | `SeoDocumentV1` | Title, description, canonical, robots, Open Graph, social card, locale, alternates, bounded JSON-LD |
-| Route resolution | `SeoResolveInputV1` / `SeoFactoryV1` | Consume route ID, URL, params, **authorized completed loader data**, real status and visibility |
-| Resolution result | `SeoResolutionV1` | Data + authoritative status, optional validated redirect |
-| Sitemap discovery | `SitemapFeedV1`, `SitemapEntryV1` | Only published public canonical pages; bounded cursor feeds with AbortSignal |
-| Integration | Contract 13 `RenderHeadAdapterV1` | HTML escaping/CSP in rendering boundary, not inside arbitrary metadata strings |
+## Static metadata, canonical and JSON-LD
 
-These are **reserved type-level design names**; no implemented symbol is promised here.
+```ts
+import { defineMetadata, renderMetadata, generateSitemaps } from '@zaakiyjs/seo';
 
-## Intended feature flow: dynamic product detail
+const defaults = defineMetadata({
+  title: 'Catalogue',
+  description: 'Public products'
+});
+const result = renderMetadata([
+  defaults,
+  {
+    title: 'Safe Lamp',
+    canonical: '/products/lamp',
+    structuredData: { '@type': 'Product', name: 'Safe Lamp' }
+  }
+], { siteURL: 'https://shop.example.test', status: 200, trailingSlash: 'never' });
 
-1. Router matches a public product route and completes authorization, guards and loader.
-2. Repository loader returns published product data or a genuine missing/deleted response.
-3. A pure route metadata factory receives the loader result and **actual** status.
-4. The resolver merges trusted site defaults, layout defaults and route metadata in that order.
-5. Server output serializes exactly one canonical target, escaped metadata and bounded JSON-LD.
-6. If the product is 404/410, force noindex and exclude it from sitemap. If private/draft, do not disclose private metadata.
-7. SSR/SSG output is tested as actual HTML with correct HTTP response status; browser title updates can share the pure resolution result.
+console.log(result.html); // escaped head content; host inserts in trusted response
+console.log(result.headers['X-Robots-Tag']); // apply at the actual HTTP boundary
 
-A canonical is not inferred from untrusted Host headers; configure a trusted HTTPS site origin. Query/hash and paginated canonical strategy must be an explicit application rule.
+const site = await generateSitemaps([
+  { loc: '/products/lamp', published: true, lastmod: '2026-11-01' }
+], { siteURL: 'https://shop.example.test' });
+```
 
-## Content and security requirements
+For the complete static API, canonical normalization, Meta/OG/Twitter, locale/hreflang, JSON-LD schema policy and serialization examples, see the [implementation guide](../../../packages/seo/docs/complete-guide.md).
 
-JSON-LD is structured bounded JSON data, not an HTML string. A future implementation must reject malicious keys, prototype pollution, unsafe context URLs, oversized trees and script breakout sequences. Normalize and validate Open Graph, hreflang and canonical URLs against allowed origins. Hreflang sets must be reciprocal, with locale validity and optional `x-default`.
+## Dynamic SEO based on authoritative route data
 
-Robots directives are crawler hints, not authentication. Private routes need enforceable backend auth and authoritative noindex logic.
+```ts
+import { definePageMetadata, resolveRouteMetadata } from '@zaakiyjs/seo';
 
-## Implementation acceptance
+const product = definePageMetadata<{ name: string; slug: string }>(({ data }) => ({
+  title: data.name,
+  canonical: '/products/' + encodeURIComponent(data.slug)
+}));
 
-- Public dynamic page: correct title, OG, canonical, Schema.org structure and HTTP 200.
-- Missing/deleted page: real HTTP 404/410, noindex and excluded sitemap entry.
-- Redirect: valid 3xx status and Location, not a meta-refresh substitute.
-- Private/auth-only: zero sensitive JSON-LD and no public sitemap inclusion.
-- Sitemap: bounded pagination, deterministic order, meaningful `lastmod` values and cancellation.
-- Security: malicious HTML/URL payloads never become executable markup.
-- Integration: build-only and server use without mandatory Router/SSR runtime imports.
+const resolved = resolveRouteMetadata(
+  'product',
+  [
+    { id: 'root', metadata: { publisher: 'Example' } },
+    { id: 'product', parentId: 'root', metadata: product }
+  ],
+  { description: 'Browse products' },
+  { siteURL: 'https://shop.example.test', data: { name: 'Lamp', slug: 'lamp' }, status: 200 }
+);
+```
 
-## References
+Route and server adapters own route selection, access policy, loader execution, status and redirect responses. SEO merges trusted defaults/layouts/route metadata but never performs authorization. For private, draft, redirected, missing, deleted or other non-200 responses, the versioned resolver does not call loader-dependent metadata factories and produces noindex-safe results without private canonical or JSON-LD.
 
-- [P3 SEO contract](../../contracts/14-seo.md)
-- [SSR/rendering contract](../../contracts/13-rendering-ssr.md)
-- [SSR foundation package](./ssr.md)
-- [Router package](./router.md)
-- [Rendering architecture](../../architecture/rendering-and-seo.md)
+## Versioned SEO and SSR head protocol
+
+```ts
+import { resolveSeoV1, seoToRenderHeadV1 } from '@zaakiyjs/seo';
+
+const siteOrigin = new URL('https://shop.example.test');
+const result = await resolveSeoV1({
+  routeId: 'product',
+  url: new URL('/products/lamp', siteOrigin),
+  siteOrigin,
+  params: { slug: 'lamp' },
+  loaderData: { name: 'Lamp' },
+  visibility: 'public',
+  status: 200
+}, ({ loaderData }) => ({
+  version: 1,
+  title: loaderData.name,
+  canonical: '/products/lamp',
+  jsonLd: [{ '@type': 'Product', name: loaderData.name }]
+}));
+const entries = seoToRenderHeadV1(result);
+```
+
+The `zaakiy.seo/1` result can be adapted using `createSeoHeadAdapterV1` for trusted SSR/SSG hosts. The host still owns response headers, real HTTP status, CSP nonces, content security and routing. `seoRobotsHeaderV1` derives crawler headers. The SEO package does **not** provide compiler-generated SSR or DOM hydration; those remain [SSR integration issue #59](https://github.com/sanukhandev/zaakiyjs/issues/59).
+
+## SPA head adoption
+
+```ts
+import { createHeadManager } from '@zaakiyjs/seo/browser';
+import { renderMetadata } from '@zaakiyjs/seo';
+
+const abort = new AbortController();
+const head = createHeadManager(document, abort.signal);
+head.update(
+  renderMetadata({ title: 'Products', canonical: '/products' }, {
+    siteURL: 'https://shop.example.test'
+  }),
+  { version: 1 }
+);
+abort.abort(); // removes managed metadata and listeners
+```
+
+The browser manager adopts existing SEO-related SSR tags, removes stale canonical/social/JSON-LD tags, rejects stale or cancelled navigation versions and preserves unrelated head elements. Initial crawler-indexable HTML should still be server-rendered when possible.
+
+## Sitemap feeds, robots and localization
+
+- `generateRobotsTxt` serializes crawler directives; robots are **not** authentication.
+- `generateSitemaps` filters ineligible/private/noindex/redirect/non-200/soft-404 records, rejects conflicting canonical duplicates, sorts deterministically and escapes XML.
+- `generateSitemapIndex` constructs a bounded index; page limits are at most 50,000 URLs and 50 MB. URLs at or above 2048 characters and invalid calendar dates are rejected.
+- `generateSitemapsFromFeedV1` accepts versioned `zaakiy.sitemap/1` paginated data with cancellation and bounded traversal; the server must independently authorize each record.
+- `planSitemapRebuild` supports changed-content rebuild planning; `auditHreflang` checks locale alternate consistency.
+- Never fabricate `lastmod` timestamps or expose authenticated URLs in public sitemap output.
+
+## Security, privacy and diagnostics
+
+- Trusted canonical base origin is mandatory; unsafe schemes, malformed encoding, credentials and unapproved cross-origin URLs are rejected.
+- JSON-LD is validated and serialized with script-context escaping; search rich-result eligibility is not guaranteed.
+- Private/non-200 responses must not disclose route metadata; the site host enforces access control and real HTTP status.
+- `auditMetadata` and `auditSeoV1` emit diagnostic codes for missing metadata, forbidden indexability, canonical and structured-data constraints.
+- The package has no analytics SDK, network collection, persistent identity, compiler runtime or browser-side AI dependency.
+- Third-party scripts and preloads still require application-side consent and CSP policies.
+
+## Public API index
+
+These names are parsed from the merged `packages/seo/src/index.ts` root entrypoint. The optional browser-only `createHeadManager` is exported from `@zaakiyjs/seo/browser`, not from this root list.
+
+- `auditHreflang`
+- `auditMetadata`
+- `AuditOptions`
+- `auditSeoV1`
+- `CanonicalPolicy`
+- `createSeoHeadAdapterV1`
+- `defineMetadata`
+- `definePageMetadata`
+- `defineStructuredData`
+- `DiagnosticSeverity`
+- `escapeHtml`
+- `escapeXml`
+- `GeneratedSitemap`
+- `generateRobotsTxt`
+- `generateSitemapIndex`
+- `generateSitemaps`
+- `generateSitemapsFromFeedV1`
+- `HeadTag`
+- `HreflangPage`
+- `JsonLdValueV1`
+- `Metadata`
+- `MetadataDefinition`
+- `metadataToTags`
+- `normalizeCanonical`
+- `PageMetadataContext`
+- `planSitemapRebuild`
+- `RenderedMetadata`
+- `RenderHeadAdapterV1`
+- `RenderHeadEntryV1`
+- `renderMetadata`
+- `ResolvedMetadata`
+- `resolveMetadata`
+- `ResolveMetadataOptions`
+- `resolveRouteMetadata`
+- `resolveSeoV1`
+- `robotsContent`
+- `RobotsDirectives`
+- `RobotsGroup`
+- `RobotsTxtOptions`
+- `RouteSeoConfig`
+- `SeoAuditInputV1`
+- `SeoDiagnostic`
+- `SeoDocumentV1`
+- `SeoFactoryV1`
+- `SeoResolutionV1`
+- `SeoResolveInputV1`
+- `SeoResolveOptionsV1`
+- `seoRobotsHeaderV1`
+- `SeoRobotsV1`
+- `SeoRouteBindingV1`
+- `seoToRenderHeadV1`
+- `serializeHeadTags`
+- `serializeJsonLd`
+- `SitemapBuild`
+- `SitemapEntry`
+- `SitemapEntryV1`
+- `SitemapFeedOptionsV1`
+- `SitemapFeedV1`
+- `SitemapIndexEntry`
+- `SitemapOptions`
+- `SocialMetadata`
+- `StructuredData`
+- `StructuredDataInput`
+- `TwitterMetadata`
+- `validateStructuredData`
+
+## Detailed feature guide
+
+The [Complete SEO Usage and Integration Guide](../../../packages/seo/docs/complete-guide.md) covers all public features with typed examples and correctness criteria: static and route metadata, layout inheritance, social previews, canonical URL policies, localized alternates, JSON-LD, robots, versioned v1 contracts, SSR/SSG head adapters, safe SPA updates, static/dynamic sitemap feeds, diagnostics, security restrictions, deployment and troubleshooting. For interfaces evolving with Router or SSR, verify the relevant package's actual exported APIs and current integration tests. No package release or search-result ranking claim follows from this merge.

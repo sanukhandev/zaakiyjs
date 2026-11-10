@@ -41,7 +41,7 @@ export default defineConfig({
 
 - TSX HMR currently uses full reload where component-instance-preserving HMR is not implemented.
 - Build outputs include styles and asset metadata; browser applications must not import compiler/CLI/AI/server-only modules.
-- Browser target handling is constrained by the Compiler/Compat integration gates; configuring targets is not proof of compatibility certification.
+- **Do not set nonempty `browserTargets` for a TSX application yet.** The Compiler rejects explicit target browsers with fatal `ZC2301` until Compat integration is complete; the runnable configuration deliberately omits this option.
 
 ## Public API index
 
@@ -69,8 +69,7 @@ import { zaakiyPlugin } from "@zaakiyjs/vite-plugin";
 export default defineConfig({
   plugins: [
     zaakiyPlugin({
-      configFile: "zaakiy.config.ts",
-      browserTargets: ["chrome >= 120", "firefox >= 120"]
+      configFile: "zaakiy.config.ts"
     })
   ],
   build: { sourcemap: true }
@@ -85,7 +84,7 @@ The public `zaakiyPlugin()` factory is exported from the package root and a comp
 
 - `configFile`: optional path to a trusted `StyleConfig` default export. The default is an empty `brand` rather than executing arbitrary project config during a build. Configuration is loaded by Vite in Node, never embedded into client JS. On change, development fully reloads.
 - `include` / `exclude`: standard Vite/Rollup filter patterns; only `.tsx` and `.mtsx` files are eligible by default. Ordinary JS/TS is delegated to Vite.
-- `browserTargets`: forwarded to the native TSX compiler and included in the compilation cache key.
+- `browserTargets`: currently **not usable with TSX**. A nonempty value is forwarded to the Compiler, which emits fatal `ZC2301` and fails dev/build. Leave it unset until a separately tested Compat/Compiler/Vite integration lands; the option's presence is not evidence of compatibility support.
 - `cssFileName`: optional safe CSS asset path under `assets/`, default `assets/zaakiy-styles.css`. Directory traversal and URL-like values are rejected.
 - `cssVirtualId`: frozen to `virtual:zaakiy-styles.css`; other values fail rather than creating incompatible public imports.
 

@@ -32,13 +32,13 @@ The browser does not run an alternate React/Vue runtime or TypeScript compiler. 
 | Browser runtime | `signals`, `core`, `dom`, `store`, `forms`, `router`, `async`, `http`, `ui-primitives`, `ui`, `motion`, `consent`, `ads` | Import only browser-safe public exports; terminate owners on unmount |
 | Node build/CI | `compiler`, `styles`, `vite-plugin`, `cli`, `compat` root, `templates/node`, `ssr/build` | No bundling into the deployed browser application |
 | Node server | `proxy`, `ssr/node` | Enforce authorization, egress policy, data isolation, request-scoped ownership |
-| Browser-safe metadata | `ssr` root protocol types, `ssr/client` read-only checks, `templates` manifest/planning, `compat/abort` scoped helpers | A metadata/checking API is not a full runtime implementation |
+| Browser-safe metadata | `seo` root pure metadata, `ssr` root protocol types, `ssr/client` read-only checks, `templates` manifest/planning, `compat/abort` scoped helpers | A metadata/checking API is not a full runtime implementation |
 
 Always verify the actual `package.json` `exports` and dependency graph before mixing server/client modules.
 
 ## Implemented is not the same as production-certified
 
-The reviewed `main` revision contains **21 package directories with source code**. That does not establish that every feature is complete, every CI workflow has passed at the current PR head, or any npm release exists. The package docs consistently distinguish the runtime slice from the remaining integration gates.
+The reviewed `main` revision contains **22 package directories with source code**, including the merged SEO package. That does not establish that every feature is complete, every CI workflow has passed at the current PR head, or any npm release exists. The package docs consistently distinguish the runtime slice from the remaining integration gates.
 
 ## Key current limitations
 

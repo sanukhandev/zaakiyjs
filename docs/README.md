@@ -1,6 +1,6 @@
 # ZaakiyJS engineering documentation
 
-> **Current documentation:** [Site-ready package guides](site/index.md) cover the **21 source packages present on the reviewed main revision** (9f6c6603c98c), with feature usage, API inventories, integration recipes and explicit limitations. They are not npm publishing or production certification claims. Older M0/P2/P3 contract pages below preserve historical design decisions and may include dated status notes; current code, exports and tests take precedence.
+> **Current documentation:** [Site-ready package guides](site/index.md) cover the **22 source packages present on the reviewed main revision** (10df2c23a861), with feature usage, API inventories, integration recipes and explicit limitations. They are not npm publishing or production certification claims. Older M0/P2/P3 contract pages below preserve historical design decisions and may include dated status notes; current code, exports and tests take precedence.
 
 ## Start here
 

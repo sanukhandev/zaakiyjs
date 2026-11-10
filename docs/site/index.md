@@ -8,7 +8,7 @@ sidebar_position: 1
 
 Build typed, fine-grained TypeScript/TSX applications with native DOM updates, deterministic CSS, scoped ownership and opt-in integrations.
 
-These pages are **source documentation**, designed to be imported into a documentation website without depending on its theme, build system or runtime. They describe the 21 package directories present on the reviewed `main` revision `9f6c6603c98c`. Package manifests still use `0.0.0`; this documentation does **not** assert npm availability or production certification.
+These pages are **source documentation**, designed to be imported into a documentation website without depending on its theme, build system or runtime. They describe the 22 package directories present on the reviewed `main` revision `10df2c23a861`. Package manifests still use `0.0.0`; this documentation does **not** assert npm availability or production certification.
 
 ## Start learning
 
@@ -57,12 +57,13 @@ These pages are **source documentation**, designed to be imported into a documen
 | Package | Primary feature |
 | --- | --- |
 | [SSR](./packages/ssr.md) | Trusted server rendering infrastructure; reactive TSX hydration remains blocked |
+| [SEO](./packages/seo.md) | Static/dynamic metadata, canonical/OG/JSON-LD, crawler controls and sitemap feeds |
 | [Consent](./packages/consent.md) | Purpose decisions, revocation, CMP/storage adapters |
 | [Ads](./packages/ads.md) | Consent-gated display placements and provider lifecycle |
 
 ## Proposed package guides (not runtime exports)
 
-[SEO](./packages/seo.md) · [Analytics](./packages/analytics.md) · [AI advisor](./packages/ai.md) · [Devtools](./packages/devtools.md) · [Testing helpers](./packages/testing.md). These pages document intended contracts and release gates only. See [status and roadmap](./planned-packages.md).
+[Analytics](./packages/analytics.md) · [AI advisor](./packages/ai.md) · [Devtools](./packages/devtools.md) · [Testing helpers](./packages/testing.md). These pages document intended contracts and release gates only. See [status and roadmap](./planned-packages.md).
 
 ## Design rules
 

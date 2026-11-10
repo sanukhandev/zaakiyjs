@@ -60,12 +60,16 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `generatorPlan`
 - `parseArgs`
 - `parsePreset`
+- `runCli`
+- `runProjectScript`
 - `scaffoldPlan`
 - `scaffoldProject`
 - `supportedGenerators`
 - `validateProjectName`
 
 ## Detailed feature guide
+
+The Node-only public helpers `runCli(argv, io?)` (the CLI entry/controller) and `runProjectScript(command, cwd, manager)` (delegation of `dev`/`build`/`test` to a selected package manager) are executable source exports, not browser APIs. Host applications should normally invoke the `zaakiy` binary instead of importing these functions.
 
 Sections below retain capability explanations and examples from the package's source README, not unimplemented proposals. Technical limitations inside a section remain applicable.
 
