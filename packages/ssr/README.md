@@ -58,3 +58,12 @@ All requests use a fresh Core owner. Auth identity is supplied only through trus
 5. Run full package/workspace CI, independent npm packing, offline consumer, memory/security/performance and real browser checks.
 
 No quantified bundle-size/latency/memory improvement is claimed until measured. A passing static fixture must not be used to claim general SSR/hydration.
+
+
+## Byte-verifiable server artifact build gate (hardening branch)
+
+The Node-only \`@zaakiyjs/ssr/build\` subpath exports \`buildVerifiedManifestV1(artifacts)\` and \`verifyTrustedArtifactBytes(manifest, bytesByModuleId)\`. The first calculates a canonical \`zaakiy.render-manifest/1\` build ID from sorted route/module IDs and SHA-256 digests of actual compiled module bytes, never a caller's claimed hash. The second compares both the build ID and each module digest with deployment-controlled file contents, and rejects extra, missing or mutated artifacts.
+
+Run both the bytes check and the existing \`verifyTrustedManifest\` runtime registration check before activating SSR. **This is a build integrity gate, not proof that a host module loader imported the checked bytes**. Deployments must bind an immutable registry to the exact attested artifacts. There is still no compiler TSX-to-server target or live DOM hydration adoption; issue #59 remains open.
+
+The browser-only \`@zaakiyjs/ssr/client\` \`inspectHydration\` preflight now requires comment markers of the form \`zaakiy-h:<markerId>:<templateDigest>\`, validates digests, order, uniqueness, build/route identity and bounded cardinality, and fails closed on legacy ID-only markers. It inspects only; it neither hydrates nodes nor attaches listeners. Do not render these markers without an independently reviewed server compiler and hydration adapter.

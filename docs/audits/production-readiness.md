@@ -69,3 +69,10 @@ The PR has production code changes; earlier statements that it contains only doc
 - Compiled JSX supports owner-scoped finite literal-branch class variants and non-URL reactive attributes. Every dynamic CSS candidate is source-spanned and verified by the Vite stylesheet bridge. Arbitrary class names, escaped/unverifiable source tokens, inline style and dynamic URLs fail closed.
 - The DOM tests now cover disconnected mounts, pending ref cancellation on owner disposal and exception-triggered mount rollback, in addition to connected/ref-reorder browser coverage.
 - Earlier hardening CI exposed and led to correction of unverifiable style token offsets and a legacy static `class={'...'}` manifest compatibility regression. These are *not* accepted until final-head CI passes.
+
+
+## M4 SSR trust-boundary increment
+
+- Build-side SHA-256 artifact manifests are generated from exact emitted module bytes; a separate verification helper rejects modified, missing or extra artifacts, and tests include malicious getter-backed registries.
+- Browser-side hydration *probe only* now checks marker template digests as well as IDs/order/route/build, refusing to attest older ID-only comments.
+- These additions do not solve issue #59's compiler-generated server output or DOM adoption. Never mark the M4 milestone complete on their account.
