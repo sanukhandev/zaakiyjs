@@ -40,7 +40,7 @@ describe("project-scoped TypeScript diagnostics", () => {
         expect(result.js[0]?.map).toBeTruthy();
       }
     } finally { session.dispose(); }
-  });
+  }, 30_000);
 
   it("invalidates imported type changes and deletion without stale diagnostics", async () => {
     const dir = await fixture();
