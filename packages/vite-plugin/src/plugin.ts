@@ -7,6 +7,7 @@ import {
   type ViteDevServer
 } from "vite";
 import type { ExtractedStyleToken, StyleConfig } from "@zaakiyjs/styles";
+import { createCompilerSession, type CompilerSession } from "@zaakiyjs/compiler";
 import type { CompilerDiagnostic } from "@zaakiyjs/compiler";
 import { cssSourceMapComment, portableSourceFile } from "./asset-paths.js";
 import type { ZaakiyAssetManifest, ZaakiyViteOptions, GeneratedAssetRecord } from "./index.js";
@@ -113,6 +114,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
   let lastStyleKey = "";
   let configRevision = 0;
   let buildMode = false;
+  let compilerSession: CompilerSession | undefined;
 
   function isTsx(id: string): boolean {
     const file = simpleFile(id);
@@ -231,12 +233,18 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
     async configResolved(config) {
       resolved = config;
       buildMode = config.command === "build";
+      compilerSession?.dispose();
+      compilerSession = createCompilerSession(config.root);
       await loadBrand();
     },
 
     configureServer(devServer) {
       server = devServer;
       if (configPath) devServer.watcher.add(configPath);
+      devServer.httpServer?.once("close", () => {
+        compilerSession?.dispose();
+        compilerSession = undefined;
+      });
     },
 
     resolveId(source, importer, opts) {
@@ -299,7 +307,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         rootDir: resolved?.root,
         targetBrowsers: options.browserTargets,
         componentSlots: options.componentSlots === true
-      });
+      }, compilerSession);
       for (const diagnostic of output.diagnostics) {
         const error = diagnosticError(diagnostic, file);
         if (diagnostic.severity === "error") this.error(error);
@@ -355,6 +363,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
 
     async handleHotUpdate(ctx) {
       const file = simpleFile(ctx.file);
+      compilerSession?.invalidate(file);
       bump(file);
       if (configPath && file === configPath) {
         await loadBrand();
@@ -373,6 +382,11 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         return [];
       }
       return undefined;
+    },
+
+    closeBundle() {
+      compilerSession?.dispose();
+      compilerSession = undefined;
     },
 
     async generateBundle(_output, bundle) {

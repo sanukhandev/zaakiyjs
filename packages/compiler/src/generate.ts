@@ -580,14 +580,25 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
   };
 }
 
-export function typeDiagnostics(request: CompileRequest, analysis: Analysis): CompilerDiagnostic[] {
-  const options: ts.CompilerOptions = {
+export function diagnosticCompilerOptions(): ts.CompilerOptions {
+  return {
     target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Bundler,
     // Type-check against the JSX namespace from jsx-runtime; emission still uses preserve + our transformer.
     jsx: ts.JsxEmit.ReactJSX, jsxImportSource: "@zaakiyjs/core",
     strict: true, skipLibCheck: true, noEmit: true, types: []
   };
+}
+
+export function typeDiagnostics(
+  request: CompileRequest, analysis: Analysis, sharedProgram?: ts.Program
+): CompilerDiagnostic[] {
+  const options = diagnosticCompilerOptions();
+  if (sharedProgram) {
+    const file = sharedProgram.getSourceFile(request.fileName);
+    if (!file) throw new Error("Compiler diagnostics session lost the current TSX source");
+    return diagnosticsForProgram(request, analysis, sharedProgram, file);
+  }
   const host = ts.createCompilerHost(options);
   const originalRead = host.readFile.bind(host);
   const originalGet = host.getSourceFile.bind(host);
@@ -598,7 +609,17 @@ export function typeDiagnostics(request: CompileRequest, analysis: Analysis): Co
       ts.createSourceFile(path, request.source, language, true, ts.ScriptKind.TSX) :
       originalGet(path, language, onError, shouldCreate);
   const program = ts.createProgram([request.fileName], options, host);
-  const errors: CompilerDiagnostic[] = ts.getPreEmitDiagnostics(program)
+  return diagnosticsForProgram(request, analysis, program);
+}
+
+function diagnosticsForProgram(
+  request: CompileRequest, analysis: Analysis, program: ts.Program,
+  currentFile?: ts.SourceFile
+): CompilerDiagnostic[] {
+  const targetName = ts.sys.resolvePath(request.fileName);
+  // A project session reports diagnostics for only the current source. The
+  // standalone path retains its original complete-program diagnostic policy.
+  const errors: CompilerDiagnostic[] = ts.getPreEmitDiagnostics(program, currentFile)
     .filter(d => d.file && ts.sys.resolvePath(d.file.fileName) === targetName)
     .map(d => {
       const start = d.start ?? 0;

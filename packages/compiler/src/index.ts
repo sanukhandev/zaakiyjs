@@ -29,6 +29,8 @@ export interface CompileRequest { readonly fileName: string; readonly source: st
 
 
 import { analyze } from "./analysis.js";
+import type { Analysis } from "./analysis.js";
+import { createTypeDiagnosticsSession } from "./type-session.js";
 import { emitJavaScript, loweringDiagnostics, typeDiagnostics } from "./generate.js";
 import { collectStyleTokens, optimizeIR, validateIR, OPTIMIZATION_PASSES } from "./optimize.js";
 export { optimizeIR, validateIR, OPTIMIZATION_PASSES };
@@ -78,7 +80,10 @@ function styleTokenManifest(nodes: readonly IRNode[], source: string): readonly 
 }
 
 /** Compile a supported TSX source file. Fatal diagnostics always suppress generated assets. */
-export function compile(request: CompileRequest): CompileResult {
+function compileWithDiagnostics(
+  request: CompileRequest,
+  getDiagnostics: (request: CompileRequest, analysis: Analysis) => CompilerDiagnostic[]
+): CompileResult {
   const parsed = analyze(request);
   const ir = optimizeIR(parsed.document);
   const compatibilityDiagnostics: CompilerDiagnostic[] = request.targetBrowsers?.length
@@ -90,7 +95,7 @@ export function compile(request: CompileRequest): CompileResult {
   const diagnostics = [
     ...parsed.diagnostics,
     ...loweringDiagnostics(ir),
-    ...typeDiagnostics(request, parsed),
+    ...getDiagnostics(request, parsed),
     ...compatibilityDiagnostics
   ];
   const unique = new Map<string, CompilerDiagnostic>();
@@ -126,4 +131,33 @@ export function compile(request: CompileRequest): CompileResult {
       manifest
     };
   }
+}
+
+
+/** The session and its TypeScript program belong to one build/plugin instance. */
+export interface CompilerSession {
+  compile(request: CompileRequest): CompileResult;
+  invalidate(fileName: string): void;
+  dispose(): void;
+}
+
+/** Standalone compilation preserves its original isolated diagnostic behavior. */
+export function compile(request: CompileRequest): CompileResult {
+  return compileWithDiagnostics(request, typeDiagnostics);
+}
+
+/**
+ * Reuse TypeScript semantic work across TSX modules in one Node build.
+ * A new session is required per project/build; never cache across app roots.
+ */
+export function createCompilerSession(rootDir: string): CompilerSession {
+  const diagnostics = createTypeDiagnosticsSession(rootDir);
+  return {
+    compile(request) {
+      return compileWithDiagnostics(request, (current, parsed) =>
+        diagnostics.diagnose(current, parsed));
+    },
+    invalidate: file => diagnostics.invalidate(file),
+    dispose: () => diagnostics.dispose()
+  };
 }
