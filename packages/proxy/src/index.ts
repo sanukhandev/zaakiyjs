@@ -59,6 +59,43 @@ export function createProxyRouter(config: ProxyConfig): ProxyRouter {
     });
   });
   const routes = compileRoutes(routeSnapshots, upstreamSnapshots);
+  // Index routes under the longest static, validated leading path prefix.
+  // Parameterized and wildcard suffixes remain checked by the original regex,
+  // and a dynamic first segment belongs to the root bucket. The index holds
+  // only compiled-route positions, retaining priority and 405 Allow ordering.
+  const routeIndex = new Map<string, number[]>();
+  for (let i = 0; i < routes.length; i++) {
+    const literals: string[] = [];
+    for (const segment of routes[i]!.route.path.split("/").slice(1)) {
+      if (segment === "*" || segment.startsWith(":")) break;
+      literals.push(segment);
+    }
+    const key = "/" + literals.join("/");
+    const bucket = routeIndex.get(key);
+    if (bucket) bucket.push(i);
+    else routeIndex.set(key, [i]);
+  }
+  const matchingRoutes = (path: string): typeof routes => {
+    const candidates: number[] = [];
+    let prefix = path;
+    while (prefix !== "/") {
+      const bucket = routeIndex.get(prefix);
+      if (bucket) candidates.push(...bucket);
+      const boundary = prefix.lastIndexOf("/");
+      prefix = boundary <= 0 ? "/" : prefix.slice(0, boundary);
+    }
+    const root = routeIndex.get("/");
+    if (root) candidates.push(...root);
+    // The original compiler order defines route preference and 405 headers;
+    // a prefix tree must never accidentally change authorization policy.
+    candidates.sort((a, b) => a - b);
+    const matches: typeof routes = [];
+    for (const index of candidates) {
+      const item = routes[index]!;
+      if (item.regex.test(path)) matches.push(item);
+    }
+    return matches;
+  };
   const authenticator = config.authenticate;
   if (routes.some(r => r.route.access === "authenticated") && !authenticator) throw new ProxyConfigurationError("Protected routes require an authenticator");
   const limiter = config.rateLimitStore ?? new MemoryRateLimitStore();
@@ -112,7 +149,7 @@ export function createProxyRouter(config: ProxyConfig): ProxyRouter {
         }
         const url = incomingURL(request.url);
         const path = url.pathname;
-        const matches = routes.filter(item => item.regex.test(path));
+        const matches = matchingRoutes(path);
         if (!matches.length) return finish(safeResponse(404, "NOT_FOUND"), "not_found");
         const found = matches.find(item => item.route.methods.includes(method));
         if (!found) return finish(safeResponse(405, "METHOD_NOT_ALLOWED", { allow: [...new Set(matches.flatMap(m => m.route.methods))].join(", ") }), "method");

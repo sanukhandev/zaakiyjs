@@ -1,0 +1,56 @@
+name: B4 Roving UI Primitive Performance
+
+on:
+  push:
+    branches: [perf/b4-ui-primitives-roving]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: be8de035fb137f665c09307527da52cfc6a33581
+          path: .benchmark-vite
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Compile and validate UI primitives
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec vitest run packages/ui-primitives/test
+          pnpm exec eslint packages/ui-primitives/src/keyboard.ts packages/ui-primitives/test/roving-batch.test.ts benchmarks/microbench-ui-roving.mjs benchmarks/report-ui-roving.mjs
+          pnpm typecheck
+      - name: Compile immutable baseline
+        run: |
+          pnpm --dir .benchmark-vite install --frozen-lockfile
+          pnpm --dir .benchmark-vite build
+      - name: Compare roving focus registration and cleanup
+        run: |
+          mkdir -p benchmark-artifacts
+          node benchmarks/microbench-ui-roving.mjs .benchmark-vite benchmark-artifacts/roving-baseline.json
+          node benchmarks/microbench-ui-roving.mjs . benchmark-artifacts/roving-candidate.json
+          node benchmarks/report-ui-roving.mjs
+          cat benchmark-artifacts/roving-comparison.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload raw evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b4-roving-initialization
+          path: benchmark-artifacts/
+          if-no-files-found: warn
