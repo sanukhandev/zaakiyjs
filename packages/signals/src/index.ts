@@ -22,7 +22,7 @@ type Source = SignalNode<unknown> | ComputedNode<unknown>;
 interface TrackingFrame {
   readonly observer: Observer;
   readonly seen: Set<Source>;
-  readonly computedValues: Map<ComputedNode<unknown>, unknown>;
+  computedValues: Map<ComputedNode<unknown>, unknown> | null;
 }
 
 let activeFrame: TrackingFrame | null = null;
@@ -113,9 +113,11 @@ function observe(source: Source): void {
 function runTracked<T>(observer: Observer, evaluate: () => T): T {
   const before = observer.dependencies;
   const seen = new Set<Source>();
-  const computedValues = new Map<ComputedNode<unknown>, unknown>();
+  // Direct-signal-only effects never need a computed-value snapshot.
+  // Allocate this map lazily only if a derived value is actually observed.
+  const frame: TrackingFrame = { observer, seen, computedValues: null };
   const previous = activeFrame;
-  activeFrame = { observer, seen, computedValues };
+  activeFrame = frame;
   let succeeded = false;
   try {
     const result = evaluate();
@@ -131,7 +133,7 @@ function runTracked<T>(observer: Observer, evaluate: () => T): T {
     } else if (succeeded) {
       for (const source of before) if (!seen.has(source)) source.removeObserver(observer);
       observer.dependencies = seen;
-      if (observer instanceof EffectNode) observer.rememberComputedValues(computedValues);
+      if (observer instanceof EffectNode) observer.rememberComputedValues(frame.computedValues);
       if (observer instanceof ComputedNode) {
         observer.revisions = new Map([...seen].map((source) => [source, source.revision()]));
       }
@@ -180,7 +182,10 @@ class ComputedNode<T> implements ComputedSignal<T> {
     observe(this as ComputedNode<unknown>);
     const value = this.read();
     const frame = activeFrame;
-    if (frame?.observer instanceof EffectNode) frame.computedValues.set(this as ComputedNode<unknown>, value);
+    if (frame?.observer instanceof EffectNode) {
+      if (frame.computedValues === null) frame.computedValues = new Map();
+      frame.computedValues.set(this as ComputedNode<unknown>, value);
+    }
     return value;
   }
   peek(): T { return this.read(); }
@@ -256,7 +261,7 @@ class EffectNode implements EffectHandle {
     this.phase = phase;
   }
   invalidate(): void { enqueue(this); }
-  rememberComputedValues(reads: Map<ComputedNode<unknown>, unknown>): void {
+  rememberComputedValues(reads: Map<ComputedNode<unknown>, unknown> | null): void {
     this.successfulReadValues = reads;
   }
   /** Skip effects whose complete dependency set consists of unchanged computed values. */
