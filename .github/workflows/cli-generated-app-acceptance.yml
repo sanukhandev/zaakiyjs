@@ -1,6 +1,8 @@
 name: CLI Generated App Acceptance
 on:
   pull_request:
+  push:
+    branches: ['perf/**']
 permissions:
   contents: read
 jobs:

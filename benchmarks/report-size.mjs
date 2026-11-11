@@ -22,6 +22,7 @@ async function assets(root, folder = root) {
 const variants = {
   react: "benchmarks/react-reference/dist",
   baseline: ".benchmark-baseline/apps/benchmark-app/dist",
+  hardening: ".benchmark-hardening/apps/benchmark-app/dist",
   candidate: "apps/benchmark-app/dist"
 };
 const result = {schemaVersion: 1, units: "bytes", assets: {}};
