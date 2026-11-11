@@ -37,6 +37,31 @@ function rank(a: CompiledRoute, b: CompiledRoute): number {
   }
   return b.parents.length - a.parents.length || a.fullPath.localeCompare(b.fullPath);
 }
+interface PreparedRouteLayer {
+  readonly route: RouteDefinition;
+  readonly pathname: string;
+  readonly newParams: readonly string[];
+}
+// Weakly associate immutable, validated path metadata with each compiled route;
+// no process-global table holds application route definitions alive.
+const preparedLayers = new WeakMap<CompiledRoute, readonly PreparedRouteLayer[]>();
+
+function prepareLayers(entry: CompiledRoute): readonly PreparedRouteLayer[] {
+  const layers: PreparedRouteLayer[] = [];
+  let layerPrefix = "";
+  for (const ancestor of entry.parents) {
+    layerPrefix = normalized(layerPrefix + "/" + ancestor.path);
+    layers.push({
+      route: ancestor,
+      pathname: layerPrefix,
+      newParams: segments(ancestor.path)
+        .filter(part => part.startsWith(":"))
+        .map(part => part.slice(1))
+    });
+  }
+  return layers;
+}
+
 export interface RouteTable {
   readonly routes: readonly CompiledRoute[];
   readonly byId: ReadonlyMap<string, CompiledRoute>;
@@ -60,6 +85,7 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): RouteTab
       const names = tokens.filter(t => t.kind === "param").map(t => t.kind === "param" ? t.name : "");
       if (new Set(names).size !== names.length) throw new RouteConfigurationError("Duplicate route parameter in " + fullPath);
       const entry: CompiledRoute = { route, fullPath, tokens, parents: [...ancestors, route] };
+      preparedLayers.set(entry, prepareLayers(entry));
       const key = signature(entry);
       const previous = seen.get(key);
       // An empty-path index child can legitimately share its layout's URL.
@@ -102,24 +128,18 @@ export function matchRoutes(table: RouteTable, pathname: string): readonly Route
     }
     if (!matched || offset !== parts.length) continue;
     const result: RouteMatch[] = [];
-    let prefix = "";
     const inheritedParams: Record<string, string> = Object.create(null) as Record<string, string>;
-    for (const ancestor of entry.parents) {
-      prefix = normalized(prefix + "/" + ancestor.path);
-      // The complete path was tokenized and validated at compileRoutes time.
-      // Only this ancestor's new segments are needed; compiling every prefix
-      // again on each navigation causes avoidable allocations and repeated
-      // validation in deeply nested route trees.
-      for (const part of segments(ancestor.path)) {
-        if (part.startsWith(":")) {
-          const name = part.slice(1);
-          if (Object.hasOwn(params, name)) inheritedParams[name] = params[name]!;
-        }
+    // Prefixes and local param names were validated and prepared at compile
+    // time. Each matched navigation now allocates only its immutable snapshots.
+    const layers = preparedLayers.get(entry) ?? prepareLayers(entry);
+    for (const layer of layers) {
+      for (const name of layer.newParams) {
+        if (Object.hasOwn(params, name)) inheritedParams[name] = params[name]!;
       }
       result.push({
-        route: ancestor,
+        route: layer.route,
         params: Object.freeze({...inheritedParams}),
-        pathname: prefix
+        pathname: layer.pathname
       });
     }
     return result;
