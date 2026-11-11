@@ -54,7 +54,8 @@ try{
    consent.grant("analytics");
    if(!consent.isAllowed("analytics"))throw Error("Grant not authorized");
    consent.revoke("analytics");
-   if(consent.isAllowed("analytics")||consent.snapshot().grants.analytics.decision==="granted")
+   const snapshot=consent.snapshot();
+   if(consent.isAllowed("analytics")||consent.status("analytics")!=="revoked"||!snapshot.policyVersion)
      throw Error("Revocation failed");
   }
  }));
