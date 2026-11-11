@@ -30,6 +30,12 @@ jobs:
           ref: f19b9f6a466de7f5b03dd085925c8d9092a87f85
           path: .benchmark-baseline
           persist-credentials: false
+      - name: Checkout immutable hardening parent
+        uses: actions/checkout@v4
+        with:
+          ref: 04f453c18b31c7f900d77b037b0548f8888826f1
+          path: .benchmark-hardening
+          persist-credentials: false
       - uses: pnpm/action-setup@v4
         with:
           version: 10.20.0
@@ -48,10 +54,12 @@ jobs:
           pnpm build
           pnpm --dir .benchmark-baseline install --frozen-lockfile
           pnpm --dir .benchmark-baseline build
+          pnpm --dir .benchmark-hardening install --frozen-lockfile
+          pnpm --dir .benchmark-hardening build
       - name: Assemble identical ZaakiyJS fixtures for candidate and baseline
         shell: bash
         run: |
-          for repo in . .benchmark-baseline; do
+          for repo in . .benchmark-baseline .benchmark-hardening; do
             (
               cd "$repo"
               node packages/cli/dist/bin.js start --project benchmark-app --template minimal --workspace --path apps --package-manager pnpm
@@ -84,8 +92,10 @@ jobs:
           p2=$!
           pnpm exec vite preview --config benchmarks/react-reference/vite.config.mjs --host 127.0.0.1 --port 4193 --strictPort > benchmark-artifacts/react-preview.log 2>&1 &
           p3=$!
-          trap 'kill "$p1" "$p2" "$p3" 2>/dev/null || true' EXIT
-          for port in 4191 4192 4193; do
+          pnpm --dir .benchmark-hardening/apps/benchmark-app exec vite preview --host 127.0.0.1 --port 4194 --strictPort > benchmark-artifacts/hardening-preview.log 2>&1 &
+          p4=$!
+          trap 'kill "$p1" "$p2" "$p3" "$p4" 2>/dev/null || true' EXIT
+          for port in 4191 4192 4193 4194; do
             ready=0
             for i in {1..60}; do
               if curl --fail --silent "http://127.0.0.1:$port/" >/dev/null; then ready=1; break; fi
@@ -96,7 +106,19 @@ jobs:
               exit 1
             fi
           done
-          python3 benchmarks/runner.py --candidate http://127.0.0.1:4191 --baseline http://127.0.0.1:4192 --react http://127.0.0.1:4193
+          python3 benchmarks/runner.py --candidate http://127.0.0.1:4191 --baseline http://127.0.0.1:4192 --react http://127.0.0.1:4193 --hardening http://127.0.0.1:4194
+      - name: Measure owner cleanup, compiler output and signal fanout
+        shell: bash
+        run: |
+          node benchmarks/microbench-core.mjs .benchmark-baseline benchmark-artifacts/core-main.json
+          node benchmarks/microbench-core.mjs .benchmark-hardening benchmark-artifacts/core-hardening.json
+          node benchmarks/microbench-core.mjs . benchmark-artifacts/core-candidate.json
+          node benchmarks/microbench-compiler.mjs .benchmark-baseline benchmark-artifacts/compiler-main.json
+          node benchmarks/microbench-compiler.mjs .benchmark-hardening benchmark-artifacts/compiler-hardening.json
+          node benchmarks/microbench-compiler.mjs . benchmark-artifacts/compiler-candidate.json
+          node .benchmark-baseline/packages/signals/tests/reactivity.bench.mjs > benchmark-artifacts/signals-main.json
+          node .benchmark-hardening/packages/signals/tests/reactivity.bench.mjs > benchmark-artifacts/signals-hardening.json
+          node packages/signals/tests/reactivity.bench.mjs > benchmark-artifacts/signals-candidate.json
       - name: Report raw, gzip and Brotli production assets
         run: node benchmarks/report-size.mjs
       - name: Report all 23 compiled package footprints

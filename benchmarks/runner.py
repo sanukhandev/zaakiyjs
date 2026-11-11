@@ -13,7 +13,7 @@ from playwright.sync_api import sync_playwright
 
 CASES = ("counter", "rename", "reverse", "toggle", "swap", "rotate",
          "append", "prepend", "removeMiddle")
-VARIANTS = ("react", "baseline", "candidate")
+VARIANTS = ("react", "baseline", "hardening", "candidate")
 
 READ_STATE = """() => {
   const elements = [...document.querySelectorAll('#rows li')];
@@ -49,7 +49,7 @@ READ_STATE = """() => {
 
 RUN = """(operation) => {
   const repeat = {counter: 101, rename: 41, reverse: 1, toggle: 81,
-                  swap: 1, rotate: 1, append: 1, prepend: 1, removeMiddle: 1}[operation];
+                  swap: 11, rotate: 1, append: 11, prepend: 11, removeMiddle: 11}[operation];
   if (!repeat) throw new Error('Unknown benchmark operation');
   const before = performance.now();
   for (let i = 0; i < repeat; i++) window.__benchmark.run(operation);
@@ -144,6 +144,7 @@ def main():
     parser.add_argument("--react", required=True)
     parser.add_argument("--baseline", required=True)
     parser.add_argument("--candidate", required=True)
+    parser.add_argument("--hardening", required=True)
     parser.add_argument("--samples", type=int, default=50)
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--out", default="benchmark-artifacts/browser-results.json")
@@ -155,6 +156,7 @@ def main():
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "commit": os.environ.get("GITHUB_SHA", "local"),
         "baselineCommit": "f19b9f6a466de7f5b03dd085925c8d9092a87f85",
+        "hardeningCommit": "04f453c18b31c7f900d77b037b0548f8888826f1",
         "react": "19.2.4",
         "host": {"os": platform.platform(), "machine": platform.machine()},
         "method": "Production Vite; 1000 keyed rows; state parity and retained node identity on every sample",
@@ -166,11 +168,13 @@ def main():
     }
     urls = {name: getattr(args, name) for name in VARIANTS}
     with sync_playwright() as playwright:
-        for engine in ("chromium", "firefox", "webkit"):
+        for engine_index, engine in enumerate(("chromium", "firefox", "webkit")):
             browser = getattr(playwright, engine).launch(headless=True)
             try:
-                output["browsers"][engine] = {"version": browser.version, "variants": {}}
-                for name in VARIANTS:
+                execution_order = VARIANTS[engine_index:] + VARIANTS[:engine_index]
+                output["browsers"][engine] = {"version": browser.version, "variants": {},
+                                              "execution_order": execution_order}
+                for name in execution_order:
                     metrics = measure(browser, urls[name], args.warmup, args.samples)
                     output["browsers"][engine]["variants"][name] = metrics
                     print(f"{engine:8} {name:9} " + " ".join(

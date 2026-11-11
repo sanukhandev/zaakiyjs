@@ -51,19 +51,23 @@ async function inventory(root) {
   return packages;
 }
 const baseline = await inventory(resolve(".benchmark-baseline/packages"));
+const hardening = await inventory(resolve(".benchmark-hardening/packages"));
 const candidate = await inventory(resolve("packages"));
 const names = Object.keys(candidate);
 if (names.length !== 23 || names.length !== Object.keys(baseline).length ||
-    names.some(name => !baseline[name])) {
+    names.length !== Object.keys(hardening).length ||
+    names.some(name => !baseline[name] || !hardening[name])) {
   throw new Error("Production workspace package coverage mismatch; expected the 23 published-style package directories");
 }
 const rows = names.sort(byName).map(name => {
   const before = baseline[name];
   const after = candidate[name];
   return {
-    package: name, baseline: before, candidate: after,
+    package: name, baseline: before, hardening: hardening[name], candidate: after,
     gzipDelta: after.gzip - before.gzip,
-    gzipDeltaPct: before.gzip ? 100 * (after.gzip / before.gzip - 1) : null
+    hardeningGzipDelta: after.gzip - hardening[name].gzip,
+    gzipDeltaPct: before.gzip ? 100 * (after.gzip / before.gzip - 1) : null,
+    hardeningGzipDeltaPct: hardening[name].gzip ? 100 * (after.gzip / hardening[name].gzip - 1) : null
   };
 });
 await mkdir("benchmark-artifacts", {recursive: true});
