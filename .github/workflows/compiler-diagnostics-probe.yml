@@ -33,7 +33,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm build
-          pnpm --filter @zaakiyjs/compiler test
+          pnpm test
           pnpm typecheck
       - name: Compile immutable hardening reference
         run: |
