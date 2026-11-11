@@ -19,7 +19,7 @@ Before/after baseline-run evidence, GitHub Actions:
 - Firefox: prepend **5.5 -> 1.0ms**; swap **11 -> 1ms**; rotate **11 -> 1ms**.
 - WebKit: prepend **10 -> 1ms**; swap **21 -> 2ms**; rotate **20 -> 0ms** (0ms is an insufficient timer-resolution reading, not zero cost).
 - These measurements compare a fixed frozen-main implementation to the candidate **within one CI run**, not independent noise-calibrated confidence intervals. React was also measured with equivalent input operations.
-- Firefox full reverse p50 remains worse: frozen main **8ms**, candidate **10ms**. An alternative high-churn batch extraction experiment must be measured before adoption.
+- Firefox full reverse p50 remains worse: frozen main **8ms**, candidate **10ms**. An alternative high-churn batch extraction experiment has been measured and rejected: GitHub Actions run [42980306968](https://github.com/sanukhandev/zaakiyjs/actions/runs/42980306968) on experimental commit `cd16f58f` achieved Firefox full reversal ~9ms but regressed WebKit full reversal to ~361ms p50 (retained implementation ~10ms), failing the browser regression gate. The experimental implementation must **not** be merged; the original WebKit-safe batch algorithm stays.
 - The 23-package size inventory has sizeable differences in Compiler, DOM and SSR relative to the old main commit because the broad PR #61 adds features. Attribute **incremental** optimization cost against frozen hardening head, not main alone.
 
 ## Tests and correctness invariants

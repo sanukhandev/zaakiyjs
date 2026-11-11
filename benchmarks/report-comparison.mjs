@@ -64,6 +64,11 @@ for (const name of ["core", "compiler"]) {
   lines.push("| " + name + " p50 | " +
     variants.map(item => item.p50_ms.toFixed(3)).join(" | ") + " | ms |");
 }
+const routerRuns = await Promise.all(["main", "hardening", "candidate"].map(
+  suffix => readFile("benchmark-artifacts/router-" + suffix + ".json", "utf8")
+    .then(JSON.parse)));
+lines.push("| router / 514-route match p50 | " +
+  routerRuns.map(item => item.p50_ms_per_match.toFixed(5)).join(" | ") + " | ms/match |");
 const signalRuns = await Promise.all(["main", "hardening", "candidate"].map(
   suffix => readFile("benchmark-artifacts/signals-" + suffix + ".json", "utf8")
     .then(JSON.parse)));

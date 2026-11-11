@@ -162,7 +162,7 @@ def main():
         "method": "Production Vite; 1000 keyed rows; state parity and retained node identity on every sample",
         "repetitions_per_sample": {
             "counter": 101, "rename": 41, "reverse": 1, "toggle": 81,
-            "swap": 1, "rotate": 1, "append": 1, "prepend": 1, "removeMiddle": 1
+            "swap": 11, "rotate": 1, "append": 11, "prepend": 11, "removeMiddle": 11
         },
         "samples": args.samples, "warmup": args.warmup, "browsers": {}
     }

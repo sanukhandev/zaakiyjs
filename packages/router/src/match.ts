@@ -85,7 +85,9 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): RouteTab
 export function matchRoutes(table: RouteTable, pathname: string): readonly RouteMatch[] {
   const parts = segments(pathname);
   for (const entry of table.routes) {
-    const params: Record<string, string> = {};
+    // Path parameters may legally be named "__proto__"; use a dictionary
+    // without inherited properties so no native object setter is invoked.
+    const params: Record<string, string> = Object.create(null) as Record<string, string>;
     let matched = true;
     let offset = 0;
     for (const token of entry.tokens) {
@@ -101,15 +103,24 @@ export function matchRoutes(table: RouteTable, pathname: string): readonly Route
     if (!matched || offset !== parts.length) continue;
     const result: RouteMatch[] = [];
     let prefix = "";
+    const inheritedParams: Record<string, string> = Object.create(null) as Record<string, string>;
     for (const ancestor of entry.parents) {
       prefix = normalized(prefix + "/" + ancestor.path);
-      const localParams: Record<string, string> = {};
-      compileTokens(prefix).forEach(token => {
-        if (token.kind === "param" && params[token.name] !== undefined) {
-          localParams[token.name] = params[token.name]!;
+      // The complete path was tokenized and validated at compileRoutes time.
+      // Only this ancestor's new segments are needed; compiling every prefix
+      // again on each navigation causes avoidable allocations and repeated
+      // validation in deeply nested route trees.
+      for (const part of segments(ancestor.path)) {
+        if (part.startsWith(":")) {
+          const name = part.slice(1);
+          if (Object.hasOwn(params, name)) inheritedParams[name] = params[name]!;
         }
+      }
+      result.push({
+        route: ancestor,
+        params: Object.freeze({...inheritedParams}),
+        pathname: prefix
       });
-      result.push({ route: ancestor, params: Object.freeze(localParams), pathname: prefix });
     }
     return result;
   }

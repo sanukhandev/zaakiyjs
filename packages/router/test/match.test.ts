@@ -34,6 +34,44 @@ describe("pure route matcher", () => {
     expect(matches[0]?.params).toEqual({ shopId: "a" });
     expect(matches[1]?.params).toEqual({ shopId: "a", productId: "b" });
   });
+  it("preserves nested inherited parameters and safely captures reserved path names", () => {
+    const nested = compileRoutes([{
+      id: "a", path: "/:__proto__", children: [{
+        id: "b", path: "shops/:constructor", children: [{
+          id: "c", path: "products/:productId"
+        }]
+      }]
+    }]);
+    const matches = matchRoutes(nested, "/tenant/shops/x/products/y");
+    expect(matches.map(item => item.route.id)).toEqual(["a", "b", "c"]);
+    expect(Object.getOwnPropertyDescriptor(matches[0]!.params, "__proto__")?.value).toBe("tenant");
+    expect(matches[1]?.params.constructor).toBe("x");
+    expect(matches[2]?.params).toMatchObject({productId: "y"});
+    expect(Object.hasOwn(matches[2]!.params, "__proto__")).toBe(true);
+    expect(Object.getPrototypeOf(matches[2]!.params)).toBe(Object.prototype);
+    expect(Object.isFrozen(matches[2]!.params)).toBe(true);
+    expect(matches[0]?.params).not.toHaveProperty("productId");
+  });
+  it("keeps parameter snapshots independent across nested route matches", () => {
+    const nested = compileRoutes([{
+      id: "company", path: "/:company", children: [{
+        id: "team", path: "team/:team", children: [{
+          id: "item", path: "work/:item"
+        }]
+      }]
+    }]);
+    const routes = matchRoutes(nested, "/acme/team/engineering/work/123");
+    expect(routes.map(r => r.params)).toEqual([
+      {company: "acme"},
+      {company: "acme", team: "engineering"},
+      {company: "acme", team: "engineering", item: "123"}
+    ]);
+    expect(routes.map(r => r.pathname)).toEqual([
+      "/:company", "/:company/team/:team", "/:company/team/:team/work/:item"
+    ]);
+    expect(routes[0]?.params).not.toBe(routes[1]?.params);
+    expect(routes[1]?.params).not.toBe(routes[2]?.params);
+  });
   it("rejects ambiguous, duplicate, unsafe and unsupported grammar", () => {
     expect(() => compileRoutes([{ id: "a", path: "/users/:id" }, { id: "b", path: "/users/:name" }]))
       .toThrow(RouteConfigurationError);
