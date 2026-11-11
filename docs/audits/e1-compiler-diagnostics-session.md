@@ -23,3 +23,12 @@ Require exact equality with standalone code, maps, manifests and diagnostic code
 Compare this candidate with frozen B0–B5 on the existing **real Vite 1/8/24 TSX-module production-build benchmark**, including matching asset SHA-256 and compressed size. Verify at least three independent runs before claiming a stable speedup or imposing a numerical CI threshold.
 
 **Status:** implementation candidate. Do not claim the measured target until CI benchmarks pass on the exact PR head. Reject and revert on stale type errors, map changes, cross-project state or measurable regressions.
+
+## First implementation evidence
+
+- Run https://github.com/sanukhandev/zaakiyjs/actions/runs/43081982596: 24 TSX modules, frozen 5064.3 ms p50 vs candidate 971.9 ms p50 (80.8% faster).
+- Run https://github.com/sanukhandev/zaakiyjs/actions/runs/43082459609: 24 TSX modules, frozen 3225.1 ms p50 vs candidate 587.6 ms p50 (81.8% faster).
+- Both comparisons verified matching production output hashes and compressed asset sizes. Compare each paired CI run internally, not absolute times across different hosts.
+- Compiler session source restoration after module deletion initially failed; the external-import invalidation test caught it and the bug was corrected.
+- Exact-head Quality and compiler stage profiling passed on commit 79516c6795a6ea00ea48918216e01cfa30d099c3.
+- Follow-up Vite dev CSS invalidation requires final-head testing. These measurements prove build improvement, not browser INP or hydration.

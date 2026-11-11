@@ -39,7 +39,7 @@ for (let i = 0; i < 3; i++) {
     c.cssGenerationP50_ms.toFixed(1)+" ms |");
 }
 lines.push("", "All output hashes and gzip byte counts match. Phase totals overlap other build work and are *not* additive to wall time.",
-  "Timing differences between identical implementations are CI measurement noise, not optimizations. HMR invalidation remains a separate unmeasured workload.", "");
+  "The candidate can differ from the frozen reference: report speedups only with matching output hashes and repeated independent evidence. HMR latency is not measured by this production-build fixture.", "");
 await mkdir(dir, { recursive: true });
 await writeFile(resolve(dir, "b8-vite-phase-report.md"), lines.join("\n"));
 console.log(lines.join("\n"));
