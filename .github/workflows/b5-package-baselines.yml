@@ -18,7 +18,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v4
         with:
-          ref: dfa6c7b0b7006eb1211cc1f014a6a9d78edb9e7a
+          ref: b990850b75a021e0ad7258d9f48a6e16306d8721
           path: .benchmark-b4
           persist-credentials: false
       - uses: pnpm/action-setup@v4
