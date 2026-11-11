@@ -51,6 +51,7 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 
 - `CompatFeature`
 - `CompileRequest`
+- `CompilerSession`
 - `CompileResult`
 - `DataServerCompileResult`
 - `DataServerRequest`
@@ -79,6 +80,7 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `StaticServerRequest`
 - `StyleToken`
 - `compile`
+- `createCompilerSession`
 - `compileStaticServer`
 - `compileDataServer`
 - `foundationStatus`
@@ -96,6 +98,7 @@ Sections below retain capability explanations and examples from the package's so
 The M0 public interfaces remain unchanged: CompileRequest, CompileResult, GeneratedAsset, CompilerDiagnostic, IRDocument, IRNode, IRExpression, SourceSpan, IR_SCHEMA_VERSION (= 1).
 
 - compile(request): CompileResult — parse, analyze, optimize, lower supported TSX, and produce deterministic JS with an inline-sources source-map asset.
+- createCompilerSession(rootDir): CompilerSession — Node-only per-build incremental TypeScript semantic context. The Vite plugin creates and disposes this instance, preserving full diagnostic checks while reusing TypeScript program state. Use `session.compile(request)`, call `session.invalidate(path)` when imported sources or declarations change, and `session.dispose()` when the build ends. Independent roots must never share a session; standalone `compile()` keeps isolated semantics.
 - parseToIR(request) — inspect the serialized IR v1 plus parse diagnostics.
 - validateIR(document) — reject incompatible IR versions, malformed nested nodes/source spans, duplicate IDs, unknown fields and cyclic references.
 - optimizeIR(document) — pure, version-checked optimization with stable node identities.
