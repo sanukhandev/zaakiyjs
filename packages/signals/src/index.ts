@@ -22,7 +22,7 @@ type Source = SignalNode<unknown> | ComputedNode<unknown>;
 interface TrackingFrame {
   readonly observer: Observer;
   readonly seen: Set<Source>;
-  computedValues: Map<ComputedNode<unknown>, unknown> | null;
+  readonly computedValues: Map<ComputedNode<unknown>, unknown>;
 }
 
 let activeFrame: TrackingFrame | null = null;
@@ -110,18 +110,12 @@ function observe(source: Source): void {
   }
 }
 
-function runTracked<T>(
-  observer: Observer, evaluate: () => T,
-  reusableComputedValues: Map<ComputedNode<unknown>, unknown> | null = null
-): T {
+function runTracked<T>(observer: Observer, evaluate: () => T): T {
   const before = observer.dependencies;
   const seen = new Set<Source>();
-  // Reuse a prior successful computed-value snapshot after shouldExecute has
-  // finished consulting it. Direct-only effects never allocate this map.
-  reusableComputedValues?.clear();
-  const frame: TrackingFrame = { observer, seen, computedValues: reusableComputedValues };
+  const computedValues = new Map<ComputedNode<unknown>, unknown>();
   const previous = activeFrame;
-  activeFrame = frame;
+  activeFrame = { observer, seen, computedValues };
   let succeeded = false;
   try {
     const result = evaluate();
@@ -137,7 +131,7 @@ function runTracked<T>(
     } else if (succeeded) {
       for (const source of before) if (!seen.has(source)) source.removeObserver(observer);
       observer.dependencies = seen;
-      if (observer instanceof EffectNode) observer.rememberComputedValues(frame.computedValues);
+      if (observer instanceof EffectNode) observer.rememberComputedValues(computedValues);
       if (observer instanceof ComputedNode) {
         observer.revisions = new Map([...seen].map((source) => [source, source.revision()]));
       }
@@ -186,10 +180,7 @@ class ComputedNode<T> implements ComputedSignal<T> {
     observe(this as ComputedNode<unknown>);
     const value = this.read();
     const frame = activeFrame;
-    if (frame?.observer instanceof EffectNode) {
-      if (frame.computedValues === null) frame.computedValues = new Map();
-      frame.computedValues.set(this as ComputedNode<unknown>, value);
-    }
+    if (frame?.observer instanceof EffectNode) frame.computedValues.set(this as ComputedNode<unknown>, value);
     return value;
   }
   peek(): T { return this.read(); }
@@ -265,7 +256,7 @@ class EffectNode implements EffectHandle {
     this.phase = phase;
   }
   invalidate(): void { enqueue(this); }
-  rememberComputedValues(reads: Map<ComputedNode<unknown>, unknown> | null): void {
+  rememberComputedValues(reads: Map<ComputedNode<unknown>, unknown>): void {
     this.successfulReadValues = reads;
   }
   /** Skip effects whose complete dependency set consists of unchanged computed values. */
@@ -284,14 +275,13 @@ class EffectNode implements EffectHandle {
     if (this.disposed) return;
     if (this.running) throw new Error("ZaakiyJS effect cannot execute recursively");
     this.running = true;
-    const previousComputedValues = this.successfulReadValues;
     this.successfulReadValues = null;
     const oldCleanup = this.cleanup;
     this.cleanup = undefined;
     try {
       if (oldCleanup) untrack(oldCleanup);
       if (this.disposed) return; // Cleanup can dispose its effect before the next body.
-      const result = runTracked(this, this.run, previousComputedValues);
+      const result = runTracked(this, this.run);
       if (typeof result === "function") {
         if (this.disposed) untrack(result); // Run a cleanup returned after self-disposal.
         else this.cleanup = result;
