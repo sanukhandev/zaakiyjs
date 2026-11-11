@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Production browser comparison, with strict semantic equivalence and raw sample evidence."""
+"""Reproducible production browser comparison with semantic and DOM identity parity."""
 import argparse
 import json
 import math
@@ -11,20 +11,45 @@ from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
-CASES = ("counter", "rename", "reverse", "toggle")
+CASES = ("counter", "rename", "reverse", "toggle", "swap", "rotate",
+         "append", "prepend", "removeMiddle")
 VARIANTS = ("react", "baseline", "candidate")
-READ_STATE = """() => ({
-  count: Number(document.querySelector('#counter')?.textContent),
-  length: document.querySelectorAll('#rows li').length,
-  firstId: document.querySelector('#rows li span')?.textContent?.split('::')[0],
-  renamed: [...document.querySelectorAll('#rows li span')].find(row => row.textContent?.startsWith('500::'))?.textContent,
-  visible: Boolean(document.querySelector('#shown')),
-  hidden: Boolean(document.querySelector('#hidden'))
-})"""
+
+READ_STATE = """() => {
+  const elements = [...document.querySelectorAll('#rows li')];
+  const now = new Map();
+  const ids = [];
+  let renamed = null;
+  for (const element of elements) {
+    const value = element.querySelector('span')?.textContent;
+    const match = /^(-?\d+)::(.*)$/.exec(value ?? '');
+    if (!match) throw new Error('Malformed row: ' + value);
+    const id = Number(match[1]);
+    if (!Number.isSafeInteger(id) || now.has(id)) throw new Error('Invalid/duplicate row ' + id);
+    if (match[2] !== 'Row ' + id && !(id === 500 && match[2] === 'Renamed 500')) {
+      throw new Error('Unexpected row content ' + value);
+    }
+    if (id === 500) renamed = value;
+    ids.push(id);
+    now.set(id, element);
+  }
+  const previous = window.__benchNodes;
+  let stable = true;
+  if (previous) for (const [id, node] of previous) {
+    if (now.has(id) && now.get(id) !== node) stable = false;
+  }
+  window.__benchNodes = now;
+  return {
+    count: Number(document.querySelector('#counter')?.textContent),
+    ids, renamed, stable,
+    visible: Boolean(document.querySelector('#shown')),
+    hidden: Boolean(document.querySelector('#hidden'))
+  };
+}"""
+
 RUN = """(operation) => {
-  // Repeated odd-sized batches preserve an observable state change on every
-  // sample while avoiding 0ms p50 from coarse WebKit/Firefox clocks.
-  const repeat = {counter: 101, rename: 41, reverse: 1, toggle: 81}[operation];
+  const repeat = {counter: 101, rename: 41, reverse: 1, toggle: 81,
+                  swap: 1, rotate: 1, append: 1, prepend: 1, removeMiddle: 1}[operation];
   if (!repeat) throw new Error('Unknown benchmark operation');
   const before = performance.now();
   for (let i = 0; i < repeat; i++) window.__benchmark.run(operation);
@@ -33,17 +58,33 @@ RUN = """(operation) => {
 
 
 def assert_change(operation, before, after):
-    assert after["length"] == 1000, f"{operation}: row count changed: {after}"
-    assert after["count"] is not None and after["firstId"] is not None, "missing DOM"
-    assert after["visible"] != after["hidden"], "visibility state invalid"
-    for name in ("count", "firstId", "renamed", "visible"):
-        expected_changed = name == {
-            "counter": "count", "rename": "renamed",
-            "reverse": "firstId", "toggle": "visible"
-        }[operation]
-        assert (after[name] != before[name]) == expected_changed, (
-            f"{operation}: unexpected {name} transition: {before} -> {after}"
-        )
+    assert after["stable"], f"{operation}: retained DOM element identity changed"
+    assert after["visible"] != after["hidden"], f"{operation}: visibility mismatch"
+    assert len(after["ids"]) == len(set(after["ids"])), f"{operation}: duplicate row keys"
+    assert math.isfinite(after["count"]), f"{operation}: invalid counter"
+    expected_count = before["count"] + (101 if operation == "counter" else 0)
+    assert after["count"] == expected_count, f"{operation}: unexpected counter change"
+    assert after["visible"] == (not before["visible"] if operation == "toggle" else before["visible"]), (
+        f"{operation}: visibility changed incorrectly"
+    )
+    if operation == "rename":
+        expected_renamed = ("500::Renamed 500" if before["renamed"] == "500::Row 500"
+                            else "500::Row 500")
+    elif operation == "removeMiddle":
+        expected_renamed = "500::Row 500" if before["renamed"] is None else None
+    else:
+        expected_renamed = before["renamed"]
+    assert after["renamed"] == expected_renamed, f"{operation}: unexpected item data"
+    a, b = before["ids"], after["ids"]
+    expected = {
+        "reverse": lambda: a[::-1],
+        "swap": lambda: [a[-1], *a[1:-1], a[0]],
+        "rotate": lambda: [a[-1], *a[:-1]],
+        "append": lambda: [id for id in a if id != 1000] if 1000 in a else [*a, 1000],
+        "prepend": lambda: [id for id in a if id != -1] if -1 in a else [-1, *a],
+        "removeMiddle": lambda: [id for id in a if id != 500] if 500 in a else [*a, 500],
+    }.get(operation, lambda: a)()
+    assert b == expected, f"{operation}: incorrect keyed list change (first 12 {b[:12]} vs {expected[:12]})"
 
 
 def percentile(values, fraction):
@@ -63,36 +104,28 @@ def measure(browser, url, warmup, samples):
         page.wait_for_function("document.querySelectorAll('#rows li').length === 1000", timeout=30000)
         initial = page.evaluate(READ_STATE)
         assert initial == {
-            "count": 0, "length": 1000, "firstId": "0", "renamed": "500::Row 500",
-            "visible": True, "hidden": False
-        }, f"initial fixture mismatch: {initial}"
+            "count": 0, "ids": list(range(1000)), "renamed": "500::Row 500",
+            "stable": True, "visible": True, "hidden": False
+        }, "Initial benchmark fixture is not semantically equivalent"
         mounted = page.evaluate("performance.getEntriesByName('bench-mounted').at(-1)?.startTime")
-        assert isinstance(mounted, (int, float)) and mounted > 0, "missing startup performance mark"
+        assert isinstance(mounted, (int, float)) and math.isfinite(mounted) and mounted > 0
         results = {}
         for operation in CASES:
-            if operation == "reverse":
-                page.evaluate("""() => {
-                  window.__benchmarkIdentity = new Map(
-                    [...document.querySelectorAll('#rows li')].map(node =>
-                      [node.querySelector('span').textContent.split('::')[0], node])
-                  );
-                }""")
             timings = []
             for iteration in range(warmup + samples):
                 before = page.evaluate(READ_STATE)
                 elapsed = page.evaluate(RUN, operation)
                 after = page.evaluate(READ_STATE)
                 assert_change(operation, before, after)
-                if operation == "reverse":
-                    assert page.evaluate("""() => [...document.querySelectorAll('#rows li')].every(node =>
-                      window.__benchmarkIdentity.get(node.querySelector('span').textContent.split('::')[0]) === node
-                    )"""), "Keyed DOM element identity changed during reorder"
                 assert isinstance(elapsed, (int, float)) and math.isfinite(elapsed) and elapsed >= 0
                 if iteration >= warmup:
                     timings.append(elapsed)
             results[operation] = {
                 "n": len(timings), "warmup": warmup, "p50_ms": percentile(timings, 0.5),
-                "p95_ms": percentile(timings, 0.95), "mean_ms": statistics.mean(timings),
+                "p95_ms": percentile(timings, 0.95), "p99_ms": percentile(timings, 0.99),
+                "mean_ms": statistics.mean(timings),
+                "stddev_ms": statistics.stdev(timings) if len(timings) > 1 else 0,
+                "min_ms": min(timings), "max_ms": max(timings),
                 "samples_ms": timings
             }
         heap = page.evaluate("""() => {
@@ -100,7 +133,8 @@ def measure(browser, url, warmup, samples):
           return Number.isFinite(value) ? value : null;
         }""")
         assert not errors, f"Uncaught page exceptions: {errors}"
-        return {"startup_mark_ms": mounted, "heap_bytes_uncontrolled": heap, "operations": results}
+        return {"startup_mark_ms": mounted, "heap_bytes_uncontrolled": heap,
+                "operations": results}
     finally:
         page.close()
 
@@ -115,27 +149,27 @@ def main():
     parser.add_argument("--out", default="benchmark-artifacts/browser-results.json")
     args = parser.parse_args()
     if not (20 <= args.samples <= 500 and 0 <= args.warmup <= 100):
-        parser.error("Require 20–500 measured iterations and 0–100 warmups")
+        parser.error("Require 20–500 samples and 0–100 warmups")
     output = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "commit": os.environ.get("GITHUB_SHA", "local"),
         "baselineCommit": "f19b9f6a466de7f5b03dd085925c8d9092a87f85",
-        "react": "19.2.4", "node": os.environ.get("NODE_VERSION", "record in workflow"),
+        "react": "19.2.4",
         "host": {"os": platform.platform(), "machine": platform.machine()},
-        "method": "Production Vite builds; 1000 keyed rows; synchronous run() including settled DOM, odd repeated update batches; isolated page per engine/framework",
-        "repetitions_per_sample": {"counter": 101, "rename": 41, "reverse": 1, "toggle": 81},
-        "samples": args.samples, "warmup": args.warmup,
-        "browsers": {}
+        "method": "Production Vite; 1000 keyed rows; state parity and retained node identity on every sample",
+        "repetitions_per_sample": {
+            "counter": 101, "rename": 41, "reverse": 1, "toggle": 81,
+            "swap": 1, "rotate": 1, "append": 1, "prepend": 1, "removeMiddle": 1
+        },
+        "samples": args.samples, "warmup": args.warmup, "browsers": {}
     }
     urls = {name: getattr(args, name) for name in VARIANTS}
     with sync_playwright() as playwright:
         for engine in ("chromium", "firefox", "webkit"):
             browser = getattr(playwright, engine).launch(headless=True)
             try:
-                output["browsers"][engine] = {
-                    "version": browser.version, "variants": {}
-                }
+                output["browsers"][engine] = {"version": browser.version, "variants": {}}
                 for name in VARIANTS:
                     metrics = measure(browser, urls[name], args.warmup, args.samples)
                     output["browsers"][engine]["variants"][name] = metrics
@@ -148,9 +182,7 @@ def main():
     path = Path(args.out)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(output, indent=2) + "\n", encoding="utf-8")
-    # Performance is environment-sensitive. New suites certify semantic parity and
-    # publish exact samples; budget enforcement needs a reviewed, stable baseline.
-    print(f"Wrote complete browser timing evidence to {path}")
+    print(f"Wrote benchmark evidence to {path}")
 
 
 if __name__ == "__main__":
