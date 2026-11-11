@@ -3,7 +3,7 @@ name: P3 Analytics Browser Privacy
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'perf/**']
   merge_group:
 
 permissions:

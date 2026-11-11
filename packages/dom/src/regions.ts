@@ -308,6 +308,59 @@ function moveManyRanges<Key, Item>(
   parent.insertBefore(fragment, before);
 }
 
+/**
+ * Sparse reorders must preserve the maximal already-ordered subsequence.
+ * In particular, prepending must move the new row only, not every old row.
+ * Compute a longest increasing subsequence of current DOM indices, then move
+ * only non-LIS keyed ranges from right to left. O(n log n) planning.
+ */
+function moveMinimumRanges<Key, Item>(
+  region: DomRegion, ordered: readonly RecordEntry<Key, Item>[]
+): void {
+  const byStart = new Map<Node, RecordEntry<Key, Item>>();
+  for (const entry of ordered) byStart.set(entry.start, entry);
+  const indices = new Map<RecordEntry<Key, Item>, number>();
+  let node = region.start.nextSibling;
+  while (node && node !== region.end) {
+    const entry = byStart.get(node);
+    if (!entry) throw new Error("Unexpected node between keyed region markers");
+    indices.set(entry, indices.size);
+    node = entry.end.nextSibling;
+  }
+  if (indices.size !== ordered.length || node !== region.end) {
+    throw new Error("Keyed region layout does not match tracked owners");
+  }
+  const positions = ordered.map(entry => {
+    const index = indices.get(entry);
+    if (index === undefined) throw new Error("Detached keyed range");
+    return index;
+  });
+  const tails: number[] = [];
+  const predecessor = new Array<number>(ordered.length).fill(-1);
+  for (let i = 0; i < positions.length; i++) {
+    const value = positions[i]!;
+    let low = 0;
+    let high = tails.length;
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (positions[tails[mid]!]! < value) low = mid + 1;
+      else high = mid;
+    }
+    if (low > 0) predecessor[i] = tails[low - 1]!;
+    tails[low] = i;
+  }
+  const keep = new Set<number>();
+  for (let i = tails[tails.length - 1] ?? -1; i >= 0; i = predecessor[i] ?? -1) {
+    keep.add(i);
+  }
+  let before: Node = region.end;
+  for (let i = ordered.length - 1; i >= 0; i--) {
+    const entry = ordered[i]!;
+    if (!keep.has(i)) moveRange(region.parent, entry.start, entry.end, before);
+    before = entry.start;
+  }
+}
+
 interface FocusSnapshot {
   readonly element: HTMLElement | SVGElement;
   readonly start: number | null;
@@ -468,17 +521,14 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
       for (let i = 0; i + 1 < ordered.length; i++) {
         if (ordered[i]!.end.nextSibling !== ordered[i + 1]!.start) disruptedNeighbors++;
       }
-      if (ordered.length >= 64 && disruptedNeighbors * 2 > ordered.length) {
+      if (ordered.length === 0 ||
+          (disruptedNeighbors === 0 && ordered[0]?.start.previousSibling === region.start &&
+           ordered[ordered.length - 1]?.end.nextSibling === region.end)) {
+        // Updating one item or appending to an already sorted list moves nothing.
+      } else if (ordered.length >= 64 && disruptedNeighbors * 2 > ordered.length) {
         moveManyRanges(region.parent, region.end, ordered);
       } else {
-        // Right-to-left placement minimizes moves when suffixes are stable.
-        let before: Node = region.end;
-        for (let i = ordered.length - 1; i >= 0; i--) {
-          const record = ordered[i];
-          if (!record) continue;
-          moveRange(region.parent, record.start, record.end, before);
-          before = record.start;
-        }
+        moveMinimumRanges(region, ordered);
       }
     } finally {
       restoreFocus(focused);

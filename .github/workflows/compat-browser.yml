@@ -8,8 +8,9 @@ on:
       - "scripts/ci/verify-workspaces.mjs"
       - ".github/workflows/compat-browser.yml"
   push:
-    branches: [main]
+    branches: [main, 'perf/**']
     paths:
+      - "benchmarks/**"
       - "packages/compat/**"
       - "pnpm-lock.yaml"
       - ".github/workflows/compat-browser.yml"
