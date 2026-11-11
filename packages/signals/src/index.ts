@@ -110,12 +110,16 @@ function observe(source: Source): void {
   }
 }
 
-function runTracked<T>(observer: Observer, evaluate: () => T): T {
+function runTracked<T>(
+  observer: Observer, evaluate: () => T,
+  reusableComputedValues: Map<ComputedNode<unknown>, unknown> | null = null
+): T {
   const before = observer.dependencies;
   const seen = new Set<Source>();
-  // Direct-signal-only effects never need a computed-value snapshot.
-  // Allocate this map lazily only if a derived value is actually observed.
-  const frame: TrackingFrame = { observer, seen, computedValues: null };
+  // Reuse a prior successful computed-value snapshot after shouldExecute has
+  // finished consulting it. Direct-only effects never allocate this map.
+  reusableComputedValues?.clear();
+  const frame: TrackingFrame = { observer, seen, computedValues: reusableComputedValues };
   const previous = activeFrame;
   activeFrame = frame;
   let succeeded = false;
@@ -280,13 +284,14 @@ class EffectNode implements EffectHandle {
     if (this.disposed) return;
     if (this.running) throw new Error("ZaakiyJS effect cannot execute recursively");
     this.running = true;
+    const previousComputedValues = this.successfulReadValues;
     this.successfulReadValues = null;
     const oldCleanup = this.cleanup;
     this.cleanup = undefined;
     try {
       if (oldCleanup) untrack(oldCleanup);
       if (this.disposed) return; // Cleanup can dispose its effect before the next body.
-      const result = runTracked(this, this.run);
+      const result = runTracked(this, this.run, previousComputedValues);
       if (typeof result === "function") {
         if (this.disposed) untrack(result); // Run a cleanup returned after self-disposal.
         else this.cleanup = result;
