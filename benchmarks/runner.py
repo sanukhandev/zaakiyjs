@@ -16,8 +16,8 @@ VARIANTS = ("react", "baseline", "candidate")
 READ_STATE = """() => ({
   count: Number(document.querySelector('#counter')?.textContent),
   length: document.querySelectorAll('#rows li').length,
-  firstId: document.querySelector('#rows li')?.getAttribute('data-id'),
-  renamed: [...document.querySelectorAll('#rows li')].find(row => row.getAttribute('data-id') === '500')?.textContent,
+  firstId: document.querySelector('#rows li span')?.textContent?.split('::')[0],
+  renamed: [...document.querySelectorAll('#rows li span')].find(row => row.textContent?.startsWith('500::'))?.textContent,
   visible: Boolean(document.querySelector('#shown')),
   hidden: Boolean(document.querySelector('#hidden'))
 })"""
@@ -59,7 +59,7 @@ def measure(browser, url, warmup, samples):
         page.wait_for_function("document.querySelectorAll('#rows li').length === 1000", timeout=30000)
         initial = page.evaluate(READ_STATE)
         assert initial == {
-            "count": 0, "length": 1000, "firstId": "0", "renamed": "Row 500",
+            "count": 0, "length": 1000, "firstId": "0", "renamed": "500::Row 500",
             "visible": True, "hidden": False
         }, f"initial fixture mismatch: {initial}"
         mounted = page.evaluate("performance.getEntriesByName('bench-mounted').at(-1)?.startTime")

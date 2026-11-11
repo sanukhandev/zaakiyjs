@@ -7,7 +7,7 @@ import "../shared.css";
 
 const initialRows = Array.from({length: 1000}, (_, id) => ({id, label: "Row " + id}));
 const Row = memo(function Row({row}) {
-  return jsx("li", {"data-id": String(row.id), children: jsx("span", {children: row.label})});
+  return jsx("li", {children: jsxs("span", {children: [row.id, "::", row.label]})});
 });
 function App() {
   const [count, setCount] = useState(0);

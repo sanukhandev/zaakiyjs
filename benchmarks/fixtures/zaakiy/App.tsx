@@ -25,7 +25,7 @@ export function App() {
       </Show>
     </section>
     <ul id="rows"><For each={rows.value} by={row => row.id}>
-      {row => <li data-id={String(row.id)}><span>{row.label}</span></li>}
+      {row => <li><span>{row.id}::{row.label}</span></li>}
     </For></ul>
   </main>;
 }
