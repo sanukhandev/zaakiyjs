@@ -22,9 +22,13 @@ READ_STATE = """() => ({
   hidden: Boolean(document.querySelector('#hidden'))
 })"""
 RUN = """(operation) => {
+  // Repeated odd-sized batches preserve an observable state change on every
+  // sample while avoiding 0ms p50 from coarse WebKit/Firefox clocks.
+  const repeat = {counter: 101, rename: 41, reverse: 1, toggle: 81}[operation];
+  if (!repeat) throw new Error('Unknown benchmark operation');
   const before = performance.now();
-  window.__benchmark.run(operation);
-  return performance.now() - before;
+  for (let i = 0; i < repeat; i++) window.__benchmark.run(operation);
+  return (performance.now() - before) / repeat;
 }"""
 
 
@@ -66,12 +70,23 @@ def measure(browser, url, warmup, samples):
         assert isinstance(mounted, (int, float)) and mounted > 0, "missing startup performance mark"
         results = {}
         for operation in CASES:
+            if operation == "reverse":
+                page.evaluate("""() => {
+                  window.__benchmarkIdentity = new Map(
+                    [...document.querySelectorAll('#rows li')].map(node =>
+                      [node.querySelector('span').textContent.split('::')[0], node])
+                  );
+                }""")
             timings = []
             for iteration in range(warmup + samples):
                 before = page.evaluate(READ_STATE)
                 elapsed = page.evaluate(RUN, operation)
                 after = page.evaluate(READ_STATE)
                 assert_change(operation, before, after)
+                if operation == "reverse":
+                    assert page.evaluate("""() => [...document.querySelectorAll('#rows li')].every(node =>
+                      window.__benchmarkIdentity.get(node.querySelector('span').textContent.split('::')[0]) === node
+                    )"""), "Keyed DOM element identity changed during reorder"
                 assert isinstance(elapsed, (int, float)) and math.isfinite(elapsed) and elapsed >= 0
                 if iteration >= warmup:
                     timings.append(elapsed)
@@ -108,7 +123,8 @@ def main():
         "baselineCommit": "f19b9f6a466de7f5b03dd085925c8d9092a87f85",
         "react": "19.2.4", "node": os.environ.get("NODE_VERSION", "record in workflow"),
         "host": {"os": platform.platform(), "machine": platform.machine()},
-        "method": "Production Vite builds; 1000 keyed rows; synchronous run() including settled DOM; no devtools; isolated page per engine/framework",
+        "method": "Production Vite builds; 1000 keyed rows; synchronous run() including settled DOM, odd repeated update batches; isolated page per engine/framework",
+        "repetitions_per_sample": {"counter": 101, "rename": 41, "reverse": 1, "toggle": 81},
         "samples": args.samples, "warmup": args.warmup,
         "browsers": {}
     }

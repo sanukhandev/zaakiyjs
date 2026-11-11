@@ -904,3 +904,34 @@ describe("large keyed list production reordering", () => {
     expect(host.querySelectorAll("button")).toHaveLength(0);
   });
 });
+
+describe("batched keyed moves preserve editable selection", () => {
+  it("restores focus, selection range, and direction after 96 native input rows are permuted", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const owner = createOwner();
+    const items = signal<readonly number[]>(Array.from({ length: 96 }, (_, index) => index));
+    bindKeyedRegion(owner, createRegion(host), () => items.value, item => item,
+      item => {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = "entry " + item;
+        input.setAttribute("data-row", String(item));
+        return { node: input };
+      });
+    mountOwner(owner);
+    const focused = host.querySelector('input[data-row="48"]') as HTMLInputElement;
+    focused.focus();
+    focused.setSelectionRange(2, 5, "backward");
+    items.value = [...items.value].reverse();
+    flushSync();
+    expect(document.activeElement).toBe(focused);
+    expect(focused.selectionStart).toBe(2);
+    expect(focused.selectionEnd).toBe(5);
+    expect(focused.selectionDirection).toBe("backward");
+    expect(host.querySelectorAll("input")).toHaveLength(96);
+    expect(host.querySelector('input[data-row="48"]')).toBe(focused);
+    disposeOwner(owner);
+    expect(host.querySelectorAll("input")).toHaveLength(0);
+  });
+});

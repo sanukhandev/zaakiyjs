@@ -108,3 +108,11 @@ A dedicated `compileDataServer` target accepts a single native HTML root and con
 ### Restricted named JSX slots
 
 Opt-in IR v2 supports static JSX-valued named props and `<Slot name="header" />` outlets with caller-owned native factories. Dynamic names and invalid/duplicate props fail compilation. The browser matrix covers native focus, event handling, keyed reorders and teardown. This does not complete full JSX-in-props, SSR hydration or issue #37's exit choreography.
+
+## M6 React production benchmark evidence (November 11)
+
+The integration branch now carries a standalone React 19.2.4 comparator with committed npm lockfile and build/preview through Vite 6.4.5, plus equivalent maintained ZaakiyJS IR v1 fixtures built from immutable baseline `f19b9f6` and candidate. Real Chromium/Firefox/WebKit measure 1,000-keyed-row rename/reverse, counter and visibility operations, with semantic parity checks, node identity, per-operation samples, p50/p95, optional uncontrolled heap, startup mark and JS/CSS raw/gzip/Brotli. The independent benchmark workflow publishes logs, evidence JSON and a comparison table.
+
+**Observed CI result on exact head `a988b19a`, run 42973279895:** all nine workflows green. For WebKit's 1,000-keyed-row reverse the median was 348 ms frozen main, 22 ms React, 13 ms candidate. A DOM change coalesces high-churn range moves while preserving the precise path for local updates. The candidate's emitted JS/CSS gzip was 7,564 bytes, main was 7,415 bytes, React reference was 61,518 bytes. These results are narrow and hardware/browser dependent; they do not prove universal framework superiority, core-only byte budgets, long-lived heap limits or full M6 release certification.
+
+Subsequent commits change benchmark batching, add exact keyed identity checks, selection regression coverage, and case-specific p95/bundle limits; **those changes require their own final-head CI evidence**. React's production comparison is never a substitute for repeated baseline, independent consumer, security, accessibility, memory and SSR/hydration audits. Release approval #24 remains open.
