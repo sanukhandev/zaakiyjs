@@ -34,7 +34,8 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
           pnpm test
-          pnpm lint
+          # Full lint is validated independently in Quality; the frozen nested
+          # checkout is intentionally excluded from the candidate lint scan.
           pnpm typecheck
       - name: Build immutable PR 62 baseline
         run: |
@@ -46,7 +47,11 @@ jobs:
           node benchmarks/microbench-b1.mjs .benchmark-performance-base benchmark-artifacts/b1-before.json
           node benchmarks/microbench-b1.mjs . benchmark-artifacts/b1-after.json
           node benchmarks/report-b1.mjs
+          node benchmarks/microbench-b0-services.mjs .benchmark-performance-base benchmark-artifacts/b0-services-before.json
+          node benchmarks/microbench-b0-services.mjs . benchmark-artifacts/b0-services-after.json
+          node benchmarks/report-b0-services.mjs
           cat benchmark-artifacts/b1-summary.md >> "$GITHUB_STEP_SUMMARY"
+          cat benchmark-artifacts/b0-services-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload raw benchmark samples
         if: always()
         uses: actions/upload-artifact@v4
