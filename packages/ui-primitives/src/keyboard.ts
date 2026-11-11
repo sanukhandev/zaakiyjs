@@ -86,7 +86,9 @@ export function createRovingFocus(options: RovingOptions): RovingController {
             item.element.removeAttribute("tabindex");
             // Teardown disposes all registrations synchronously. Re-sorting
             // survivors after every removal is unnecessary and quadratic.
-            // Core disposes registration child owners before the controller\n            // cleanup. Skip expensive intermediate sync during parent teardown.\n            if (!closed && !options.owner.disposed) sync();
+            // Core disposes registration child owners before controller cleanup.
+            // Skip intermediate sync only when the parent is being disposed.
+            if (!closed && !options.owner.disposed) sync();
           }
         };
       });
