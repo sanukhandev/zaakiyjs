@@ -105,6 +105,8 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
   );
   const modules = new Map<string, CompiledModule>();
   const revisions = new Map<string, number>();
+  // Weak keys avoid retaining old ModuleNodes after Vite graph invalidation.
+  const dependencyCodeHashes = new WeakMap<object, { code: string; hash: string }>();
   let resolved: ResolvedConfig | undefined;
   let server: ViteDevServer | undefined;
   let configPath: string | undefined;
@@ -135,7 +137,12 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         const id = dependency.file ? simpleFile(dependency.file) : dependency.id;
         if (id && !visited.has(dependency.url)) {
           const content = dependency.transformResult?.code ?? dependency.ssrTransformResult?.code ?? "";
-          stamp.push(id + ":" + (revisions.get(id) ?? 0) + ":" + stableHash(content));
+          const previousHash = dependencyCodeHashes.get(dependency);
+          const hash = previousHash?.code === content ? previousHash.hash : stableHash(content);
+          if (!previousHash || previousHash.code !== content) {
+            dependencyCodeHashes.set(dependency, { code: content, hash });
+          }
+          stamp.push(id + ":" + (revisions.get(id) ?? 0) + ":" + hash);
           walk(dependency);
         }
       }
@@ -350,9 +357,15 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       modules.set(file, record);
       try {
         if (!buildMode) {
+          const previousCss = css;
+          const previousMap = compiledCssMap;
           await collectCss(false);
-          const styleModule = server?.moduleGraph.getModuleById(INTERNAL_CSS_ID);
-          if (styleModule && server) server.moduleGraph.invalidateModule(styleModule);
+          // Do not invalidate the stylesheet when TSX produced identical CSS
+          // and mapping; this also avoids needless dependent browser updates.
+          if (previousCss !== css || previousMap !== compiledCssMap) {
+            const styleModule = server?.moduleGraph.getModuleById(INTERNAL_CSS_ID);
+            if (styleModule && server) server.moduleGraph.invalidateModule(styleModule);
+          }
         }
       } catch (error) {
         modules.delete(file);
