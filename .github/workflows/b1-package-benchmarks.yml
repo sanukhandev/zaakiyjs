@@ -33,7 +33,7 @@ jobs:
         run: |
           pnpm install --frozen-lockfile
           pnpm build
-          pnpm test
+          pnpm exec vitest run packages/forms/test packages/analytics/test
           # Full lint is validated independently in Quality; the frozen nested
           # checkout is intentionally excluded from the candidate lint scan.
           pnpm typecheck

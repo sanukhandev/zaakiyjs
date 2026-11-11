@@ -1,3 +1,4 @@
+/* global AbortController, Response */
 import {performance} from "node:perf_hooks";
 import {resolve} from "node:path";
 import {pathToFileURL} from "node:url";

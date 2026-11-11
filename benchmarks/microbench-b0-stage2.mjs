@@ -1,3 +1,4 @@
+/* global Buffer */
 import {performance} from "node:perf_hooks";
 import {resolve,join} from "node:path";
 import {pathToFileURL} from "node:url";
