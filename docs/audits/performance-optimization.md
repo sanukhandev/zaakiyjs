@@ -41,3 +41,37 @@ Do not claim React/Vue/Angular universal superiority, a fully optimized 23-packa
 Commit `f2ba3342` passed 11 of 11 CI workflows including the expanded React benchmark and new eight-case failure-injection gate tests. A nested route match now reuses already validated local parameter segments and preserves safe, frozen inherited parameter snapshots. A 514-route microbenchmark initially showed 0.03266ms candidate versus 0.03147ms hardening p50, which is within noise and **not a proven broad-table speedup**. The subsequently added 10-layer nested scenario isolates prefix-reparsing work more directly; retain this change for its security/correctness improvement only if full integration checks stay green.
 
 The next scaling revision introduces 100, 1,000, 5,000 and 10,000-node browser workloads with exact DOM-identity checks and root teardown, plus Styles/Store synthetic diagnostics. These additions must pass on the latest head; if one variant fails, reject the measurements and fix the implementation rather than labeling a partial report successful.
+
+
+## Production scaling evidence — run 42984045342 (November 11, 2026)
+
+The full browser benchmark completed successfully at head `6301ec1a` (the concurrent Quality workflow failed **only** the React fixture's ESLint `URLSearchParams` global declaration; the fix is staged separately for final-head validation). All matching application builds, 100–10,000-row key order, retained DOM-node identity and zero rows after disposal passed.
+
+**10,000-row p50 milliseconds, production Vite:**
+
+| Browser | React reverse | Frozen hardening reverse | Optimized reverse | React rotate | Frozen hardening rotate | Optimized rotate |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Chromium | 162.3 | 39.1 | 39.4 | 163.0 | 43.3 | **4.5** |
+| Firefox | 893 | 432 | 432 | 375 | 587 | **8** |
+| WebKit | 885 | 108 | 104 | 35,589 | 1,502 | **6** |
+
+This is **one shared GitHub-hosted CI machine**, with five measurement samples and one warmup per variant/size/operation. The extreme React WebKit rotation time (~35.6 seconds) is an observed result in a specific fixture, not a universal statement about React or WebKit. Repeat independently before making any public speedup claim.
+
+Large full reversals require many native moves and have substantial latency: Firefox candidate ~432ms p50 for 10,000 rows. The sparse path benefits from minimum-move reconciliation, while the high-churn path keeps the WebKit-safe fragment batching. The alternative `Range.extractContents` strategy was explicitly rejected after a 1,000-row WebKit regression to ~361ms.
+
+Synthetic Core/Signals, Compiler, Styles, Store and Router microbenchmarks also ran and recorded raw data. Router's broad/deep candidate p50 was slightly worse than hardening on this host, and Styles/Store show variation despite unchanged implementation; these are **not proven package improvements**. Do not optimize those packages without a reproducible profiling case and repeated evidence.
+
+### Performance release-blockers remaining
+
+- Repeated independent runs, dedicated runner noise characterization and varied hardware.
+- Firefox full-list reversal remains slower than historical main on some runs.
+- Memory retention and garbage-collection verification beyond browser DOM teardown.
+- Real application LCP/INP, large forms and route transitions, SSR/hydration (not yet complete).
+- Package-by-package production workloads for integrations not directly represented by microbenchmarks.
+
+The performance PR should accurately describe these as **open certification scope**, not claim all 23 packages are optimized.
+
+## Discarded compiler-target diagnostics experiment (November 11)
+
+An isolated source-file-scoped TypeScript diagnostic request was tested against the frozen hardening implementation on the same GitHub runner (Actions [42986548606](https://github.com/sanukhandev/zaakiyjs/actions/runs/42986548606), candidate experimental branch `experiment/compiler-target-diagnostics`). All 92 Vitest files passed, but 16 measured fresh-compilation samples found p50 **210.59 ms** for the experimental candidate versus **202.64 ms** for hardening. The change has **not been adopted**. These separate-process microbenchmarks have run-to-run variation; a slower single run is sufficient reason not to claim a benefit, not conclusive proof of a universal regression.
+
