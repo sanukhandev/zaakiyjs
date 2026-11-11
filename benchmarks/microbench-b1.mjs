@@ -1,4 +1,5 @@
 import {performance} from "node:perf_hooks";
+import {TextEncoder} from "node:util";
 import {resolve} from "node:path";
 import {pathToFileURL} from "node:url";
 import {mkdir,writeFile} from "node:fs/promises";
@@ -83,7 +84,7 @@ const results={schemaVersion:1,commit:process.env.GITHUB_SHA??"local",node:proce
 for(const size of sizes.forms){
   const result=await forms(size);
   results.forms.push(result);
-  console.log("forms",size,"p50",result.p50_ms.toFixed(3),"p95",result.p95_ms.toFixed(3),flush=true);
+  console.log("forms",size,"p50",result.p50_ms.toFixed(3),"p95",result.p95_ms.toFixed(3));
 }
 for(const size of sizes.analytics){
   const result=await analytics(size);
