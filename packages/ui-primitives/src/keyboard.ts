@@ -36,6 +36,10 @@ export function createRovingFocus(options: RovingOptions): RovingController {
   const registrations = createRegistrationGroup(options.owner);
   let selected: string | null = options.initialId ?? null;
   let closed = false;
+  // Initial items have no external observers before the constructor returns.
+  // One synchronization after registration avoids repeated full DOM sorts and
+  // computed-style checks for every prefix of a large item list.
+  let loadingInitial = true;
   const ordered = () => [...map.values()].sort((a, b) => {
     if (a.element === b.element) return 0;
     const relation = a.element.compareDocumentPosition(b.element);
@@ -75,12 +79,16 @@ export function createRovingFocus(options: RovingOptions): RovingController {
       if (!options.container.contains(item.element)) throw new Error("Roving item outside container");
       return registrations.add(() => {
         map.set(item.id, item);
-        sync();
+        if (!loadingInitial) sync();
         return () => {
           if (map.get(item.id) === item) {
             map.delete(item.id);
             item.element.removeAttribute("tabindex");
-            sync();
+            // Teardown disposes all registrations synchronously. Re-sorting
+            // survivors after every removal is unnecessary and quadratic.
+            // Core disposes registration child owners before controller cleanup.
+            // Skip intermediate sync only when the parent is being disposed.
+            if (!closed && !options.owner.disposed) sync();
           }
         };
       });
@@ -125,6 +133,8 @@ export function createRovingFocus(options: RovingOptions): RovingController {
     if (!element.id) throw new Error("Roving items() entries need stable DOM IDs");
     controller.register({ id: element.id, element });
   }
+  loadingInitial = false;
+  if (map.size) sync();
   const listener = listen(options.container, "keydown", onKey, options.owner);
   const cleanup = own(() => {
     if (closed) return;
@@ -133,6 +143,7 @@ export function createRovingFocus(options: RovingOptions): RovingController {
     registrations.dispose();
     for (const item of map.values()) item.element.removeAttribute("tabindex");
     map.clear();
+    selected = null;
   }, options.owner);
   return controller;
 }

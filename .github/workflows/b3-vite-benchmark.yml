@@ -1,0 +1,56 @@
+name: B3 Vite Production Build Benchmark
+
+on:
+  push:
+    branches: [perf/b3-vite-build-benchmarks]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 1654c820af26355d4cd2ba7a1104aa343cce9f3c
+          path: .benchmark-pr64
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Compile and verify Vite candidate
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec vitest run packages/vite-plugin/test
+          pnpm exec eslint benchmarks/microbench-vite-build.mjs benchmarks/report-vite-build.mjs
+          pnpm typecheck
+      - name: Compile frozen Proxy-optimized comparison
+        run: |
+          pnpm --dir .benchmark-pr64 install --frozen-lockfile
+          pnpm --dir .benchmark-pr64 build
+      - name: Run equal production-build fixtures
+        run: |
+          mkdir -p benchmark-artifacts
+          node benchmarks/microbench-vite-build.mjs .benchmark-pr64 benchmark-artifacts/vite-baseline.json
+          node benchmarks/microbench-vite-build.mjs . benchmark-artifacts/vite-candidate.json
+          node benchmarks/report-vite-build.mjs
+          cat benchmark-artifacts/vite-comparison.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive raw and summary evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b3-vite-build-evidence
+          path: benchmark-artifacts/
+          if-no-files-found: warn
