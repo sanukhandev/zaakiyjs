@@ -3,7 +3,7 @@ name: Production React Benchmark
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'perf/**']
   merge_group:
   workflow_dispatch:
 

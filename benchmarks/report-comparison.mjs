@@ -2,7 +2,7 @@ import {readFile, writeFile} from "node:fs/promises";
 
 const timing = JSON.parse(await readFile("benchmark-artifacts/browser-results.json", "utf8"));
 const bundle = JSON.parse(await readFile("benchmark-artifacts/bundle-sizes.json", "utf8"));
-const columns = ["counter", "rename", "reverse", "toggle"];
+const columns = ["counter", "rename", "reverse", "toggle", "swap", "rotate", "append", "prepend", "removeMiddle"];
 const lines = [
   "# Production benchmark: React vs ZaakiyJS frozen main vs candidate",
   "",
@@ -18,8 +18,8 @@ for (const [engine, record] of Object.entries(timing.browsers)) {
   const {react, baseline, candidate} = record.variants;
   if (!react || !baseline || !candidate) throw new Error("Missing benchmark framework for " + engine);
   lines.push("## " + engine + " " + record.version, "");
-  lines.push("| Operation | React p50 | Main p50 | PR p50 | PR / React | PR / Main | PR p95 |");
-  lines.push("| --- | ---: | ---: | ---: | ---: | ---: | ---: |");
+  lines.push("| Operation | React p50 | Main p50 | PR p50 | PR / React | PR / Main | React p95 | Main p95 | PR p95 | PR p99 |");
+  lines.push("| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |");
   for (const name of columns) {
     const a = candidate.operations[name], b = baseline.operations[name], c = react.operations[name];
     if (!a || !b || !c || a.n !== timing.samples || b.n !== timing.samples || c.n !== timing.samples) {
@@ -27,7 +27,9 @@ for (const [engine, record] of Object.entries(timing.browsers)) {
     }
     lines.push("| " + name + " | " + c.p50_ms.toFixed(3) + " | " + b.p50_ms.toFixed(3) +
       " | " + a.p50_ms.toFixed(3) + " | " + ratio(a.p50_ms, c.p50_ms) +
-      " | " + ratio(a.p50_ms, b.p50_ms) + " | " + a.p95_ms.toFixed(3) + " |");
+      " | " + ratio(a.p50_ms, b.p50_ms) + " | " + c.p95_ms.toFixed(3) +
+    " | " + b.p95_ms.toFixed(3) + " | " + a.p95_ms.toFixed(3) +
+    " | " + a.p99_ms.toFixed(3) + " |");
   }
   lines.push("");
 }
