@@ -17,30 +17,38 @@ describe("lazy derived-read tracking", () => {
     expect(observed).toEqual([1, 2, 3]);
   });
 
-  it("retains computed equality suppression and reattaches when a branch changes", () => {
+  it("keeps computed-only equality suppression and dynamic subscription switching", () => {
     const source = signal(1);
-    const useComputed = signal(false);
     const even = computed(() => source.value % 2);
-    const observed: number[] = [];
-    const handle = effect(() => {
-      observed.push(useComputed.value ? even.value : source.value);
-    });
-    source.value = 2;
+    const derivedReads: number[] = [];
+    const derivedEffect = effect(() => { derivedReads.push(even.value); });
+    source.value = 3;
     flushSync();
-    useComputed.value = true;
-    flushSync();
+    expect(derivedReads).toEqual([1]);
     source.value = 4;
     flushSync();
-    // The derived value is unchanged, so the effect is not needlessly rerun.
-    expect(observed).toEqual([1, 2, 0]);
-    source.value = 5;
+    expect(derivedReads).toEqual([1, 0]);
+    derivedEffect.dispose();
+
+    const chooseLeft = signal(true);
+    const left = signal(10);
+    const right = signal(20);
+    const selected: number[] = [];
+    const handle = effect(() => {
+      selected.push(chooseLeft.value ? left.value : right.value);
+    });
+    left.value = 11;
     flushSync();
-    expect(observed).toEqual([1, 2, 0, 1]);
-    useComputed.value = false;
+    chooseLeft.value = false;
     flushSync();
-    source.value = 6;
+    left.value = 12;
     flushSync();
-    expect(observed).toEqual([1, 2, 0, 1, 5, 6]);
+    right.value = 21;
+    flushSync();
+    expect(selected).toEqual([10, 11, 20, 21]);
     handle.dispose();
+    right.value = 22;
+    flushSync();
+    expect(selected).toEqual([10, 11, 20, 21]);
   });
 });
