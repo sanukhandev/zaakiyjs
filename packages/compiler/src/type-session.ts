@@ -92,6 +92,14 @@ export function createTypeDiagnosticsSession(rootDir: string): TypeDiagnosticsSe
         else roots.set(name, { source: fresh, version: ++nextVersion });
       }
       invalidated.set(name, ++nextVersion);
+      if (!current) {
+        // TypeScript cannot observe a newly restored import when the absent
+        // dependency is missing from its prior Program. Invalidate in-memory
+        // importers conservatively so module resolution runs again.
+        for (const [rootName, snapshot] of roots) {
+          roots.set(rootName, { source: snapshot.source, version: ++nextVersion });
+        }
+      }
     },
     dispose() {
       if (disposed) return;
