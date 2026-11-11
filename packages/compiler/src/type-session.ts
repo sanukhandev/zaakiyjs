@@ -4,8 +4,6 @@
  * compile() remains independent and uses its existing single-file semantics.
  */
 import * as ts from "typescript";
-import { statSync } from "node:fs";
-import { resolve } from "node:path";
 import { typeDiagnostics, diagnosticCompilerOptions } from "./generate.js";
 import type { Analysis } from "./analysis.js";
 import type { CompileRequest, CompilerDiagnostic } from "./index.js";
@@ -23,7 +21,7 @@ type Snapshot = { source: string; version: number };
  * No program, source or cached diagnostic is shared across project instances.
  */
 export function createTypeDiagnosticsSession(rootDir: string): TypeDiagnosticsSession {
-  const root = resolve(rootDir);
+  const root = ts.sys.resolvePath(rootDir);
   const options = diagnosticCompilerOptions();
   const roots = new Map<string, Snapshot>();
   const invalidated = new Map<string, number>();
@@ -45,11 +43,9 @@ export function createTypeDiagnosticsSession(rootDir: string): TypeDiagnosticsSe
       // External files and type-only imports must invalidate when modified.
       // Vite file-watcher notifications cover same-tick filesystem edits.
       let metadata = "missing";
-      try {
-        const stat = statSync(name);
-        metadata = stat.mtimeMs + ":" + stat.size + ":" + stat.ctimeMs;
-      } catch {
-        // An import removed from disk remains missing and must be re-resolved.
+      if (ts.sys.fileExists(name)) {
+        metadata = (ts.sys.getModifiedTime?.(name)?.getTime() ?? 0) +
+          ":" + (ts.sys.getFileSize?.(name) ?? 0);
       }
       return metadata + ":" + (invalidated.get(name) ?? 0);
     },
