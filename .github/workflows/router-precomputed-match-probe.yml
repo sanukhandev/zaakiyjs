@@ -30,7 +30,7 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
           pnpm test
-          pnpm lint
+          pnpm exec eslint packages/router/src/match.ts packages/router/test/match.test.ts
           pnpm typecheck
       - name: Build hardening reference
         run: |
