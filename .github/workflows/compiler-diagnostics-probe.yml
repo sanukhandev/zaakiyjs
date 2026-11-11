@@ -1,0 +1,53 @@
+name: Compiler Diagnostics Performance Experiment
+
+on:
+  push:
+    branches: [experiment/compiler-target-diagnostics]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 04f453c18b31c7f900d77b037b0548f8888826f1
+          path: .benchmark-hardening
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Compile and validate candidate
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm --filter @zaakiyjs/compiler test
+          pnpm typecheck
+      - name: Compile immutable hardening reference
+        run: |
+          pnpm --dir .benchmark-hardening install --frozen-lockfile
+          pnpm --dir .benchmark-hardening build
+      - name: Measure equivalent compiler source and diagnostic contract
+        run: |
+          mkdir -p benchmark-artifacts
+          node benchmarks/microbench-compiler-isolated.mjs .benchmark-hardening benchmark-artifacts/compiler-hardening-probe.json
+          node benchmarks/microbench-compiler-isolated.mjs . benchmark-artifacts/compiler-candidate-probe.json
+      - name: Retain original samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compiler-diagnostics-probe
+          path: benchmark-artifacts/
+          if-no-files-found: warn

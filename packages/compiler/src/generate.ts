@@ -598,7 +598,12 @@ export function typeDiagnostics(request: CompileRequest, analysis: Analysis): Co
       ts.createSourceFile(path, request.source, language, true, ts.ScriptKind.TSX) :
       originalGet(path, language, onError, shouldCreate);
   const program = ts.createProgram([request.fileName], options, host);
-  const errors: CompilerDiagnostic[] = ts.getPreEmitDiagnostics(program)
+  const targetSource = program.getSourceFile(request.fileName);
+  // The compiler publishes diagnostics ONLY for the input TSX file. Passing
+  // that source to the official TS API avoids rechecking every imported module
+  // solely to discard unrelated results. No dependency or JSX type checks are
+  // bypassed for the target file; the Program still resolves its imports.
+  const errors: CompilerDiagnostic[] = ts.getPreEmitDiagnostics(program, targetSource)
     .filter(d => d.file && ts.sys.resolvePath(d.file.fileName) === targetName)
     .map(d => {
       const start = d.start ?? 0;
@@ -610,7 +615,7 @@ export function typeDiagnostics(request: CompileRequest, analysis: Analysis): Co
       };
     });
 
-  const file = program.getSourceFile(request.fileName);
+  const file = targetSource;
   if (!file) return errors;
   const checker = program.getTypeChecker();
   const textual = ts.TypeFlags.StringLike | ts.TypeFlags.NumberLike | ts.TypeFlags.BooleanLike |
