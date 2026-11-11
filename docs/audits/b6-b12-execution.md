@@ -52,3 +52,33 @@ Frozen references: original main f19b9f6a466de7f5b03dd085925c8d9092a87f85; pre-o
 Each test cycle creates 200 child owners and owned signal effects, updates the signals once, disposes the owner graph, changes the former signals again, and asserts no effects run after teardown. It records 160 measured cycles across eight forced-GC heap checkpoints and four warmups. Exact cleanup and post-disposal assertions are blocking; Node heap slope and cycle p50/p95 are **diagnostic**.
 
 Positive heap growth alone does not prove a leak; flat heap readings cannot certify absence of leaks in browsers. Independent runs and real-browser retained-heap profiling are prerequisites for a production memory claim.
+
+## Verified B6–B8 execution evidence (November 11, 2026)
+
+### B6 memory lifecycle baseline — accepted instrumentation
+
+- Workflow: https://github.com/sanukhandev/zaakiyjs/actions/runs/43025139796 — passed.
+- Frozen hardening / candidate owner-effect cycle p50: 0.623 / 0.746 ms; p95: 1.969 / 1.882 ms.
+- After-GC Node heap delta: +137,416 / +149,856 bytes, single shared-host diagnostic.
+- Both variants executed 32,800 scoped cleanup callbacks, with **zero post-disposal effects**.
+- No runtime memory optimization or browser leak certification follows from this evidence.
+
+### B7 direct-signal allocation experiment — rejected
+
+- Baseline comparison: https://github.com/sanukhandev/zaakiyjs/actions/runs/43027087735.
+- Initial direct-signal p50: 13.66 -> 12.19 ms (10.8% faster); computed p50: 19.08 -> 19.94 ms (4.5% slower).
+- Independent rerun: direct 13.53 -> 12.35 ms; computed 18.84 -> 19.59 ms.
+- Snapshot-reuse alternative: https://github.com/sanukhandev/zaakiyjs/actions/runs/43027707025 — direct 13.49 -> 12.31 ms; computed 19.50 -> 21.41 ms (9.8% slower).
+- Both direct and computed behavior passed semantic tests, but performance was not regression-free. The production Signals implementation was restored to frozen B0–B5 source. Keep the standalone benchmark and regression tests; no Signals patch release is proposed.
+
+### B8 build and compiler phase attribution — accepted instrumentation
+
+- Production Vite phase run: https://github.com/sanukhandev/zaakiyjs/actions/runs/43025874154 — passed.
+- 24-module candidate total p50 3,472.7 ms, including 3,395.8 ms in Zaakiy TSX transforms; CSS/manifest generateBundle approximately 1.1 ms. Production output hashes and gzip sizes matched frozen reference.
+- Isolated compiler stage run: https://github.com/sanukhandev/zaakiyjs/actions/runs/43027409688 — passed.
+- 24-module compiler staged p50 3,200.6 ms: analysis 6.5 ms, IR optimization 1.2 ms, **TypeScript diagnostics 3,116.2 ms**, JS/sourcemap emission 85.9 ms.
+- Type diagnostics account for approximately 97.4% of the staged compiler time in this fixture. Existing code builds a TypeScript Program independently per requested module.
+- The next candidate is an explicitly scoped type-diagnostics session/cache, **not** a global process cache: prove changed-input invalidation, imported dependency changes, TS/compiler option changes, source maps, program lifetime, deterministic output, diagnostics and concurrent workspace isolation before implementation.
+- No claimed compiler speedup yet. Repeated independent runs and full output/correctness gates are required before accepting a caching implementation.
+
+**Gate status:** B6 and B8 measurement infrastructure landed. The B7 production experiment was reverted. B9–B12 and browser-retained-memory certification are pending, and PR #61 remains a draft.
