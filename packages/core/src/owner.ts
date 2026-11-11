@@ -20,11 +20,7 @@ class Scope implements OwnerScope {
   private readonly children = new Set<Scope>();
   private readonly cleanups: Cleanup[] = [];
   private readonly mountCallbacks: Cleanup[] = [];
-  // Most component scopes never provide dependencies. Allocate on first use.
-  private providerStore: Map<symbol, unknown> | null = null;
-  get providers(): Map<symbol, unknown> {
-    return this.providerStore ??= new Map<symbol, unknown>();
-  }
+  readonly providers = new Map<symbol, unknown>();
   componentInitialized = false;
   /** Provider reads remain valid while teardown callbacks execute. */
   private cleanupInProgress = false;
@@ -168,8 +164,7 @@ class Scope implements OwnerScope {
       // including child cleanup when an ancestor is already disposing.
       this.mountCallbacks.length = 0;
       this.cleanups.length = 0;
-      this.providerStore?.clear();
-      this.providerStore = null;
+      this.providers.clear();
       const parent = this.parent;
       // Capture the complete ancestry before severing this link. A teardown
       // request can be pending on a grandparent even if the intermediate
