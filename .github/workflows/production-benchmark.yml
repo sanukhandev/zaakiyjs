@@ -3,7 +3,7 @@ name: Production React Benchmark
 on:
   pull_request:
   push:
-    branches: [main, 'perf/**']
+    branches: [main, 'perf/**', 'experiment/keyed-range-extract']
   merge_group:
   workflow_dispatch:
 

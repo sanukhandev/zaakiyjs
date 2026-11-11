@@ -287,7 +287,8 @@ function moveRange(parent: Node, start: Node, end: Node, before: Node): void {
  * still use precise range operations with no unrelated childList mutations.
  */
 function moveManyRanges<Key, Item>(
-  parent: Node, before: Node, entries: readonly RecordEntry<Key, Item>[]
+  parent: Node, regionStart: Comment, regionEnd: Comment,
+  entries: readonly RecordEntry<Key, Item>[]
 ): void {
   const doc = parent.ownerDocument ?? (parent as Document);
   for (const entry of entries) {
@@ -295,17 +296,26 @@ function moveManyRanges<Key, Item>(
       throw new Error("Cannot batch-move a detached keyed range");
     }
   }
-  const fragment = doc.createDocumentFragment();
+  // Extract all complete sibling nodes in one native Range operation before
+  // rearranging item ranges while detached. Preserve node and owner identity.
+  const range = doc.createRange();
+  range.setStartAfter(regionStart);
+  range.setEndBefore(regionEnd);
+  const detached = range.extractContents();
+  const reordered = doc.createDocumentFragment();
   for (const entry of entries) {
+    if (entry.start.parentNode !== detached || entry.end.parentNode !== detached) {
+      throw new Error("Keyed region extraction did not preserve item boundaries");
+    }
     let cursor: Node | null = entry.start;
     while (cursor) {
       const next: Node | null = cursor.nextSibling;
-      fragment.appendChild(cursor);
+      reordered.appendChild(cursor);
       if (cursor === entry.end) break;
       cursor = next;
     }
   }
-  parent.insertBefore(fragment, before);
+  parent.insertBefore(reordered, regionEnd);
 }
 
 /**
@@ -526,7 +536,7 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
            ordered[ordered.length - 1]?.end.nextSibling === region.end)) {
         // Updating one item or appending to an already sorted list moves nothing.
       } else if (ordered.length >= 64 && disruptedNeighbors * 2 > ordered.length) {
-        moveManyRanges(region.parent, region.end, ordered);
+        moveManyRanges(region.parent, region.start, region.end, ordered);
       } else {
         moveMinimumRanges(region, ordered);
       }
