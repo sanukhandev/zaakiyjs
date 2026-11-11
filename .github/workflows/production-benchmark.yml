@@ -20,7 +20,7 @@ jobs:
   production-comparison:
     name: benchmark / react-vs-frozen-main-vs-pr
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 60
     steps:
       - name: Checkout candidate
         uses: actions/checkout@v4
@@ -111,6 +111,7 @@ jobs:
             fi
           done
           python3 benchmarks/runner.py --candidate http://127.0.0.1:4191 --baseline http://127.0.0.1:4192 --react http://127.0.0.1:4193 --hardening http://127.0.0.1:4194
+          python3 benchmarks/scale.py --candidate http://127.0.0.1:4191 --hardening http://127.0.0.1:4194 --react http://127.0.0.1:4193 --sizes 100,1000,5000,10000 --samples 5 --warmups 1
       - name: Measure owner cleanup, compiler output and signal fanout
         shell: bash
         run: |
@@ -129,6 +130,15 @@ jobs:
           node benchmarks/microbench-router.mjs .benchmark-baseline benchmark-artifacts/router-main.json
           node benchmarks/microbench-router.mjs .benchmark-hardening benchmark-artifacts/router-hardening.json
           node benchmarks/microbench-router.mjs . benchmark-artifacts/router-candidate.json
+      - name: Benchmark Styles compiler and scoped Store actions
+        shell: bash
+        run: |
+          node benchmarks/microbench-styles.mjs .benchmark-baseline benchmark-artifacts/styles-main.json
+          node benchmarks/microbench-styles.mjs .benchmark-hardening benchmark-artifacts/styles-hardening.json
+          node benchmarks/microbench-styles.mjs . benchmark-artifacts/styles-candidate.json
+          node benchmarks/microbench-store.mjs .benchmark-baseline benchmark-artifacts/store-main.json
+          node benchmarks/microbench-store.mjs .benchmark-hardening benchmark-artifacts/store-hardening.json
+          node benchmarks/microbench-store.mjs . benchmark-artifacts/store-candidate.json
       - name: Report raw, gzip and Brotli production assets
         run: node benchmarks/report-size.mjs
       - name: Report all 23 compiled package footprints
@@ -139,7 +149,9 @@ jobs:
         shell: bash
         run: |
           node benchmarks/report-comparison.mjs
+          node benchmarks/report-scale.mjs
           cat benchmark-artifacts/summary.md >> "$GITHUB_STEP_SUMMARY"
+          cat benchmark-artifacts/scale-summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload reproducible benchmark evidence
         if: always()
         uses: actions/upload-artifact@v4

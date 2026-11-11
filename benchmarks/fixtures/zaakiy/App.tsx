@@ -4,7 +4,11 @@ import {flushSync, signal} from "@zaakiyjs/signals";
 interface Row { readonly id: number; readonly label: string }
 const counter = signal(0);
 const visible = signal(true);
-const rows = signal<readonly Row[]>(Array.from({length: 1000}, (_, id) => ({id, label: "Row " + id})));
+const requestedRows = Number(new URLSearchParams(window.location.search).get("rows") ?? "1000");
+if (!Number.isSafeInteger(requestedRows) || requestedRows < 1 || requestedRows > 10000) {
+  throw new RangeError("Benchmark row count must be 1–10,000");
+}
+const rows = signal<readonly Row[]>(Array.from({length: requestedRows}, (_, id) => ({id, label: "Row " + id})));
 
 export function runBenchmark(operation: string): void {
   if (operation === "counter") counter.value += 1;

@@ -69,6 +69,18 @@ const routerRuns = await Promise.all(["main", "hardening", "candidate"].map(
     .then(JSON.parse)));
 lines.push("| router / 514-route match p50 | " +
   routerRuns.map(item => item.p50_ms_per_match.toFixed(5)).join(" | ") + " | ms/match |");
+lines.push("| router / 42-route, 10-layer nested match p50 | " +
+  routerRuns.map(item => item.scenarios.deep.p50_ms_per_match.toFixed(5)).join(" | ") + " | ms/match |");
+for (const [name, field, unit] of [
+  ["styles", "p50_ms", "ms/compile"],
+  ["store", "p50_ms_per_action", "ms/action"]
+]) {
+  const values = await Promise.all(["main", "hardening", "candidate"].map(
+    suffix => readFile("benchmark-artifacts/" + name + "-" + suffix + ".json", "utf8")
+      .then(JSON.parse)));
+  lines.push("| " + name + " p50 | " +
+    values.map(item => item[field].toFixed(5)).join(" | ") + " | " + unit + " |");
+}
 const signalRuns = await Promise.all(["main", "hardening", "candidate"].map(
   suffix => readFile("benchmark-artifacts/signals-" + suffix + ".json", "utf8")
     .then(JSON.parse)));

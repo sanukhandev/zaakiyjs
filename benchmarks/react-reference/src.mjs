@@ -5,7 +5,11 @@ import {flushSync} from "react-dom";
 import {jsx, jsxs} from "react/jsx-runtime";
 import "../shared.css";
 
-const initialRows = Array.from({length: 1000}, (_, id) => ({id, label: "Row " + id}));
+const requestedRows = Number(new URLSearchParams(window.location.search).get("rows") ?? "1000");
+if (!Number.isSafeInteger(requestedRows) || requestedRows < 1 || requestedRows > 10000) {
+  throw new RangeError("Benchmark row count must be 1–10,000");
+}
+const initialRows = Array.from({length: requestedRows}, (_, id) => ({id, label: "Row " + id}));
 const Row = memo(function Row({row}) {
   return jsx("li", {children: jsxs("span", {children: [row.id, "::", row.label]})});
 });
@@ -37,7 +41,8 @@ function App() {
             : [...previous, {id: 500, label: "Row 500"}]);
           else throw new Error("Unknown benchmark operation");
         });
-      }
+      },
+      dispose() { root.unmount(); }
     };
     performance.mark("bench-mounted");
     return () => { delete window.__benchmark; };
@@ -53,4 +58,5 @@ function App() {
 }
 const host = document.querySelector("#app");
 if (!host) throw new Error("Missing app host");
-createRoot(host).render(jsx(App, {}));
+const root = createRoot(host);
+root.render(jsx(App, {}));

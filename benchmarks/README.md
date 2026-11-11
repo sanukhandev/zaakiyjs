@@ -34,6 +34,12 @@ The benchmark's expanded parity assertions are blocking even if measured times a
 
 ## Router optimization microbenchmark
 
-`microbench-router.mjs` runs a 514-route table with two parameterized nested levels and 16,000 timed path matches per variant. It validates inherited params, route identity and non-inheritance of leaf-only params on each iteration. The candidate router avoids reparsing every parent route prefix during matching, and treats reserved parameter names as own data properties rather than prototype setters. The JSON is diagnostic until repeated measurements establish realistic regression budgets. This does not measure asynchronous navigation, component mount, loaders or code splitting.
+`microbench-router.mjs` runs a 514-route table with two parameterized nested levels and 16,000 timed path matches per variant, plus an independent 42-route, 10-level nested parameter path. It validates inherited params, route identity and non-inheritance of leaf-only params on every iteration across both scenarios. The candidate router avoids reparsing every parent route prefix during matching, and treats reserved parameter names as own data properties rather than prototype setters. The JSON is diagnostic until repeated measurements establish realistic regression budgets. This does not measure asynchronous navigation, component mount, loaders or code splitting.
 
 The workflow also runs a pinned nightly benchmark. The scheduled results are diagnostic and do not imply that individual package optimization work or release certification is complete.
+
+## Multi-scale browser workload and disposal checks
+
+The new `scale.py` suite executes React, the frozen hardening head, and the candidate on **100, 1,000, 5,000 and 10,000 keyed rows**, in real Chromium, Firefox and WebKit, using the same production app and row-count query parameter. Both list reversal and single-item rotation are validated for exact order and retained native node identity. Each page is disposed after the samples and must contain zero list rows. Raw latencies are retained; this scaling suite is initially **diagnostic**, not a universal high-traffic app or memory-leak certification. The original main variant is excluded at large sizes because its known WebKit full-reorder behavior can dominate the CI runtime. `report-scale.mjs` publishes a separate comparison table in the workflow summary.
+
+The package microbench suite also records deterministic Styles utility extraction/compilation for 4,000 input tokens and 20 unique classes and scoped Store actions/immutability verification. The matched compiler, Signals, Core and Router diagnostics remain comparative signals, not browser-visible latency claims.
