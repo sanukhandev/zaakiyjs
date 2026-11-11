@@ -863,3 +863,44 @@ describe("compiler-lowered native DOM runtime", () => {
     disposeOwner(owner);
   });
 });
+
+describe("large keyed list production reordering", () => {
+  it("preserves exact node identities, focus, owner state and cleanup in a heavily reordered list", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const owner = createOwner();
+    const values = signal<readonly number[]>(Array.from({ length: 128 }, (_, index) => index));
+    let creations = 0;
+    let cleanups = 0;
+    bindKeyedRegion(owner, createRegion(host), () => values.value, item => item,
+      (item) => {
+        creations++;
+        onCleanup(() => { cleanups++; });
+        const button = document.createElement("button");
+        button.textContent = String(item);
+        return { node: button };
+      });
+    mountOwner(owner);
+    const originals = new Map([...host.querySelectorAll("button")].map(button => [button.textContent, button]));
+    const focused = originals.get("64")!;
+    focused.focus();
+    values.value = [...values.value].reverse();
+    flushSync();
+    const reordered = [...host.querySelectorAll("button")];
+    expect(reordered.map(node => node.textContent)).toEqual(
+      Array.from({ length: 128 }, (_, index) => String(127 - index))
+    );
+    for (const [key, node] of originals) expect(reordered.find(item => item.textContent === key)).toBe(node);
+    expect(document.activeElement).toBe(focused);
+    expect(creations).toBe(128);
+    expect(cleanups).toBe(0);
+    values.value = [...values.value].reverse();
+    flushSync();
+    expect([...host.querySelectorAll("button")].map(node => node.textContent)).toEqual(
+      Array.from({ length: 128 }, (_, index) => String(index))
+    );
+    disposeOwner(owner);
+    expect(cleanups).toBe(128);
+    expect(host.querySelectorAll("button")).toHaveLength(0);
+  });
+});

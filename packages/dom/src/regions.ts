@@ -280,6 +280,34 @@ function moveRange(parent: Node, start: Node, end: Node, before: Node): void {
   parent.insertBefore(fragment, before);
 }
 
+/**
+ * Full movement of a heavily permuted keyed list is cheaper when the DOM is
+ * detached once and inserted once. Preserve the exact nodes and owner scopes.
+ * Only used when most neighbor relationships have changed; small/local moves
+ * still use precise range operations with no unrelated childList mutations.
+ */
+function moveManyRanges<Key, Item>(
+  parent: Node, before: Node, entries: readonly RecordEntry<Key, Item>[]
+): void {
+  const doc = parent.ownerDocument ?? (parent as Document);
+  for (const entry of entries) {
+    if (entry.start.parentNode !== parent || entry.end.parentNode !== parent) {
+      throw new Error("Cannot batch-move a detached keyed range");
+    }
+  }
+  const fragment = doc.createDocumentFragment();
+  for (const entry of entries) {
+    let cursor: Node | null = entry.start;
+    while (cursor) {
+      const next: Node | null = cursor.nextSibling;
+      fragment.appendChild(cursor);
+      if (cursor === entry.end) break;
+      cursor = next;
+    }
+  }
+  parent.insertBefore(fragment, before);
+}
+
 interface FocusSnapshot {
   readonly element: HTMLElement | SVGElement;
   readonly start: number | null;
@@ -433,13 +461,24 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
         }
       }
 
-      // Right-to-left placement minimizes moves when suffixes are already stable.
-      let before: Node = region.end;
-      for (let i = ordered.length - 1; i >= 0; i--) {
-        const record = ordered[i];
-        if (!record) continue;
-        moveRange(region.parent, record.start, record.end, before);
-        before = record.start;
+      // Coalesce severely permuted lists into one native insertion. For local
+      // changes retain exact per-range placement, preserving the zero-unrelated-
+      // mutations invariant and avoiding work on already sorted siblings.
+      let disruptedNeighbors = 0;
+      for (let i = 0; i + 1 < ordered.length; i++) {
+        if (ordered[i]!.end.nextSibling !== ordered[i + 1]!.start) disruptedNeighbors++;
+      }
+      if (ordered.length >= 64 && disruptedNeighbors * 2 > ordered.length) {
+        moveManyRanges(region.parent, region.end, ordered);
+      } else {
+        // Right-to-left placement minimizes moves when suffixes are stable.
+        let before: Node = region.end;
+        for (let i = ordered.length - 1; i >= 0; i--) {
+          const record = ordered[i];
+          if (!record) continue;
+          moveRange(region.parent, record.start, record.end, before);
+          before = record.start;
+        }
       }
     } finally {
       restoreFocus(focused);

@@ -99,6 +99,11 @@ jobs:
           python3 benchmarks/runner.py --candidate http://127.0.0.1:4191 --baseline http://127.0.0.1:4192 --react http://127.0.0.1:4193
       - name: Report raw, gzip and Brotli production assets
         run: node benchmarks/report-size.mjs
+      - name: Generate review-ready React versus ZaakiyJS comparison
+        shell: bash
+        run: |
+          node benchmarks/report-comparison.mjs
+          cat benchmark-artifacts/summary.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload reproducible benchmark evidence
         if: always()
         uses: actions/upload-artifact@v4
