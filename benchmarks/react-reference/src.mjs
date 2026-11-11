@@ -1,4 +1,4 @@
-/* global document, window, performance */
+/* global document, window, performance, URLSearchParams */
 import {memo, useLayoutEffect, useState} from "react";
 import {createRoot} from "react-dom/client";
 import {flushSync} from "react-dom";
