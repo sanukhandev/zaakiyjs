@@ -312,6 +312,15 @@ export function createForm<T extends object, TResult = void>(options: FormOption
       rec.fieldIssues.value = []; rec.status.value = 'valid';
       return result('valid');
     }
+    // A passive field has no validator that needs an immutable snapshot or
+    // cancellation controller. Creating a full-form clone for each such field
+    // made all-fields validation quadratic even when no field rule existed.
+    if (rec.validators.length === 0 && rec.required === false) {
+      if (external?.aborted) return result('cancelled');
+      rec.fieldIssues.value = [];
+      rec.status.value = 'valid';
+      return result('valid');
+    }
     const controller = new AbortController();
     const linked = linkAbort(controller, external, validationTimeoutMs);
     rec.controller = controller; rec.release = linked.release;

@@ -32,4 +32,18 @@ describe("large cross-field form issue indexing", () => {
       expect((await form.validate()).issues).toEqual(issues);
     } finally {form.dispose();}
   });
+  it("does not bypass cancellation or required validation on fast-path fields", async () => {
+    const form = createForm({initialValues:{passive:"ok",required:""}});
+    try {
+      const plain=form.field("passive");
+      form.field("required",{required:true});
+      const alreadyAborted=new AbortController();
+      alreadyAborted.abort("canceled-before-validation");
+      expect((await plain.validate({signal:alreadyAborted.signal})).status).toBe("cancelled");
+      expect((await form.validate({signal:alreadyAborted.signal})).status).toBe("cancelled");
+      const validation=await form.validate();
+      expect(validation.status).toBe("invalid");
+      expect(validation.issues.some(issue=>issue.path==="required"&&issue.code==="required")).toBe(true);
+    } finally {form.dispose();}
+  });
 });

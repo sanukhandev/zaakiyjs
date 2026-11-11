@@ -4,12 +4,12 @@ Branch: `perf/b0-b1-package-benchmarks`. Frozen comparison: [PR #62 head](https:
 
 ## Implemented vertical slices
 
-- **@zaakiyjs/forms**: form-level issues are partitioned by registered field path once, replacing O(fields × issues) filtering. Duplicates, original ordering, unregistered paths and global issues remain semantically unchanged; 200-field correctness test.
-- **@zaakiyjs/analytics**: growing batches use an exact incremental UTF-8 byte total instead of reserializing the entire JSON prefix. The wire shape remains `{"events":[...]}`; bounded batch and ordering tested.
+- **@zaakiyjs/forms**: partition form-level issues once, and skip expensive full-form snapshots/cancellation controllers for passive fields that have no validator and no required rule. Preserve cancellation and required-field contracts; 200-field and abort-path correctness tests.
+- **@zaakiyjs/analytics**: attempted incremental UTF-8 batch size accounting, but the first matched benchmark did not show a gain (400-event flush p50 0.265 → 0.271 ms, p95 0.322 → 0.735 ms). The change was **reverted**. The existing byte-limited batch correctness test remains.
 - **B1 metrics**: public API form validation for 30/100/300/700 fields and analytics flush for 50/200/400 sanitized events. 20 recorded samples per size and 3 warmups, from the same Node 22 runner and identical fixture against frozen PR #62. No real HTTP transport, no browser and no claims of Core Web Vitals.
 - **B0 additional baselines**: controlled Async AbortSignal composition, HTTP mock-fetch JSON decoding, Compat TypeScript AST feature planning and SEO metadata rendering. These packages are intentionally unchanged; metrics are baselines, not speedups.
-- **Coverage**: existing direct workloads for Signals/Core/DOM/Compiler/Styles/Store/Router (7); Forms and Analytics (2); Async/HTTP/Compat/SEO (4) = 13/23 packages with a direct isolated performance scenario. All 23 still have emitted package size inventory.
-- **Still needing direct performance workloads**: Ads, CLI, Consent, Motion, Proxy, SSR, Templates, UI, UI Primitives, Vite Plugin. Passing tests or compressed file sizes are not substitutes for workload-level timing.
+- **Coverage**: existing direct workloads for Signals/Core/DOM/Compiler/Styles/Store/Router (7); Forms and Analytics (2); Async/HTTP/Compat/SEO (4); Proxy/Consent/Templates (3) = 16/23 packages with an isolated performance scenario once the stage-two comparative benchmark passes. All 23 still have emitted package size inventory.
+- **Still needing direct performance workloads after stage-two passes**: Ads, CLI, Motion, SSR, UI, UI Primitives, Vite Plugin. Stage-two Proxy/Consent/Templates benchmarks are pending and must not be counted as passed until run. Passing tests or compressed file sizes are not substitutes for workload-level timing.
 
 ## Before accepting optimizations
 
@@ -28,3 +28,7 @@ Branch: `perf/b0-b1-package-benchmarks`. Frozen comparison: [PR #62 head](https:
 - **P2 — UI/Motion/Consent/Ads/SSR/SEO/Templates/CLI**: package-specific end-to-end and security-equivalent reference workloads; compare React only for truly equivalent application rendering behavior.
 
 The existing React 19.2.4 / frozen main / frozen hardening / candidate production UI benchmark remains the direct rendering reference. HTTP, Analytics and Proxy must not be falsely compared against a React UI runtime without equivalent functionality.
+
+## First measured B1 result and correction
+
+Frozen PR #62 vs candidate in [Actions #43010528146](https://github.com/sanukhandev/zaakiyjs/actions/runs/43010528146): 94 Vitest files, 861 tests passed, one skipped; all direct benchmark fixtures passed. Initial form issue grouping alone produced no meaningful p50 gain at 700 fields (**234.007 → 233.772 ms**). Profiling by code inspection identified the dominating full-form snapshot per passive field in `validateRecord`. A guarded fast path now avoids that unnecessary work without skipping required rules or aborted caller signals; it requires a new before/after benchmark. Initial analytics attempt was rejected and reverted on performance evidence. Never claim an improvement until a fresh run verifies it.
