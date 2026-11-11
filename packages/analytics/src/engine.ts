@@ -167,12 +167,20 @@ export function createAnalytics<M extends EventMapConstraint<M>>(options: Analyt
     clearTimer(runtime);
     const revision = runtime.revision;
     const selected: Queued[] = [];
+    // The exact UTF-8 payload framing is {"events":[...]}.
+    // Re-serializing every growing prefix creates quadratic work.
+    const encoder = new TextEncoder();
+    let payloadBytes = encoder.encode('{"events":[]}').length;
     for (const entry of runtime.queue) {
       if (selected.length >= batch) break;
-      const candidate = [...selected, entry];
-      const payloadSize = new TextEncoder().encode(JSON.stringify({ events: candidate.map(x => x.event) })).length;
-      if (payloadSize > payloadMax) break;
+      const serialized = JSON.stringify(entry.event);
+      // JSON.stringify arrays serialize non-JSON elements as null; records
+      // are already sanitized, but preserve the array-byte contract.
+      const bytes = encoder.encode(serialized ?? 'null').length;
+      const nextBytes = payloadBytes + bytes + (selected.length > 0 ? 1 : 0);
+      if (nextBytes > payloadMax) break;
       selected.push(entry);
+      payloadBytes = nextBytes;
     }
     if (selected.length === 0) {
       // A single event should already satisfy the limit; defensively drop invalid entries.

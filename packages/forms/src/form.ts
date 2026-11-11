@@ -365,8 +365,21 @@ export function createForm<T extends object, TResult = void>(options: FormOption
         } else issues.push(...normalize(output, 'form'));
       }
       if (formGeneration !== generation || disposed || controller.signal.aborted) return result('cancelled');
-      formIssues.value = issues.filter(issue => !issue.path || !byPath.has(issue.path));
-      for (const rec of records) rec.crossIssues.value = issues.filter(issue => issue.path === rec.path.peek());
+      // Partition once. Filtering the full issue array for each field is
+      // O(registered fields × issues) on large cross-field forms.
+      const perPath = new Map<string, ValidationIssue[]>();
+      const unassigned: ValidationIssue[] = [];
+      for (const issue of issues) {
+        if (!issue.path || !byPath.has(issue.path)) {
+          unassigned.push(issue);
+          continue;
+        }
+        const existing = perPath.get(issue.path);
+        if (existing) existing.push(issue);
+        else perPath.set(issue.path, [issue]);
+      }
+      formIssues.value = unassigned;
+      for (const rec of records) rec.crossIssues.value = perPath.get(rec.path.peek()) ?? [];
       formStatus.value = issues.length ? 'invalid' : 'valid';
       return result(issues.length ? 'invalid' : 'valid', issues);
     } catch {
