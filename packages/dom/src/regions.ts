@@ -291,13 +291,14 @@ function removeEntry<Key, Item>(entry: RecordEntry<Key, Item>, removeMarkup = tr
   try {
     disposeOwner(entry.owner);
   } finally {
-    if (!removeMarkup) return;
-    let cursor: Node | null = entry.start;
-    while (cursor) {
-      const next: Node | null = cursor.nextSibling;
-      cursor.parentNode?.removeChild(cursor);
-      if (cursor === entry.end) break;
-      cursor = next;
+    if (removeMarkup) {
+      let cursor: Node | null = entry.start;
+      while (cursor) {
+        const next: Node | null = cursor.nextSibling;
+        cursor.parentNode?.removeChild(cursor);
+        if (cursor === entry.end) break;
+        cursor = next;
+      }
     }
   }
 }
