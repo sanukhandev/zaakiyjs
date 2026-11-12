@@ -83,8 +83,16 @@ The manifest is an output of a trusted build, not a request-time image proxy. Th
 
 See the E9 Native Image Optimization CI workflow and benchmark artifacts. The fixture records original JPEG byte size versus selected mobile/tablet/desktop variants, each with decoded dimensions and SHA-256 verification, plus encoding p50/p95 across repeated full builds. Asset transfer savings are not the same as total generated disk size, LCP improvement or faster-than-Next.js performance.
 
-## Public API
+## Public API index
 
-Browser root: ImageSource, OptimizedImage, ImageViewOptions, ImageProps, getImageProps, renderPictureHtml, createPicture.
+- `ImageSource`
+- `OptimizedImage`
+- `ImageViewOptions`
+- `ImageProps`
+- `getImageProps`
+- `renderPictureHtml`
+- `createPicture`
 
-Node entry: EncodedFormat, ImageMetadata, ImageProcessor, SharpFactory, createSharpProcessor, LocalImageSource, BuildImageOptions, ImageOutputFile, ImageManifest, ImageBuildResult, optimizeLocalImages.
+## Detailed feature guide
+
+The Node-only subpath exports the build encoder, manifest and artifact types plus optimizeLocalImages and createSharpProcessor; it is intentionally absent from the browser entrypoint.

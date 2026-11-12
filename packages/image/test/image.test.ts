@@ -29,7 +29,7 @@ async function withFixture(test: (root: string) => Promise<void>): Promise<void>
 const config = (root: string) => ({
   inputRoot: join(root, "input"),
   outputDir: join(root, "optimized"),
-  images: [{ id: "hero", file: "photo.jpg", widths: [320, 640, 1200], placeholder: true }],
+  images: [{ id: "hero", file: "photo.jpg", widths: [320, 640, 1200], formats: ["webp", "avif"] as const, placeholder: true }],
   processor
 });
 describe("@zaakiyjs/image offline build optimizer", () => {
@@ -49,6 +49,17 @@ describe("@zaakiyjs/image offline build optimizer", () => {
       expect(a.manifest.images.hero?.blurDataURL).toMatch(/^data:image\/webp;base64,/);
       expect(await readFile(join(root, "optimized", a.outputs[0]!.file))).toHaveLength(a.outputs[0]!.bytes);
       expect(a.originalBytes).toBeGreaterThan(0);
+    });
+  });
+
+  it("defaults to WebP-only modern variants unless AVIF is explicitly requested", async () => {
+    await withFixture(async root => {
+      const result = await optimizeLocalImages({
+        ...config(root),
+        images: [{ id: "hero", file: "photo.jpg", widths: [320, 640] }]
+      });
+      expect(result.outputs.map(x => x.format)).toEqual(["webp", "webp", "jpeg", "jpeg"]);
+      expect(result.manifest.images.hero?.sources.map(x => x.type)).toEqual(["image/webp"]);
     });
   });
 
