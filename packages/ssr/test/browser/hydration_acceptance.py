@@ -103,7 +103,7 @@ def run(dist: Path, output: Path):
                         for key in ("identity", "focus", "moved", "switched",
                                     "updated", "focusAfter", "reused", "addition",
                                     "changed", "returned", "preserved",
-                                    "eventAttached", "eventRemoved"):
+                                    "eventAttached", "updatedEvent", "eventRemoved"):
                             if h4_result.get(key) is not True:
                                 raise AssertionError(
                                     f"{name}: H4 {key} failed: {h4_result}"
