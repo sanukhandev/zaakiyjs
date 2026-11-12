@@ -1,7 +1,7 @@
 import {Component,signal,afterNextRender,inject} from "@angular/core";
 import {ActivatedRoute,RouterOutlet,provideRouter,Routes} from "@angular/router";
 import {provideZonelessChangeDetection} from "@angular/core";
-import {provideClientHydration,withNoIncrementalHydration} from "@angular/platform-browser";
+import {provideClientHydration} from "@angular/platform-browser";
 
 export const sizes=[100,1000,10000] as const;
 
@@ -57,13 +57,12 @@ export class BenchPageComponent {
         preservedDraft:before.draft.value==="visitor draft",
         preservedFocus:document.activeElement===before.draft,
         get liveRows(){return host.querySelectorAll("[data-key]").length;},
-        async update(){
-          this.countUpdater();
+        update:async()=>{
+          this.increment();
           await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
         },
-        countUpdater:()=>this.increment(),
-        async reverse(){
-          this.rows.update(rows=>[...rows].reverse());
+        reverse:async()=>{
+          this.rows.update((rows:{id:string;label:string}[])=>[...rows].reverse());
           await new Promise<void>(resolve=>requestAnimationFrame(()=>resolve()));
         },
         verify:()=>{
@@ -100,5 +99,5 @@ export const routes:Routes=[{path:":size",component:BenchPageComponent}];
 export const clientProviders=[
   provideZonelessChangeDetection(),
   provideRouter(routes),
-  provideClientHydration(withNoIncrementalHydration())
+  provideClientHydration()
 ];
