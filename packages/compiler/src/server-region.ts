@@ -10,7 +10,7 @@ import { compile, optimizeIR, parseToIR } from "./index.js";
 import { renderLiteralAttribute, SSR_STATIC_TAGS, SSR_VOID_TAGS } from "./server-static.js";
 
 type RegionNode =
-  | { readonly kind: "element"; readonly id: string; readonly tag: string; readonly attrs: readonly string[]; readonly children: readonly RegionNode[] }
+  | { readonly kind: "element"; readonly id: string; readonly tag: string; readonly attrs: readonly string[]; readonly events?: readonly {readonly name:string; readonly path:readonly string[]}[]; readonly children: readonly RegionNode[] }
   | { readonly kind: "component"; readonly id: string; readonly children: readonly RegionNode[] }
   | { readonly kind: "literal"; readonly value: string }
   | { readonly kind: "data"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item" }
@@ -137,11 +137,22 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
               if (rendered) attrs.push(rendered);
             }
           }
-          const children = convert(node.children.filter(child => child.kind !== "PropertyBinding"),
+          const events: {name:string;path:string[]}[] = [];
+          for (const child of node.children) {
+            if (child.kind !== "EventBinding") continue;
+            const bound = resolve(child.expression.source,itemName,aliases);
+            if (bound.source !== "props" || !/^[a-z][a-z0-9]*$/.test(child.name))
+              throw new TypeError("H4 JSX events require a direct named root-props handler");
+            if (events.some(event => event.name === child.name))
+              throw new TypeError("Duplicate H4 JSX event handler");
+            events.push({name:child.name,path:[...bound.path]});
+          }
+          const children = convert(node.children.filter(child => child.kind !== "PropertyBinding" &&
+            child.kind !== "EventBinding"),
             itemName, depth + 1,aliases,stack);
           if (SSR_VOID_TAGS.has(node.tag) && children.length)
             throw new TypeError("Void elements cannot contain hydration children");
-          output.push({ kind: "element", id: hash("zaakiy-region-element:" + request.routeId + ":" + ordinal++).slice(0, 32), tag: node.tag, attrs, children });
+          output.push({ kind: "element", id: hash("zaakiy-region-element:" + request.routeId + ":" + ordinal++).slice(0, 32), tag: node.tag, attrs, ...(events.length ? {events} : {}), children });
           break;
         }
         case "ConditionalBlock": {
