@@ -256,3 +256,28 @@ replace only affected native ranges; matching attachment makes no first-pass
 DOM replacements. The server and browser share deterministic v2 markers. Tests
 cover matching adoption, keyed reorder, conditional switching, focus, state
 updates and disposal. This is still not general-purpose TSX hydration.
+
+### H4 opt-in JSX handlers and trusted component-source pinning
+
+For the `compileRegionServer` v2 target, a direct handler reference such as
+`<button onClick={props.onSave}>` is lowered to inert event metadata with
+the compiler-assigned native element identity and the path `["onSave"]`.
+The browser `hydrateRegionPage` requires a trusted `resolveEvent(path)`
+callback to supply the actual typed `EventListener`. The server never embeds
+or executes handler code, and the event is disposed with the DOM owner.
+Arbitrary inline callbacks and runtime evaluation of JSX source are rejected.
+
+A build adapter may provide `componentModules` with exact import specifiers,
+workspace-relative source filenames, source bytes, and SHA-256 digests.
+The compiler resolves named static TSX imports against that allowlisted,
+byte-pinned data, validates the imported module separately, and lowers a
+pure single-return exported component to a deterministic region plan.
+No runtime source loading, model invocation, Node import, or browser compiler
+is introduced. Imported modules with arbitrary top-level code are rejected.
+The build adapter remains responsible for resolving module paths and attesting
+the same dependency bytes in the deployed client/server bundle.
+
+Within the supported H4 subset, conditional regions can contain nested
+components and other conditional regions. Keyed row templates permit nested
+conditionals but not ambiguous nested keyed lexical scopes. Full general JSX
+event closures, named slots, and unrestricted component graphs remain deferred.
