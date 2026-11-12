@@ -41,12 +41,15 @@ describe("H5 navigation hydration transactions", () => {
   it("rejects stale reentrant abort listeners", () => {
     const manager = createHydrationTransitionCoordinator();
     const old = manager.start("old");
-    let latest: ReturnType<typeof manager.start> | undefined;
-    old.signal.addEventListener("abort", () => { latest = manager.start("reentered"); });
+    let latestIsCurrent = () => false;
+    old.signal.addEventListener("abort", () => {
+      const latest = manager.start("reentered");
+      latestIsCurrent = () => latest.current;
+    });
     const candidate = manager.start("candidate");
     expect(candidate.current).toBe(false);
     expect(candidate.signal.aborted).toBe(true);
-    expect(latest?.current).toBe(true);
+    expect(latestIsCurrent()).toBe(true);
     manager.dispose();
   });
 });
