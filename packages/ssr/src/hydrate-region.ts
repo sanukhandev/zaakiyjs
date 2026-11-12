@@ -142,6 +142,7 @@ interface Keyed {
 }
 interface Zone {
   readonly key: string;
+  item: unknown;
   readonly elements: Map<string, Element>;
   readonly slots: Slot[];
   readonly compiledEvents: {readonly elementId:string;readonly name:string;readonly path:readonly string[]}[];
@@ -149,8 +150,8 @@ interface Zone {
   readonly conditions: Condition[];
   readonly keyed: Keyed[];
 }
-function zone(key = ""): Zone {
-  return {key, elements:new Map(),slots:[],compiledEvents:[],components:[],conditions:[],keyed:[]};
+function zone(key = "", item:unknown=null): Zone {
+  return {key,item, elements:new Map(),slots:[],compiledEvents:[],components:[],conditions:[],keyed:[]};
 }
 /** No user callbacks are registered and no native mutations occur in preflight. */
 function inspect(container: Element, plan: RegionHydrationPlanV2,
@@ -160,7 +161,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
     mismatch("route root marker");
   const root = container.childNodes[1];
   if (!root || root.nodeType !== 1) mismatch("native root");
-  const tree = zone(scopeKey);
+  const tree = zone(scopeKey,item);
   let budget = 0;
   const scan = (parent: Node, begin: Node | null, end: Node | null,
     specs: readonly RegionNodeV2[], item: unknown, target: Zone,
@@ -232,7 +233,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
               !cursor || cursor===end || cursor.nodeType!==8 ||
               cursor.nodeValue!=="zaakiy-r2:"+spec.id+":start")
             mismatch("component boundary start");
-          const child=zone(target.key);
+          const child=zone(target.key,item);
           cursor=scan(parent,cursor.nextSibling,end,spec.children,item,child,depth+1);
           if (!cursor || cursor===end || cursor.nodeType!==8 ||
               cursor.nodeValue!=="zaakiy-r2:"+spec.id+":end")
@@ -278,7 +279,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
                 cursor.nodeValue !== "zaakiy-k2:" + spec.id + ":" + key + ":start")
               mismatch("keyed item start");
             const rowStart=cursor as Comment;
-            const child=zone(key);
+            const child=zone(key,item);
             const first=cursor.nextSibling;
             cursor=scan(parent,first,end,spec.rows,item,child,depth+1);
             if (!cursor || cursor === end || cursor.nodeType !== 8 ||
