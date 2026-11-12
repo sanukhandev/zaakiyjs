@@ -377,7 +377,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
 
       "const draw = (nodes, props, item, budget, depth = 0) => {",
       " if (depth > 64) throw new RangeError('H4 nesting bound'); let result = '';",
-      " for (const node of nodes) { if (++budget.count > ${limits?.maxNodes??8192}) throw new RangeError('H4 output node bound');",
+      " for (const node of nodes) { if (++budget.count > " + String(limits?.maxNodes??8192) + ") throw new RangeError('H4 output node bound');",
       " if (node.kind === 'literal') result += escape(node.value);",
       " else if (node.kind === 'data') result += '<!--zaakiy-d2:' + node.id + ':start-->' + text(own(node.source === 'item' ? item : props, node.path)) + '<!--zaakiy-d2:' + node.id + ':end-->';",
       " else if (node.kind === 'element') { result += '<' + node.tag + node.attrs.join('') + '>';",
@@ -390,7 +390,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " result += draw(own(node.source === 'item' ? item : props,node.path) ? node.yes : node.no,props,item,budget,depth+1);",
       " result += '<!--zaakiy-r2:' + node.id + ':end-->'; }",
       " else if (node.kind === 'keyed') { const rows = own(node.source === 'item' ? item : props,node.path);",
-      " if (!Array.isArray(rows) || rows.length > ${limits?.maxRows??4096}) throw new TypeError('H4 keyed data must be bounded array');",
+      " if (!Array.isArray(rows) || rows.length > " + String(limits?.maxRows??4096) + ") throw new TypeError('H4 keyed data must be bounded array');",
       " const keys = new Set(); result += '<!--zaakiy-r2:' + node.id + ':start-->';",
       " for (const row of rows) { const key = own(row,[node.key]);",
       " if (typeof key !== 'string' && typeof key !== 'number') throw new TypeError('H4 key type');",
@@ -405,7 +405,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " if (context.request?.signal?.aborted) throw context.request.signal.reason;",
 
       " const body = '<!--zaakiy-h:' + hydrationPlan.markerId + ':' + hydrationPlan.templateDigest + '-->' + draw(hydrationPlan.nodes,context.loaderData,null,{count:0});",
-      " if (body.length > ${limits?.maxHtmlBytes??1048576}) throw new RangeError('H4 output too large');",
+      " if (body.length > " + String(limits?.maxHtmlBytes??1048576) + ") throw new RangeError('H4 output too large');",
       " return {version:1,status:200,headers:{'content-type':'text/html; charset=utf-8'},body,cache:{scope:'no-store',tags:[]}};",
       "}"
     ].join("\n") + "\n";
