@@ -17,6 +17,8 @@ export interface OwnedHydrationBoundary {
 }
 export interface OwnedBoundaryHydrationOptions {
   readonly boundary: OwnedHydrationBoundary;
+  /** Optional lexical parent owner; child hydration disposes with its parent. */
+  readonly parentOwner?: OwnerScope;
   /** Must validate the existing DOM against a trusted compiler blueprint. */
   readonly matches: (nodes: readonly Node[]) => boolean;
   /** Called only when mismatch recovery is explicitly allowed. */
@@ -80,7 +82,7 @@ export function hydrateOwnedBoundary(options: OwnedBoundaryHydrationOptions): Ow
   const doc = boundary.start.ownerDocument;
   const replacements = isMatch ? [] : prepared(options.recover!(), doc, boundary.start, boundary.end);
   if (signal?.aborted) throw new Error("Hydration boundary navigation aborted");
-  const owner = createOwner();
+  const owner = createOwner(options.parentOwner);
   let replaced = false;
   let closed = false;
   const cleanup = () => {
