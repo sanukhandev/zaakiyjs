@@ -128,7 +128,7 @@ describe("H0–H3 compiler-backed native DOM adoption", () => {
       root.innerHTML = await html(server.render(context(0)).body);
       return root;
     };
-    const bindings = { read: (_path: readonly string[]) => 0 };
+    const bindings = { read: () => 0 };
     const wrongData = await create();
     const original = wrongData.innerHTML;
     expect(() => hydrateDataPage(wrongData, server.hydrationPlan, envelope, manifest,

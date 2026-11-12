@@ -7,7 +7,7 @@ import { hydrate } from "@zaakiyjs/dom";
 import type { HydrationMountHandle } from "@zaakiyjs/dom";
 import { inspectHydration } from "./client.js";
 import type {
-  DataHydrationNodeV1, DataHydrationElementV1, DataHydrationPlanV1,
+  DataHydrationNodeV1, DataHydrationPlanV1,
   HydrationEnvelopeV1, TrustedServerBuildManifestV1
 } from "./protocol.js";
 
