@@ -78,3 +78,6 @@ export function inspectHydration(
 
 export { hydrateDataPage } from "./hydrate-data.js";
 export type { DataHydrationBindings, DataHydrationHandle, HydrationEventV1 } from "./hydrate-data.js";
+
+export { serializeHydrationState, parseHydrationState } from "./hydration-state.js";
+export type { JsonHydrationValue, HydrationStatePacketV1 } from "./hydration-state.js";
