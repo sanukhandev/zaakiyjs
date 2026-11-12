@@ -5,6 +5,8 @@
  */
 import { bindText, listen, setText, setAttribute, bindConditionalRegion, bindKeyedRegion } from "@zaakiyjs/dom/compiler";
 import { hydrate } from "@zaakiyjs/dom";
+import { signal } from "@zaakiyjs/signals";
+import type { WritableSignal } from "@zaakiyjs/signals";
 import type { HydrationMountHandle } from "@zaakiyjs/dom";
 import { createOwner, disposeOwner, initializeOwnedComponent, mountOwner, onMount, runWithOwner } from "@zaakiyjs/core";
 import type { OwnerScope } from "@zaakiyjs/core";
@@ -16,8 +18,8 @@ export type RegionNodeV2 =
   | { readonly kind: "component"; readonly id: string; readonly children: readonly RegionNodeV2[] }
   | { readonly kind: "literal"; readonly value: string }
   | { readonly kind: "data"; readonly id: string; readonly source: "props" | "item"; readonly path: readonly string[] }
-  | { readonly kind: "conditional"; readonly id: string; readonly path: readonly string[]; readonly yes: readonly RegionNodeV2[]; readonly no: readonly RegionNodeV2[] }
-  | { readonly kind: "keyed"; readonly id: string; readonly path: readonly string[]; readonly itemName: string; readonly key: string; readonly rows: readonly RegionNodeV2[] };
+  | { readonly kind: "conditional"; readonly id: string; readonly path: readonly string[]; readonly source?: "props" | "item"; readonly yes: readonly RegionNodeV2[]; readonly no: readonly RegionNodeV2[] }
+  | { readonly kind: "keyed"; readonly id: string; readonly path: readonly string[]; readonly source?: "props" | "item"; readonly itemName: string; readonly key: string; readonly rows: readonly RegionNodeV2[] };
 export interface RegionHydrationPlanV2 {
   readonly schema: "zaakiy.region-hydration/2";
   readonly routeId: string;
@@ -142,7 +144,7 @@ interface Keyed {
 }
 interface Zone {
   readonly key: string;
-  item: unknown;
+  readonly item: WritableSignal<unknown>;
   readonly elements: Map<string, Element>;
   readonly slots: Slot[];
   readonly compiledEvents: {readonly elementId:string;readonly name:string;readonly path:readonly string[]}[];
@@ -151,8 +153,12 @@ interface Zone {
   readonly keyed: Keyed[];
 }
 function zone(key = "", item:unknown=null): Zone {
-  return {key,item, elements:new Map(),slots:[],compiledEvents:[],components:[],conditions:[],keyed:[]};
+  return {key,item:signal(item), elements:new Map(),slots:[],compiledEvents:[],components:[],conditions:[],keyed:[]};
 }
+function scopedKey(parent:string, key:string):string {
+  return parent ? parent.length+"_"+parent+"_"+key : key;
+}
+
 /** No user callbacks are registered and no native mutations occur in preflight. */
 function inspect(container: Element, plan: RegionHydrationPlanV2,
   read: RegionHydrationBindingsV2["read"], item:unknown=null, scopeKey=""): Zone {
@@ -248,8 +254,8 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
             mismatch("conditional start");
           // H4 v2 currently supports only flat region templates. This is
           // enforced by the compiler and checked again on the browser.
-          const shown=Boolean(read(spec.path));
-          const child=zone(target.key);
+          const shown=Boolean(spec.source==="item" ? own(item,spec.path) : read(spec.path));
+          const child=zone(target.key,item);
           const start=cursor as Comment;
           cursor=scan(parent,cursor.nextSibling,end,shown?spec.yes:spec.no,item,child,depth+1);
           if (!cursor || cursor === end || cursor.nodeType !== 8 ||
@@ -265,7 +271,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
               cursor.nodeValue !== "zaakiy-r2:" + spec.id + ":start" ||
               spec.rows.length !== 1 || spec.rows[0]?.kind !== "element")
             mismatch("keyed region plan");
-          const data=read(spec.path);
+          const data=spec.source==="item" ? own(item,spec.path) : read(spec.path);
           if (!Array.isArray(data) || data.length > 4096) mismatch("keyed data collection");
           const start=cursor as Comment;
           cursor=cursor.nextSibling;
@@ -279,7 +285,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
                 cursor.nodeValue !== "zaakiy-k2:" + spec.id + ":" + key + ":start")
               mismatch("keyed item start");
             const rowStart=cursor as Comment;
-            const child=zone(key,item);
+            const child=zone(scopedKey(target.key,key),item);
             const first=cursor.nextSibling;
             cursor=scan(parent,first,end,spec.rows,item,child,depth+1);
             if (!cursor || cursor === end || cursor.nodeType !== 8 ||
@@ -393,7 +399,7 @@ export function hydrateRegionPage(
     }
   };
   const updateSlots=(target:Zone,item:unknown):void=>{
-    target.item=item;
+    target.item.value=item;
     const changes=target.slots.filter(slot=>slot.spec.source==="item").map(slot=>({
       slot,value:textOf(own(item,slot.spec.path))
     }));
@@ -443,10 +449,10 @@ export function hydrateRegionPage(
           fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":end"));
         } else if(spec.kind==="conditional"){
           fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":start"));
-          fragment.appendChild(draw(read(spec.path)?spec.yes:spec.no,row,depth+1));
+          fragment.appendChild(draw((spec.source==="item"?own(row,spec.path):read(spec.path))?spec.yes:spec.no,row,depth+1));
           fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":end"));
         } else if(spec.kind==="keyed"){
-          const rows=read(spec.path);
+          const rows=spec.source==="item" ? own(row,spec.path) : read(spec.path);
           if(!Array.isArray(rows) || rows.length>4096)
             mismatch("invalid nested keyed data");
           const keys=new Set<string>();
@@ -510,22 +516,22 @@ export function hydrateRegionPage(
     for (const condition of target.conditions) {
       bindConditionalRegion(owner,
         {parent:condition.start.parentNode!,start:condition.start,end:condition.end},
-        ()=>Boolean(read(condition.spec.path)),
-        child=>buildBranch(condition.spec.yes,child,target.item,target.key),
-        child=>buildBranch(condition.spec.no,child,target.item,target.key),
+        ()=>Boolean(condition.spec.source==="item" ? own(target.item.value,condition.spec.path) : read(condition.spec.path)),
+        child=>buildBranch(condition.spec.yes,child,target.item.value,target.key),
+        child=>buildBranch(condition.spec.no,child,target.item.value,target.key),
         {initialBranch:condition.shown,preserveMarkupOnDispose:true,
           adopt:child=>attachZone(child,condition.child)});
     }
     for (const list of target.keyed) {
       bindKeyedRegion(owner,{parent:list.start.parentNode!,start:list.start,end:list.end},
         ()=>{
-          const rows=read(list.spec.path);
+          const rows=list.spec.source==="item" ? own(target.item.value,list.spec.path) : read(list.spec.path);
           if (!Array.isArray(rows) || rows.length>4096)
             return mismatch("keyed collection changed to unsafe data");
           return rows as readonly unknown[];
         },
         item=>rowKey(item,list.spec.key),
-        (item,child)=>buildRow(list.spec,child,item,rowKey(item,list.spec.key)),
+        (item,child)=>buildRow(list.spec,child,item,scopedKey(target.key,rowKey(item,list.spec.key))),
         {initial:list.rows.map(row=>({
           key:row.key,item:row.item,start:row.start,end:row.end,
           adopt:(_item,child)=>{
