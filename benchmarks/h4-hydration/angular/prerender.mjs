@@ -2,6 +2,7 @@
  * This avoids relying on implicit CLI route discovery, and never emits
  * client-rendered placeholders as an SSR benchmark substitute.
  */
+import "@angular/compiler";
 import {readFile,writeFile,mkdir} from "node:fs/promises";
 import {join,dirname,resolve} from "node:path";
 import {renderApplication} from "@angular/platform-server";
