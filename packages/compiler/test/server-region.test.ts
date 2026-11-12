@@ -150,6 +150,41 @@ describe("H4 compiler-backed region SSR target", () => {
     expect(result.js).toHaveLength(0);
     expect(result.diagnostics.some(d=>d.severity==="error")).toBe(true);
   });
+  it("compiles scoped JSX action closures into a separate browser-only module",async()=>{
+    const source='function Page(props:{onPress:(id:string,event:MouseEvent)=>void;rows:{id:string}[]}){return <main>{props.rows.map(item=><button key={item.id} onClick={(event)=>props.onPress(item.id,event)}>Choose</button>)}</main>;}';
+    const result=build(source);
+    expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    expect(result.clientEvents).toHaveLength(1);
+    expect(result.js[0]?.code).not.toContain("props.onPress");
+    const module=await import("data:text/javascript;base64,"+
+      Buffer.from(result.clientEvents![0]!.code).toString("base64"));
+    const received:string[]=[];
+    const resolve=module.createRegionEventResolver({onPress:(id:string)=>received.push(id)});
+    const button=result.hydrationPlan?.nodes[0];
+    if(button?.kind!=="element" || button.children[0]?.kind!=="keyed" ||
+       button.children[0]?.rows[0]?.kind!=="element") throw Error("Expected row");
+    const descriptor=button.children[0].rows[0].events?.[0];
+    expect(descriptor?.path[0]).toBe("zaakiyEvent");
+    const captured={id:"old"};
+    const fn=resolve(descriptor!.path,()=>captured);
+    fn(new Event("click"));
+    captured.id="new";
+    fn(new Event("click"));
+    expect(received).toEqual(["old","new"]);
+  });
+  it("rejects arbitrary executable inline JSX handlers outside the allowlist",()=>{
+    for(const handler of [
+      '() => alert("untrusted")',
+      '() => { props.onPress(); window.x=1; }',
+      'async () => props.onPress()',
+      '() => props.onPress(...props.args)'
+    ]) {
+      const source='function Page(props:{onPress:()=>void;args:unknown[]}){return <main><button onClick={'+handler+'}>x</button></main>;}';
+      const result=build(source);
+      expect(result.js,handler).toHaveLength(0);
+      expect(result.diagnostics.some(d=>d.severity==="error"),handler).toBe(true);
+    }
+  });
   it("rejects unsafe dynamic expressions and arbitrary JSX components", () => {
     const sources = [
       "function Page(props:{name:string}) { return <main>{props.name.toUpperCase()}</main>; }",
