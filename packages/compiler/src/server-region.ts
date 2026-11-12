@@ -57,6 +57,9 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     return reject("H4 requires a single native HTML root");
   let ordinal = 0;
   let count = 0;
+  const nestedRegion = (nodes:readonly RegionNode[]):boolean => nodes.some(node =>
+    node.kind === "conditional" || node.kind === "keyed" ||
+    (node.kind === "element" && nestedRegion(node.children)));
   const convert = (nodes: readonly IRNode[], itemName?: string, depth = 0): RegionNode[] => {
     if (depth > 64) throw new RangeError("Hydration blueprint nesting limit exceeded");
     const output: RegionNode[] = [];
@@ -91,8 +94,12 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
         case "ConditionalBlock": {
           if (node.condition.reactive) throw new TypeError("H4 conditional cannot execute server signals");
           const id = hash("zaakiy-region:" + request.routeId + ":" + ordinal++).slice(0, 32);
+          const yes = convert(node.whenTrue, itemName, depth + 1);
+          const no = convert(node.whenFalse, itemName, depth + 1);
+          if (nestedRegion(yes) || nestedRegion(no))
+            throw new TypeError("Nested dynamic regions inside a conditional need a later H4 ABI");
           output.push({ kind: "conditional", id, path: pathOf(node.condition.source, "props"),
-            yes: convert(node.whenTrue, itemName, depth + 1), no: convert(node.whenFalse, itemName, depth + 1) });
+            yes, no });
           break;
         }
         case "KeyedLoop": {
@@ -102,8 +109,11 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           const key = pathOf(node.key.source, node.itemParameter);
           if (key.length !== 1) throw new TypeError("H4 key must be one own item property");
           const id = hash("zaakiy-region:" + request.routeId + ":" + ordinal++).slice(0, 32);
+          const rows = convert(node.body, node.itemParameter, depth + 1);
+          if (rows.length !== 1 || rows[0]?.kind !== "element" || nestedRegion(rows))
+            throw new TypeError("H4 keyed row must have one native element and no nested regions");
           output.push({ kind: "keyed", id, path: pathOf(node.collection.source, "props"),
-            itemName: node.itemParameter, key: key[0]!, rows: convert(node.body, node.itemParameter, depth + 1) });
+            itemName: node.itemParameter, key: key[0]!, rows });
           break;
         }
         default: throw new TypeError("H4 rejects component calls, slots, executable events and unsupported IR");
