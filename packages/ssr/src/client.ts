@@ -95,3 +95,6 @@ export { hydrateDataRoute } from "./hydration-route.js";
 
 export { hydrateRegionPage } from "./hydrate-region.js";
 export type { RegionNodeV2, RegionHydrationPlanV2, RegionHydrationEventV2, RegionHydrationBindingsV2 } from "./hydrate-region.js";
+
+export { hydrateRegionPageWithState } from "./hydrate-region-state.js";
+export type { HydrationStateInitializer } from "./hydrate-region-state.js";
