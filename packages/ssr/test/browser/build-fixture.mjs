@@ -9,6 +9,7 @@ import { TextEncoder } from "node:util";
 import { build } from "vite";
 import { compileDataServer, compileRegionServer } from "../../../compiler/dist/index.js";
 import { buildVerifiedManifestV1 } from "../../dist/build.js";
+import { serializeHydrationState } from "../../dist/hydration-state.js";
 
 const root = resolve(".");
 const routeId = "counter";
@@ -143,10 +144,10 @@ console.log(JSON.stringify({
 const h4Route = "products";
 const h4Source = [
   'function Badge(props: {title:string}) {return <span>{props.title}</span>;}',
-  'function Page(props: { title:string;shown:boolean;rows:{id:string;label:string}[] }) {',
+  'function Page(props: { title:string;shown:boolean;rows:{id:string;label:string}[];onPress:(event:MouseEvent)=>void }) {',
   'return <main><input value="server"/><Badge title={props.title}/>',
   '{props.shown ? <h2>Shown</h2> : <p>Hidden</p>}',
-  '{props.rows.map(item=><button key={item.id}>{item.label}</button>)}</main>;',
+  '{props.rows.map(item=><button key={item.id} onClick={props.onPress}>{item.label}</button>)}</main>;',
   '}'
 ].join("\n");
 const h4Compiled = compileRegionServer({
@@ -176,13 +177,15 @@ const h4Envelope={
   boundaries:[{markerId:h4Compiled.hydrationPlan.markerId,
     templateDigest:h4Compiled.hydrationPlan.templateDigest}]
 };
+const h4SerializedState=serializeHydrationState(h4Manifest.buildId,h4Route,h4Data);
 const h4Code=[
-  'import { hydrateRegionPage } from "@zaakiyjs/ssr/client";',
+  'import { hydrateRegionPage, hydrateRegionPageWithState } from "@zaakiyjs/ssr/client";',
   'import { signal, flushSync } from "@zaakiyjs/signals";',
   "const plan="+JSON.stringify(h4Compiled.hydrationPlan)+";",
   "const manifest="+JSON.stringify(h4Manifest)+";",
   "const envelope="+JSON.stringify(h4Envelope)+";",
-  "const state=signal("+JSON.stringify(h4Data)+");",
+  "const serialized="+JSON.stringify(h4SerializedState)+";",
+  "let state;let clicks=0;let released=0;",
   'const container=document.querySelector("#app");',
   'const root=container.querySelector("main");',
   'const badge=container.querySelector("span");',
@@ -194,8 +197,13 @@ const h4Code=[
   'try {',
   '  const observer=new MutationObserver(()=>{});',
   '  observer.observe(container,{subtree:true,childList:true,attributes:true,characterData:true});',
-  '  handle=hydrateRegionPage(container,plan,envelope,manifest,"products",{read});',
+  '  handle=hydrateRegionPageWithState(container,plan,envelope,manifest,"products",serialized,publicState=>{',
+  '    state=signal(publicState);return {read,disposeState:()=>{released++;},',
+  '      resolveEvent:path=>{if(path.join(".")!=="onPress")throw Error("unapproved event");',
+  '        return ()=>{clicks++;};}};',
+  '  });',
   '  const mutations=observer.takeRecords().length;observer.disconnect();',
+  '  buttons[1].click();const eventAttached=clicks===1;',
   '  const identity=container.querySelector("main")===root && container.querySelector("span")===badge',
   '    && [...container.querySelectorAll("button")].every((node,i)=>node===buttons[i]);',
   '  const focus=document.activeElement===input && input.value==="visitor draft";',
@@ -214,12 +222,14 @@ const h4Code=[
   '  const changed=container.querySelectorAll("button")[0]?.textContent==="Beta changed";',
   '  const returned=container.querySelector("h2")?.textContent==="Shown";',
   '  handle.dispose();',
+  '  buttons[1].click();const eventRemoved=clicks===1 && released===1;',
   '  const preserved=container.querySelector("main")===root &&',
   '    input.value==="visitor draft";',
   '  const second=hydrateRegionPage(container,plan,envelope,manifest,"products",{read});',
   '  second.dispose();',
   '  window.__zaakiyH4={ready:true,mutations,identity,focus,moved,switched,',
   '    updated,focusAfter,reused,addition,changed,returned,preserved,',
+  '    eventAttached,eventRemoved,',
   '    lastState:container.querySelectorAll("button").length};',
   '}catch(error){window.__zaakiyH4={ready:true,error:String(error)};}'
 ].join("\n");
