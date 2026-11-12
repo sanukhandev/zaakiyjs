@@ -3,7 +3,8 @@
  * client bundle referencing @zaakiyjs/ssr/client, never a browser compiler.
  */
 import { resolve, join } from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, writeFile, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { Buffer } from "node:buffer";
 import { TextEncoder } from "node:util";
 import { build } from "vite";
@@ -143,16 +144,19 @@ console.log(JSON.stringify({
 // H4 independent real-browser integration: compiled component/conditional/keyed plan.
 const h4Route = "products";
 const h4Source = [
-  'function Badge(props: {title:string}) {return <span>{props.title}</span>;}',
+  'import { Badge } from "./h4-badge.js";',
   'function Page(props: { title:string;shown:boolean;rows:{id:string;label:string}[];onPress:(event:MouseEvent)=>void }) {',
   'return <main><input value="server"/><Badge title={props.title}/>',
   '{props.shown ? <h2>Shown</h2> : <p>Hidden</p>}',
   '{props.rows.map(item=><button key={item.id} onClick={props.onPress}>{item.label}</button>)}</main>;',
   '}'
 ].join("\n");
+const h4ModuleSource=await readFile(join(root,"packages/ssr/test/browser/h4-badge.tsx"),"utf8");
 const h4Compiled = compileRegionServer({
   fileName:"packages/ssr/test/browser/h4-page.tsx",
-  routeId:h4Route,source:h4Source
+  routeId:h4Route,source:h4Source,
+  componentModules:[{specifier:"./h4-badge.js",fileName:"packages/ssr/test/browser/h4-badge.tsx",
+    source:h4ModuleSource,digest:createHash("sha256").update(h4ModuleSource).digest("hex")}]
 });
 if (h4Compiled.diagnostics.some(d=>d.severity==="error") ||
     !h4Compiled.js[0] || !h4Compiled.hydrationPlan)
