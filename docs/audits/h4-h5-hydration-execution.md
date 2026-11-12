@@ -45,6 +45,10 @@ stream delivery**. ADR 0015 proposes the future versioned region ABI.
 
 ## H5 bounded streaming and owned-boundary recovery increments
 
+- `hydrateDataRoute` now commits restricted data-page adoption through a
+  live `HydrationTransition`, refusing stale generations before attachment,
+  and auto-disposes its owner after navigation cancellation. It is not a
+  general router plugin or an H4 component hydrator.
 - `createHydrationStreamAssembler` accepts only monotonically ordered,
   identity-matched, bounded Uint8Array payload fragments. It copies each
   fragment and aborts permanently on malformed/duplicate/out-of-order data.
