@@ -31,6 +31,11 @@ the trusted manifest, route and deployment build.
 
 ## H5 navigation safety increment
 
+The restricted `hydrateDataPage` API now accepts an optional caller `signal`,
+refuses pre-aborted navigation and disposes its DOM owner/listeners on abort.
+The native DOM root and SSR markup remain intact. A jsdom acceptance test
+verifies disposal, repeated adoption and pre-abort nonmutation.
+
 The browser client now exports `createHydrationTransitionCoordinator`. A route
 transition aborts its predecessor; synchronous `commit` refuses stale or
 aborted generations. External `AbortSignal`, dispose, malformed routes and
