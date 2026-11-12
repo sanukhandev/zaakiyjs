@@ -184,8 +184,15 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     node.kind==="keyed" || ((node.kind==="element" || node.kind==="component") &&
       containsKeyed(node.children)) || (node.kind==="conditional" &&
       (containsKeyed(node.yes) || containsKeyed(node.no))));
+  interface SlotInput {
+    readonly nodes:readonly IRNode[];
+    readonly itemName?:string;
+    readonly aliases?:ReadonlyMap<string,BoundValue>;
+    readonly stack:readonly string[];
+  }
   const convert = (nodes: readonly IRNode[], itemName?: string, depth = 0,
-    aliases?: ReadonlyMap<string,BoundValue>, stack: readonly string[] = []): RegionNode[] => {
+    aliases?: ReadonlyMap<string,BoundValue>, stack: readonly string[] = [],
+    slots?:ReadonlyMap<string,SlotInput>): RegionNode[] => {
     if (depth > 64) throw new RangeError("Hydration blueprint nesting limit exceeded");
     const output: RegionNode[] = [];
     for (const node of nodes) {
@@ -221,7 +228,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           }
           const children = convert(node.children.filter(child => child.kind !== "PropertyBinding" &&
             child.kind !== "EventBinding"),
-            itemName, depth + 1,aliases,stack);
+            itemName, depth + 1,aliases,stack,slots);
           if (SSR_VOID_TAGS.has(node.tag) && children.length)
             throw new TypeError("Void elements cannot contain hydration children");
           output.push({ kind: "element", id: hash("zaakiy-region-element:" + request.routeId + ":" + ordinal++).slice(0, 32), tag: node.tag, attrs, ...(events.length ? {events} : {}), children });
@@ -230,7 +237,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
         case "ConditionalBlock": {
           if (node.condition.reactive) throw new TypeError("H4 conditional cannot execute server signals");
           const id = hash("zaakiy-region:" + request.routeId + ":" + ordinal++).slice(0, 32);
-          const yes = convert(node.whenTrue, itemName, depth + 1,aliases,stack);
+          const yes = convert(node.whenTrue, itemName, depth + 1,aliases,stack,slots);
           const no = convert(node.whenFalse, itemName, depth + 1,aliases,stack);
           const condition=resolve(node.condition.source,itemName,aliases);
           if (condition.source!=="props") throw new TypeError("H4 conditional requires root data");
@@ -258,8 +265,15 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
             throw new TypeError("Recursive H4 component composition is not supported");
           const template=functions.get(node.component);
           if (!template) throw new TypeError("H4 component must be a local pure TSX function");
-          if (node.children?.length || node.slots?.length)
-            throw new TypeError("H4 component children and named slots require a later contract");
+          if ((node.children?.length || node.slots?.length) && !request.componentSlots)
+            throw new TypeError("H4 slot call requires componentSlots: true");
+          const passed=new Map<string,SlotInput>();
+          if(node.children?.length)
+            passed.set("children",{nodes:node.children,itemName,aliases,stack});
+          for(const named of node.slots??[]){
+            if(passed.has(named.name)) throw new TypeError("Duplicate component slot");
+            passed.set(named.name,{nodes:named.children,itemName,aliases,stack});
+          }
           const mapping=new Map<string,BoundValue>();
           for (const prop of node.props) {
             if (mapping.has(prop.name)) throw new TypeError("Duplicate H4 component prop");
@@ -267,10 +281,18 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           }
           const id=hash("zaakiy-region-component:"+request.routeId+":"+ordinal++).slice(0,32);
           output.push({kind:"component",id,
-            children:convert([template],itemName,depth+1,mapping,[...stack,node.component])});
+            children:convert([template],itemName,depth+1,mapping,[...stack,node.component],passed)});
           break;
         }
-        default: throw new TypeError("H4 rejects executable events, slots and unsupported IR");
+        case "SlotOutlet": {
+          if(!request.componentSlots) throw new TypeError("Slot outlets require componentSlots: true");
+          const supplied=slots?.get(node.name);
+          if(!supplied) throw new TypeError("Unresolved H4 slot outlet: "+node.name);
+          output.push(...convert(supplied.nodes,supplied.itemName,depth+1,
+            supplied.aliases,supplied.stack));
+          break;
+        }
+        default: throw new TypeError("H4 rejects executable or unsupported IR");
       }
     }
     return output;
