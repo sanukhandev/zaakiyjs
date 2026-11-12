@@ -9,7 +9,7 @@ import { compile, optimizeIR, parseToIR } from "./index.js";
 import { renderLiteralAttribute, SSR_STATIC_TAGS, SSR_VOID_TAGS } from "./server-static.js";
 
 type RegionNode =
-  | { readonly kind: "element"; readonly tag: string; readonly attrs: readonly string[]; readonly children: readonly RegionNode[] }
+  | { readonly kind: "element"; readonly id: string; readonly tag: string; readonly attrs: readonly string[]; readonly children: readonly RegionNode[] }
   | { readonly kind: "literal"; readonly value: string }
   | { readonly kind: "data"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item" }
   | { readonly kind: "conditional"; readonly id: string; readonly path: readonly string[]; readonly yes: readonly RegionNode[]; readonly no: readonly RegionNode[] }
@@ -85,7 +85,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           const children = convert(node.children.filter(child => child.kind !== "PropertyBinding"), itemName, depth + 1);
           if (SSR_VOID_TAGS.has(node.tag) && children.length)
             throw new TypeError("Void elements cannot contain hydration children");
-          output.push({ kind: "element", tag: node.tag, attrs, children });
+          output.push({ kind: "element", id: hash("zaakiy-region-element:" + request.routeId + ":" + ordinal++).slice(0, 32), tag: node.tag, attrs, children });
           break;
         }
         case "ConditionalBlock": {
