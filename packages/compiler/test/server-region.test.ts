@@ -54,7 +54,7 @@ describe("H4 compiler-backed region SSR target", () => {
       "function Badge(props:{title:string}) { return <span>{props.title}</span>; }",
       "function Card(props:{title:string}) { return <article><Badge title={props.title} /></article>; }",
       "function Page(props:{title:string}) { return <main><Card title={props.title} /></main>; }"
-    ].join("\\n");
+    ].join("\n");
     const result = build(source);
     expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
     expect(result.js).toHaveLength(1);
@@ -73,7 +73,7 @@ describe("H4 compiler-backed region SSR target", () => {
     const sources = [
       "function Page(props:{name:string}) { return <main>{props.name.toUpperCase()}</main>; }",
       "function Page(props:{name:string}) { return <main>{props.name + '!'}</main>; }",
-      "function Card(){return <p>card</p>;} function Page(){return <main><Card /></main>;}",
+      "function Card(){const secret=Date.now();return <p>card</p>;} function Page(){return <main><Card /></main>;}",
       "function Page(props:{name:string}) { return <main><a href={props.name}>unsafe</a></main>; }"
     ];
     for (const source of sources) {
