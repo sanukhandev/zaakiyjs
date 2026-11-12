@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { compileRegionServer } from "../src/server-region.js";
 
 const fileName = "packages/compiler/test/h4-region-example.tsx";
@@ -87,6 +89,38 @@ describe("H4 compiler-backed region SSR target", () => {
     const result = build(source);
     expect(result.js).toHaveLength(0);
     expect(result.diagnostics.some(d=>d.severity==="error")).toBe(true);
+  });
+  it("resolves SHA-256-pinned named module imports without executing module source",async()=>{
+    const moduleSource=readFileSync(new URL("./h4-widget.tsx",import.meta.url),"utf8");
+    const digest=createHash("sha256").update(moduleSource).digest("hex");
+    const result=compileRegionServer({
+      fileName,routeId:"products",
+      source:'import { Widget } from "./h4-widget.js"; function Page(props:{title:string}){return <main><Widget title={props.title}/></main>;}',
+      componentModules:[{
+        specifier:"./h4-widget.js",
+        fileName:"packages/compiler/test/h4-widget.tsx",
+        source:moduleSource,digest
+      }]
+    });
+    expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    const module=await import("data:text/javascript;base64,"+
+      Buffer.from(result.js[0]!.code).toString("base64"));
+    const html:string=module.render({
+      schema:"zaakiy.render/1",route:{id:"products"},
+      request:{signal:{aborted:false}},loaderData:{title:"Trusted"}
+    }).body;
+    expect(html).toContain("<span>");
+    expect(html).toContain("Trusted");
+    const tampered=compileRegionServer({
+      fileName,routeId:"products",
+      source:'import { Widget } from "./h4-widget.js"; function Page(props:{title:string}){return <main><Widget title={props.title}/></main>;}',
+      componentModules:[{
+        specifier:"./h4-widget.js",
+        fileName:"packages/compiler/test/h4-widget.tsx",
+        source:moduleSource+" ",digest
+      }]
+    });
+    expect(tampered.js).toHaveLength(0);
   });
   it("rejects unsafe dynamic expressions and arbitrary JSX components", () => {
     const sources = [
