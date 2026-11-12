@@ -78,3 +78,38 @@ jobs:
           path: benchmark-artifacts/h4-hydration-sites/
           if-no-files-found: warn
           retention-days: 14
+
+  compile-angular:
+    name: h4 / Angular AOT SSR hydration reference
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned Angular 21 direct references and record resolved lock
+        run: |
+          npm install --prefix benchmarks/h4-hydration/angular --no-audit --no-fund --package-lock
+          mkdir -p benchmark-artifacts/h4-angular
+          cp benchmarks/h4-hydration/angular/package-lock.json benchmark-artifacts/h4-angular/generated-lock.json
+      - name: AOT compile true Angular server and client hydration bundles
+        run: npm run build --prefix benchmarks/h4-hydration/angular -- --base-href /angular/
+      - name: Verify Angular server-pre-rendered HTML for every workload
+        run: |
+          set -e
+          for size in 100 1000 10000; do
+            test -s "benchmarks/h4-hydration/angular/dist/browser/$size/index.html"
+            grep -q "data-key" "benchmarks/h4-hydration/angular/dist/browser/$size/index.html"
+          done
+          cp -R benchmarks/h4-hydration/angular/dist/browser benchmark-artifacts/h4-angular/browser
+      - name: Upload independently built Angular SSR reference
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h4-angular-reference-${{ github.sha }}
+          path: benchmark-artifacts/h4-angular/
+          if-no-files-found: warn
+          retention-days: 14
