@@ -84,3 +84,6 @@ export type { JsonHydrationValue, HydrationStatePacketV1 } from "./hydration-sta
 
 export { createHydrationTransitionCoordinator } from "./hydration-transitions.js";
 export type { HydrationTransition, HydrationTransitionCoordinator } from "./hydration-transitions.js";
+
+export { createHydrationStreamAssembler } from "./hydration-stream.js";
+export type { HydrationStreamFragment, HydrationStreamOptions, HydrationStreamAssembler } from "./hydration-stream.js";
