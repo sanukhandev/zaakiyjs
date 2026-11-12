@@ -40,7 +40,10 @@ export function createHydrationTransitionCoordinator(): HydrationTransitionCoord
       const controller = new AbortController();
       active = controller;
       previous?.abort(new Error("Hydration navigation superseded"));
-      if (externalSignal) {
+      if (active !== controller || disposed || controller.signal.aborted) {
+        controller.abort(new Error("Hydration transition superseded during activation"));
+      }
+      if (externalSignal && active === controller && !controller.signal.aborted) {
         const cancel = () => controller.abort(externalSignal.reason);
         if (externalSignal.aborted) cancel();
         else {
