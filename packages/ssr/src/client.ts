@@ -81,3 +81,6 @@ export type { DataHydrationBindings, DataHydrationHandle, HydrationEventV1 } fro
 
 export { serializeHydrationState, parseHydrationState } from "./hydration-state.js";
 export type { JsonHydrationValue, HydrationStatePacketV1 } from "./hydration-state.js";
+
+export { createHydrationTransitionCoordinator } from "./hydration-transitions.js";
+export type { HydrationTransition, HydrationTransitionCoordinator } from "./hydration-transitions.js";
