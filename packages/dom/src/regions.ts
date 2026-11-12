@@ -416,7 +416,11 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
   create: (item: Item, child: OwnerScope) => KeyedView<Item>
 ): BindingHandle {
   const records = new Map<Key, RecordEntry<Key, Item>>();
+  // The previous committed order is already allocated by reconciliation.
+  // Keep it to skip DOM traversal on equal immutable list snapshots.
+  let lastOrder: readonly RecordEntry<Key, Item>[] | null = null;
   const clear = (): void => {
+    lastOrder = null;
     const errors: unknown[] = [];
     for (const record of records.values()) {
       try {
@@ -450,7 +454,24 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
       }
     }
 
+    // All keys were validated before checking the fast path. A new array with
+    // unchanged keys and item identities has no work for retained views.
+    if (lastOrder && next.size === lastOrder.length) {
+      let unchanged = true;
+      let index = 0;
+      for (const [key, item] of next) {
+        const former = lastOrder[index++];
+        if (!former || !Object.is(former.key, key) || !Object.is(former.item, item) ||
+            records.get(key) !== former) {
+          unchanged = false;
+          break;
+        }
+      }
+      if (unchanged) return;
+    }
+
     const focused = captureFocus(region.parent);
+    let committedOrder: readonly RecordEntry<Key, Item>[] | null = null;
     try {
       // Stage additions before removals. A failing factory cannot drop existing
       // keyed DOM; newly created owners are rolled back on failure.
@@ -530,8 +551,10 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
       } else {
         moveMinimumRanges(region, ordered);
       }
+      committedOrder = ordered;
     } finally {
       restoreFocus(focused);
     }
+    lastOrder = committedOrder;
   }, clear);
 }
