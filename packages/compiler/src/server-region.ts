@@ -165,13 +165,30 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
             itemName: node.itemParameter, key: key[0]!, rows });
           break;
         }
-        default: throw new TypeError("H4 rejects component calls, slots, executable events and unsupported IR");
+        case "ComponentCall": {
+          if (stack.includes(node.component) || stack.length>=16)
+            throw new TypeError("Recursive H4 component composition is not supported");
+          const template=functions.get(node.component);
+          if (!template) throw new TypeError("H4 component must be a local pure TSX function");
+          if (node.children?.length || node.slots?.length)
+            throw new TypeError("H4 component children and named slots require a later contract");
+          const mapping=new Map<string,BoundValue>();
+          for (const prop of node.props) {
+            if (mapping.has(prop.name)) throw new TypeError("Duplicate H4 component prop");
+            mapping.set(prop.name,resolve(prop.expression.source,itemName,aliases));
+          }
+          const id=hash("zaakiy-region-component:"+request.routeId+":"+ordinal++).slice(0,32);
+          output.push({kind:"component",id,
+            children:convert([template],itemName,depth+1,mapping,[...stack,node.component])});
+          break;
+        }
+        default: throw new TypeError("H4 rejects executable events, slots and unsupported IR");
       }
     }
     return output;
   };
   try {
-    const nodes = convert([root]);
+    const nodes = convert([root],undefined,0,undefined,[entryName]);
     const templateDigest = hash(JSON.stringify(nodes));
     const markerId = hash("zaakiy-region-root:" + request.routeId + ":" + templateDigest).slice(0, 32);
     const hydrationPlan: RegionHydrationPlanV2 = {
@@ -200,6 +217,9 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " else if (node.kind === 'element') { result += '<' + node.tag + node.attrs.join('') + '>';",
       " if (node.children.length) result += draw(node.children,props,item,budget,depth+1);",
       " if (!" + JSON.stringify([...SSR_VOID_TAGS]) + ".includes(node.tag)) result += '</' + node.tag + '>'; }",
+      " else if (node.kind === 'component') { result += '<!--zaakiy-r2:' + node.id + ':start-->';",
+      " result += draw(node.children,props,item,budget,depth+1);",
+      " result += '<!--zaakiy-r2:' + node.id + ':end-->'; }",
       " else if (node.kind === 'conditional') { result += '<!--zaakiy-r2:' + node.id + ':start-->';",
       " result += draw(own(props,node.path) ? node.yes : node.no,props,item,budget,depth+1);",
       " result += '<!--zaakiy-r2:' + node.id + ':end-->'; }",
