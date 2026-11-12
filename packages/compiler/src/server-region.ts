@@ -15,7 +15,7 @@ type RegionNode =
   | { readonly kind: "literal"; readonly value: string }
   | { readonly kind: "data"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item" }
   | { readonly kind: "conditional"; readonly id: string; readonly path: readonly string[]; readonly yes: readonly RegionNode[]; readonly no: readonly RegionNode[] }
-  | { readonly kind: "keyed"; readonly id: string; readonly path: readonly string[]; readonly itemName: string; readonly key: string; readonly rows: readonly RegionNode[] };
+  | { readonly kind: "keyed"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item"; readonly itemName: string; readonly key: string; readonly rows: readonly RegionNode[] };
 export interface RegionHydrationPlanV2 {
   readonly schema: "zaakiy.region-hydration/2";
   readonly routeId: string;
@@ -180,10 +180,6 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     if (mapped.length>4) throw new TypeError("H4 component prop path depth exceeded");
     return {source:from.source,path:mapped};
   };
-  const containsKeyed = (nodes:readonly RegionNode[]):boolean => nodes.some(node =>
-    node.kind==="keyed" || ((node.kind==="element" || node.kind==="component") &&
-      containsKeyed(node.children)) || (node.kind==="conditional" &&
-      (containsKeyed(node.yes) || containsKeyed(node.no))));
   interface SlotInput {
     readonly nodes:readonly IRNode[];
     readonly itemName?:string;
@@ -245,18 +241,17 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           break;
         }
         case "KeyedLoop": {
-          if (itemName || !node.itemParameter || !NAME.test(node.itemParameter) ||
+          if (!node.itemParameter || !NAME.test(node.itemParameter) ||
               node.collection.reactive || node.key.reactive)
             throw new TypeError("H4 requires direct keyed item binding without nested keyed scopes");
           const key = pathOf(node.key.source, node.itemParameter);
           if (key.length !== 1) throw new TypeError("H4 key must be one own item property");
           const id = hash("zaakiy-region:" + request.routeId + ":" + ordinal++).slice(0, 32);
           const rows = convert(node.body, node.itemParameter, depth + 1,aliases,stack);
-          if (rows.length !== 1 || rows[0]?.kind !== "element" || containsKeyed(rows))
-            throw new TypeError("H4 keyed row must have one native root without nested keyed loops");
+          if (rows.length !== 1 || rows[0]?.kind !== "element")
+            throw new TypeError("H4 keyed row must have exactly one native root");
           const collection=resolve(node.collection.source,itemName,aliases);
-          if (collection.source!=="props") throw new TypeError("H4 keyed list requires root data");
-          output.push({ kind: "keyed", id, path: collection.path,
+          output.push({ kind: "keyed", id, path: collection.path,source:collection.source,
             itemName: node.itemParameter, key: key[0]!, rows });
           break;
         }
@@ -333,7 +328,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " else if (node.kind === 'conditional') { result += '<!--zaakiy-r2:' + node.id + ':start-->';",
       " result += draw(own(props,node.path) ? node.yes : node.no,props,item,budget,depth+1);",
       " result += '<!--zaakiy-r2:' + node.id + ':end-->'; }",
-      " else if (node.kind === 'keyed') { const rows = own(props,node.path);",
+      " else if (node.kind === 'keyed') { const rows = own(node.source === 'item' ? item : props,node.path);",
       " if (!Array.isArray(rows) || rows.length > 4096) throw new TypeError('H4 keyed data must be bounded array');",
       " const keys = new Set(); result += '<!--zaakiy-r2:' + node.id + ':start-->';",
       " for (const row of rows) { const key = own(row,[node.key]);",
