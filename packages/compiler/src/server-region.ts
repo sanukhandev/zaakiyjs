@@ -11,7 +11,7 @@ import { renderLiteralAttribute, SSR_STATIC_TAGS, SSR_VOID_TAGS } from "./server
 type RegionNode =
   | { readonly kind: "element"; readonly tag: string; readonly attrs: readonly string[]; readonly children: readonly RegionNode[] }
   | { readonly kind: "literal"; readonly value: string }
-  | { readonly kind: "data"; readonly path: readonly string[]; readonly source: "props" | "item" }
+  | { readonly kind: "data"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item" }
   | { readonly kind: "conditional"; readonly id: string; readonly path: readonly string[]; readonly yes: readonly RegionNode[]; readonly no: readonly RegionNode[] }
   | { readonly kind: "keyed"; readonly id: string; readonly path: readonly string[]; readonly itemName: string; readonly key: string; readonly rows: readonly RegionNode[] };
 export interface RegionHydrationPlanV2 {
@@ -69,7 +69,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           if (node.expression.reactive) throw new TypeError("H4 server data cannot read runtime signals");
           const value = node.expression.source.trim();
           const source = itemName && value.startsWith(itemName + ".") ? "item" : "props";
-          output.push({ kind: "data", source, path: pathOf(value, source === "item" ? itemName! : "props") });
+          output.push({ kind: "data", id: hash("zaakiy-region-data:" + request.routeId + ":" + ordinal++).slice(0, 32), source, path: pathOf(value, source === "item" ? itemName! : "props") });
           break;
         }
         case "StaticElement": {
@@ -132,17 +132,17 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       "const text = value => { if (value == null || typeof value === 'boolean') return '';",
       " if (!['string','number','bigint'].includes(typeof value)) throw new TypeError('H4 scalar expected');",
       " const s = String(value); if (s.length > 65536) throw new RangeError('H4 scalar too long'); return escape(s); };",
-      "let emitted = 0;",
-      "const draw = (nodes, props, item, depth = 0) => {",
+
+      "const draw = (nodes, props, item, budget, depth = 0) => {",
       " if (depth > 64) throw new RangeError('H4 nesting bound'); let result = '';",
-      " for (const node of nodes) { if (++emitted > 8192) throw new RangeError('H4 output node bound');",
+      " for (const node of nodes) { if (++budget.count > 8192) throw new RangeError('H4 output node bound');",
       " if (node.kind === 'literal') result += escape(node.value);",
-      " else if (node.kind === 'data') result += text(own(node.source === 'item' ? item : props, node.path));",
+      " else if (node.kind === 'data') result += '<!--zaakiy-d2:' + node.id + ':start-->' + text(own(node.source === 'item' ? item : props, node.path)) + '<!--zaakiy-d2:' + node.id + ':end-->';",
       " else if (node.kind === 'element') { result += '<' + node.tag + node.attrs.join('') + '>';",
-      " if (node.children.length) result += draw(node.children,props,item,depth+1);",
+      " if (node.children.length) result += draw(node.children,props,item,budget,depth+1);",
       " if (!" + JSON.stringify([...SSR_VOID_TAGS]) + ".includes(node.tag)) result += '</' + node.tag + '>'; }",
       " else if (node.kind === 'conditional') { result += '<!--zaakiy-r2:' + node.id + ':start-->';",
-      " result += draw(own(props,node.path) ? node.yes : node.no,props,item,depth+1);",
+      " result += draw(own(props,node.path) ? node.yes : node.no,props,item,budget,depth+1);",
       " result += '<!--zaakiy-r2:' + node.id + ':end-->'; }",
       " else if (node.kind === 'keyed') { const rows = own(props,node.path);",
       " if (!Array.isArray(rows) || rows.length > 4096) throw new TypeError('H4 keyed data must be bounded array');",
@@ -151,15 +151,15 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " if (typeof key !== 'string' && typeof key !== 'number') throw new TypeError('H4 key type');",
       " const name = String(key); if (!/^[A-Za-z0-9_.:]{1,64}$/.test(name) || keys.has(name)) throw new TypeError('H4 duplicate/unsafe key');",
       " keys.add(name); result += '<!--zaakiy-k2:' + node.id + ':' + name + ':start-->';",
-      " result += draw(node.rows, props, row, depth+1);",
+      " result += draw(node.rows, props, row, budget, depth+1);",
       " result += '<!--zaakiy-k2:' + node.id + ':' + name + ':end-->'; }",
       " result += '<!--zaakiy-r2:' + node.id + ':end-->'; }",
       " } return result; };",
       "export function render(context) {",
       " if (!context || context.schema !== 'zaakiy.render/1' || context.route?.id !== " + JSON.stringify(request.routeId) + ") throw new TypeError('H4 invalid route');",
       " if (context.request?.signal?.aborted) throw context.request.signal.reason;",
-      " emitted = 0;",
-      " const body = '<!--zaakiy-h:' + hydrationPlan.markerId + ':' + hydrationPlan.templateDigest + '-->' + draw(hydrationPlan.nodes,context.loaderData,null);",
+
+      " const body = '<!--zaakiy-h:' + hydrationPlan.markerId + ':' + hydrationPlan.templateDigest + '-->' + draw(hydrationPlan.nodes,context.loaderData,null,{count:0});",
       " if (body.length > 1048576) throw new RangeError('H4 output too large');",
       " return {version:1,status:200,headers:{'content-type':'text/html; charset=utf-8'},body,cache:{scope:'no-store',tags:[]}};",
       "}"
