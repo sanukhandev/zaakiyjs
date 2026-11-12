@@ -25,7 +25,7 @@ export class BenchPageComponent {
   private readonly route=inject(ActivatedRoute);
   readonly size=Number(this.route.snapshot.paramMap.get("size"));
   readonly rows=signal(Array.from({length:this.size},(_,i)=>({
-    id:"row-"+i,label:"Row "+i
+    id:"row_"+i,label:"Row "+i
   })));
   readonly count=signal(0);
   readonly visible=signal(true);
