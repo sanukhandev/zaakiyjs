@@ -98,3 +98,6 @@ export type { RegionNodeV2, RegionHydrationPlanV2, RegionHydrationEventV2, Regio
 
 export { hydrateRegionPageWithState } from "./hydrate-region-state.js";
 export type { HydrationStateInitializer } from "./hydrate-region-state.js";
+
+export { hydrateRegionPageRecoverBoundary } from "./hydrate-region-recovery.js";
+export type { RegionRecoveryOptions } from "./hydrate-region-recovery.js";
