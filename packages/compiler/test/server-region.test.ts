@@ -23,6 +23,32 @@ describe("H4 compiler-backed region SSR target", () => {
     expect(result.hydrationPlan?.nodes).toHaveLength(1);
     expect(result.js[0]?.code).toContain("zaakiy-k2:");
   });
+  it("runs reviewed emitted SSR JS with keyed and conditional markers and escaped text", async () => {
+    const source = "function Page(props: { show:boolean; title:string; rows:{id:string;label:string}[] }) { return <main>{props.show ? <h2>{props.title}</h2> : <p>Hidden</p>}{props.rows.map(item => <button key={item.id}>{item.label}</button>)}</main>; }";
+    const compiled = build(source);
+    expect(compiled.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    const code = compiled.js[0]!.code;
+    const module = await import("data:text/javascript;base64," + Buffer.from(code).toString("base64"));
+    const context = (loaderData: unknown) => ({
+      schema: "zaakiy.render/1", route: {id: "products"},
+      request: {signal: {aborted: false}}, loaderData
+    });
+    const result = module.render(context({
+      show:true, title:"<script>alert(1)</script>",
+      rows:[{id:"a",label:"A&B"},{id:"b",label:"Beta"}]
+    }));
+    expect(result.body).toContain("&lt;script&gt;");
+    expect(result.body).not.toContain("<script>");
+    expect(result.body).toContain("zaakiy-r2:");
+    expect(result.body).toContain("zaakiy-k2:");
+    expect(result.body).toContain("zaakiy-d2:");
+    expect(result.body).toContain("A&amp;B");
+    expect(() => module.render(context({show:true,title:"ok",
+      rows:[{id:"dup",label:"one"},{id:"dup",label:"two"}]}))).toThrow();
+    const unsafe = {show:true,rows:[]};
+    Object.defineProperty(unsafe,"title",{enumerable:true,get(){throw Error("unsafe");}});
+    expect(() => module.render(context(unsafe))).toThrow(/getter forbidden/);
+  });
   it("rejects unsafe dynamic expressions and arbitrary JSX components", () => {
     const sources = [
       "function Page(props:{name:string}) { return <main>{props.name.toUpperCase()}</main>; }",
