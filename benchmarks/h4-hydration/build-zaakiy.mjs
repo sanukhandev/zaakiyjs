@@ -72,6 +72,7 @@ await writeFile(client,[
   '}catch(error){observe.disconnect();window.__h4={ready:true,error:String(error)};}'
 ].join("\n")+"\n");
 await build({configFile:false,root:resolve("."),publicDir:false,logLevel:"warn",
+  resolve:{alias:{"@zaakiyjs/ssr/client":resolve("packages/ssr/dist/client.js")}},
   build:{outDir:root,emptyOutDir:false,minify:"esbuild",
     lib:{entry:client,formats:["es"],fileName:"zaakiyjs"}}});
 const variant={schema:"zaakiy.h4-reference/1",buildId:manifest.buildId,
