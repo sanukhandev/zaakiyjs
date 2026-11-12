@@ -23,6 +23,8 @@ export interface DataHydrationBindings {
   readonly read: (path: readonly string[]) => unknown;
   /** Explicit client handlers. TSX onClick lowering is not supported by data SSR. */
   readonly events?: readonly HydrationEventV1[];
+  /** H5: abort adopted listeners/effects when route work is canceled. */
+  readonly signal?: AbortSignal;
 }
 export type DataHydrationHandle = HydrationMountHandle;
 
@@ -166,6 +168,7 @@ export function hydrateDataPage(
       envelope.boundaries[0]?.templateDigest !== plan.templateDigest) {
     fail("invalid plan or hydration envelope");
   }
+  if (bindings.signal?.aborted) throw new Error("Hydration navigation aborted");
   const probe = inspectHydration(container, envelope, manifest, routeId);
   if (!probe.compatible) fail("incompatible SSR build: " + probe.reason);
   const result = inspectExisting(container, plan, bindings.read);
@@ -181,8 +184,9 @@ export function hydrateDataPage(
     registered.add(event.elementId + ":" + event.name);
   }
   const inserted: Text[] = [];
+  if (bindings.signal?.aborted) throw new Error("Hydration navigation aborted");
   try {
-    return hydrate(container.childNodes[1]!, (owner) => {
+    const handle = hydrate(container.childNodes[1]!, (owner) => {
       for (const slot of result.slots) {
         let target = slot.text;
         if (!target) {
@@ -198,6 +202,22 @@ export function hydrateDataPage(
           event.handler, event.options);
       }
     });
+    const signal = bindings.signal;
+    if (!signal) return handle;
+    let disposed = false;
+    const cancel = () => {
+      if (disposed) return;
+      disposed = true;
+      signal.removeEventListener("abort", cancel);
+      handle.dispose();
+    };
+    signal.addEventListener("abort", cancel, { once: true });
+    if (signal.aborted) cancel();
+    return {
+      root: handle.root,
+      owner: handle.owner,
+      dispose() { cancel(); }
+    };
   } catch (error) {
     for (const node of inserted) node.parentNode?.removeChild(node);
     throw error;
