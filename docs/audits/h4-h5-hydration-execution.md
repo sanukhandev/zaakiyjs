@@ -29,12 +29,21 @@ loader fields or session credentials. Put the output in a non-executable JSON
 script using `textContent` (not `innerHTML`); parse only after checking
 the trusted manifest, route and deployment build.
 
+## H5 navigation safety increment
+
+The browser client now exports `createHydrationTransitionCoordinator`. A route
+transition aborts its predecessor; synchronous `commit` refuses stale or
+aborted generations. External `AbortSignal`, dispose, malformed routes and
+reentrant-abort navigation have focused regression tests. The coordinator is
+an opt-in primitive, **not yet integrated with `@zaakiyjs/router` or SSR
+stream delivery**. ADR 0015 proposes the future versioned region ABI.
+
 ## H5 remaining acceptance blockers
 
 1. Versioned nested owned-boundary mismatch policy; abort-by-default and
    opt-in replacement of **only** owned boundaries with transactional cleanup.
-2. Route-transition races and stream/partial-chunk interleaving with
-   cancellation, sequence ordering and bounded buffering.
+2. Integrate the new navigation guard with the router, and implement
+   stream/partial-chunk interleaving with sequence ordering and buffering.
 3. Explicit client state initialization, selective redaction/allowlisting and
    prevention of cross-user/tenant state reuse.
 4. Integration tests with dynamic component/keyed/conditional hydration,
