@@ -87,3 +87,6 @@ export type { HydrationTransition, HydrationTransitionCoordinator } from "./hydr
 
 export { createHydrationStreamAssembler } from "./hydration-stream.js";
 export type { HydrationStreamFragment, HydrationStreamOptions, HydrationStreamAssembler } from "./hydration-stream.js";
+
+export { hydrateOwnedBoundary } from "./hydration-boundary.js";
+export type { OwnedHydrationBoundary, OwnedBoundaryHydrationOptions, OwnedBoundaryHydrationHandle } from "./hydration-boundary.js";
