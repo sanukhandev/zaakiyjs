@@ -41,6 +41,7 @@ def run(dist: Path, output: Path):
                       return {
                         error:r.error, adoptionMs:r.adoptionMs,
                         p50Ms:r.p50Ms, p95Ms:r.p95Ms, samples:r.samples,
+                        iterationsPerSample:r.iterationsPerSample, warmups:r.warmups,
                         mutations:r.mutations, identity:r.identity,
                         preservedFocus:r.preservedFocus,
                         preservedSelection:r.preservedSelection,
@@ -55,9 +56,10 @@ def run(dist: Path, output: Path):
                             raise AssertionError(f"{name}: {key} was not preserved")
                     if before.get("mutations") != 0:
                         raise AssertionError(f"{name}: matching markup mutated during hydration")
-                    if len(before["samples"]) != 40 or not all(
-                        math.isfinite(x) and x >= 0 for x in before["samples"]
-                    ):
+                    if (len(before["samples"]) != 25 or before["iterationsPerSample"] != 100 or
+                        before["warmups"] != 2 or not all(
+                        math.isfinite(x) and x > 0 for x in before["samples"]
+                    )):
                         raise AssertionError(f"{name}: invalid timing evidence")
                     page.locator("button").click()
                     after = page.evaluate("""() => {
@@ -82,7 +84,8 @@ def run(dist: Path, output: Path):
                     report["browsers"].append({
                         "engine": name, "adoptionMs": before["adoptionMs"],
                         "p50Ms": before["p50Ms"], "p95Ms": before["p95Ms"],
-                        "samplesMs": before["samples"], "mutations": 0,
+                        "samplesMs": before["samples"], "iterationsPerSample": 100,
+                        "warmups": 2, "mutations": 0,
                         "existingNodesPreserved": True, "listenerCleanup": True
                     })
                     page.close()
