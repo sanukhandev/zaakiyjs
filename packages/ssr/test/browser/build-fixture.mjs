@@ -7,7 +7,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { Buffer } from "node:buffer";
 import { TextEncoder } from "node:util";
 import { build } from "vite";
-import { compileDataServer } from "../../../compiler/dist/index.js";
+import { compileDataServer, compileRegionServer } from "../../../compiler/dist/index.js";
 import { buildVerifiedManifestV1 } from "../../dist/build.js";
 
 const root = resolve(".");
@@ -137,3 +137,102 @@ console.log(JSON.stringify({
   routeId, markerId: compiled.hydrationPlan.markerId,
   buildId: manifest.buildId, htmlBytes: response.body.length
 }));
+
+
+// H4 independent real-browser integration: compiled component/conditional/keyed plan.
+const h4Route = "products";
+const h4Source = [
+  'function Badge(props: {title:string}) {return <span>{props.title}</span>;}',
+  'function Page(props: { title:string;shown:boolean;rows:{id:string;label:string}[] }) {',
+  'return <main><input value="server"/><Badge title={props.title}/>',
+  '{props.shown ? <h2>Shown</h2> : <p>Hidden</p>}',
+  '{props.rows.map(item=><button key={item.id}>{item.label}</button>)}</main>;',
+  '}'
+].join("\n");
+const h4Compiled = compileRegionServer({
+  fileName:"packages/ssr/test/browser/h4-page.tsx",
+  routeId:h4Route,source:h4Source
+});
+if (h4Compiled.diagnostics.some(d=>d.severity==="error") ||
+    !h4Compiled.js[0] || !h4Compiled.hydrationPlan)
+  throw new Error("H4 compiler browser fixture failed: "+
+    JSON.stringify(h4Compiled.diagnostics));
+const h4Bytes = new TextEncoder().encode(h4Compiled.js[0].code);
+const h4Server = await import("data:text/javascript;base64,"+
+  Buffer.from(h4Bytes).toString("base64"));
+const h4Data={title:"Initial",shown:true,
+  rows:[{id:"a",label:"Alpha"},{id:"b",label:"Beta"}]};
+const h4Response=h4Server.render({
+  schema:"zaakiy.render/1",route:{id:h4Route},
+  request:{signal:new globalThis.AbortController().signal},
+  loaderData:h4Data
+});
+const h4Manifest=buildVerifiedManifestV1([
+  {routeId:h4Route,moduleId:"generated/products",bytes:h4Bytes}
+]);
+const h4Envelope={
+  schema:"zaakiy.hydration/1",buildId:h4Manifest.buildId,
+  domAbiVersion:1,routeId:h4Route,payload:null,
+  boundaries:[{markerId:h4Compiled.hydrationPlan.markerId,
+    templateDigest:h4Compiled.hydrationPlan.templateDigest}]
+};
+const h4Code=[
+  'import { hydrateRegionPage } from "@zaakiyjs/ssr/client";',
+  'import { signal, flushSync } from "@zaakiyjs/signals";',
+  "const plan="+JSON.stringify(h4Compiled.hydrationPlan)+";",
+  "const manifest="+JSON.stringify(h4Manifest)+";",
+  "const envelope="+JSON.stringify(h4Envelope)+";",
+  "const state=signal("+JSON.stringify(h4Data)+");",
+  'const container=document.querySelector("#app");',
+  'const root=container.querySelector("main");',
+  'const badge=container.querySelector("span");',
+  'const buttons=[...container.querySelectorAll("button")];',
+  'const input=container.querySelector("input");',
+  'input.value="visitor draft";input.focus();',
+  'const read=path=>state.value[path[0]];',
+  'let handle;',
+  'try {',
+  '  const observer=new MutationObserver(()=>{});',
+  '  observer.observe(container,{subtree:true,childList:true,attributes:true,characterData:true});',
+  '  handle=hydrateRegionPage(container,plan,envelope,manifest,"products",{read});',
+  '  const mutations=observer.takeRecords().length;observer.disconnect();',
+  '  const identity=container.querySelector("main")===root && container.querySelector("span")===badge',
+  '    && [...container.querySelectorAll("button")].every((node,i)=>node===buttons[i]);',
+  '  const focus=document.activeElement===input && input.value==="visitor draft";',
+  '  flushSync(()=>{state.value={...state.value,title:"Updated",shown:false,',
+  '    rows:[state.value.rows[1],state.value.rows[0]]};});',
+  '  const moved=container.querySelectorAll("button")[0]===buttons[1] &&',
+  '    container.querySelectorAll("button")[1]===buttons[0];',
+  '  const switched=container.querySelector("p")?.textContent==="Hidden" &&',
+  '    container.querySelector("h2")===null;',
+  '  const updated=badge.textContent==="Updated" && input.value==="visitor draft";',
+  '  const focusAfter=document.activeElement===input;',
+  '  flushSync(()=>{state.value={...state.value,shown:true,rows:[',
+  '    {id:"b",label:"Beta changed"},{id:"c",label:"Gamma"}]};});',
+  '  const reused=container.querySelectorAll("button")[0]===buttons[1];',
+  '  const addition=container.querySelectorAll("button")[1]?.textContent==="Gamma";',
+  '  const changed=container.querySelectorAll("button")[0]?.textContent==="Beta changed";',
+  '  const returned=container.querySelector("h2")?.textContent==="Shown";',
+  '  handle.dispose();',
+  '  const preserved=container.querySelector("main")===root &&',
+  '    input.value==="visitor draft";',
+  '  const second=hydrateRegionPage(container,plan,envelope,manifest,"products",{read});',
+  '  second.dispose();',
+  '  window.__zaakiyH4={ready:true,mutations,identity,focus,moved,switched,',
+  '    updated,focusAfter,reused,addition,changed,returned,preserved,',
+  '    lastState:container.querySelectorAll("button").length};',
+  '}catch(error){window.__zaakiyH4={ready:true,error:String(error)};}'
+].join("\n");
+const h4Entry=join(fixtureDir,"h4-entry.ts");
+await writeFile(h4Entry,h4Code);
+await build({
+  configFile:false,root,publicDir:false,logLevel:"warn",
+  build:{outDir:distDir,emptyOutDir:false,minify:"esbuild",
+    lib:{entry:h4Entry,formats:["es"],fileName:"h4"}}
+});
+await writeFile(join(distDir,"h4.html"),
+  '<!doctype html><html><head><meta charset="utf-8"><title>H4 region adoption</title></head>'+
+  '<body><div id="app">'+h4Response.body+
+  '</div><script type="module" src="./h4.js"></script></body></html>');
+console.log(JSON.stringify({h4Route,markerId:h4Compiled.hydrationPlan.markerId,
+  buildId:h4Manifest.buildId,htmlBytes:h4Response.body.length}));
