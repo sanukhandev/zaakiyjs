@@ -22,11 +22,15 @@ export interface RegionHydrationPlanV2 {
   readonly markerId: string;
   readonly templateDigest: string;
   readonly nodes: readonly RegionNode[];
+  /** Optional explicit compiler-selected limits; standard plan omits this field. */
+  readonly limits?: {readonly maxRows:10000;readonly maxNodes:50000;readonly maxHtmlBytes:8388608};
 }
 export interface RegionServerRequest extends CompileRequest {
   readonly routeId: string;
   /** Named local TSX entry; defaults to Page when multiple functions exist. */
   readonly entryComponent?: string;
+  /** Explicit large-list tier; standard remains 4,096 rows and 8,192 nodes. */
+  readonly hydrationScale?: "standard" | "large";
   /** Trusted build-time import sources; verified by SHA-256 and never executed. */
   readonly componentModules?: readonly {
     readonly specifier:string;readonly fileName:string;
@@ -65,6 +69,10 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     return { js: [], diagnostics: base.diagnostics };
   if (!ROUTE.test(request.routeId) || request.source.length > 262144)
     return reject("H4 requires a bounded source and safe route identity");
+  if(request.hydrationScale !== undefined && !["standard","large"].includes(request.hydrationScale))
+    return reject("Unknown H4 hydration scale");
+  const large=request.hydrationScale==="large";
+  const limits=large?{maxRows:10000 as const,maxNodes:50000 as const,maxHtmlBytes:8388608 as const}:undefined;
   const ir = optimizeIR(parseToIR(request).document);
   const sourceFile = ts.createSourceFile(request.fileName,request.source,
     ts.ScriptTarget.ES2022,true,ts.ScriptKind.TSX);
@@ -346,10 +354,11 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
   };
   try {
     const nodes = convert([root],undefined,0,undefined,[entryName]);
-    const templateDigest = hash(JSON.stringify(nodes));
+    const templateDigest = hash(JSON.stringify(limits ? {nodes,limits} : nodes));
     const markerId = hash("zaakiy-region-root:" + request.routeId + ":" + templateDigest).slice(0, 32);
     const hydrationPlan: RegionHydrationPlanV2 = {
-      schema: "zaakiy.region-hydration/2", routeId: request.routeId, markerId, templateDigest, nodes
+      schema: "zaakiy.region-hydration/2", routeId: request.routeId, markerId, templateDigest, nodes,
+      ...(limits ? {limits}: {})
     };
     // Only compiler-validated data literals are embedded. The code has no
     // TSX evaluator, dynamic import, arbitrary JavaScript or client dependency.
@@ -368,7 +377,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
 
       "const draw = (nodes, props, item, budget, depth = 0) => {",
       " if (depth > 64) throw new RangeError('H4 nesting bound'); let result = '';",
-      " for (const node of nodes) { if (++budget.count > 8192) throw new RangeError('H4 output node bound');",
+      " for (const node of nodes) { if (++budget.count > ${limits?.maxNodes??8192}) throw new RangeError('H4 output node bound');",
       " if (node.kind === 'literal') result += escape(node.value);",
       " else if (node.kind === 'data') result += '<!--zaakiy-d2:' + node.id + ':start-->' + text(own(node.source === 'item' ? item : props, node.path)) + '<!--zaakiy-d2:' + node.id + ':end-->';",
       " else if (node.kind === 'element') { result += '<' + node.tag + node.attrs.join('') + '>';",
@@ -381,7 +390,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " result += draw(own(node.source === 'item' ? item : props,node.path) ? node.yes : node.no,props,item,budget,depth+1);",
       " result += '<!--zaakiy-r2:' + node.id + ':end-->'; }",
       " else if (node.kind === 'keyed') { const rows = own(node.source === 'item' ? item : props,node.path);",
-      " if (!Array.isArray(rows) || rows.length > 4096) throw new TypeError('H4 keyed data must be bounded array');",
+      " if (!Array.isArray(rows) || rows.length > ${limits?.maxRows??4096}) throw new TypeError('H4 keyed data must be bounded array');",
       " const keys = new Set(); result += '<!--zaakiy-r2:' + node.id + ':start-->';",
       " for (const row of rows) { const key = own(row,[node.key]);",
       " if (typeof key !== 'string' && typeof key !== 'number') throw new TypeError('H4 key type');",
@@ -396,7 +405,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " if (context.request?.signal?.aborted) throw context.request.signal.reason;",
 
       " const body = '<!--zaakiy-h:' + hydrationPlan.markerId + ':' + hydrationPlan.templateDigest + '-->' + draw(hydrationPlan.nodes,context.loaderData,null,{count:0});",
-      " if (body.length > 1048576) throw new RangeError('H4 output too large');",
+      " if (body.length > ${limits?.maxHtmlBytes??1048576}) throw new RangeError('H4 output too large');",
       " return {version:1,status:200,headers:{'content-type':'text/html; charset=utf-8'},body,cache:{scope:'no-store',tags:[]}};",
       "}"
     ].join("\n") + "\n";
