@@ -37,6 +37,8 @@ export { optimizeIR, validateIR, OPTIMIZATION_PASSES };
 export { compileStaticServer } from "./server-static.js";
 export type { StaticServerRequest, StaticServerCompileResult } from "./server-static.js";
 export { compileDataServer } from "./server-data.js";
+export { compileRegionServer } from "./server-region.js";
+export type { RegionServerRequest, RegionServerCompileResult, RegionHydrationPlanV2 } from "./server-region.js";
 export type { DataServerRequest, DataServerCompileResult } from "./server-data.js";
 export type { DataHydrationPlanV1, HydrationNodeV1, HydrationElementV1, HydrationSlotV1 } from "./server-hydration-plan.js";
 
