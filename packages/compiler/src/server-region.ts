@@ -27,6 +27,11 @@ export interface RegionServerRequest extends CompileRequest {
   readonly routeId: string;
   /** Named local TSX entry; defaults to Page when multiple functions exist. */
   readonly entryComponent?: string;
+  /** Trusted build-time import sources; verified by SHA-256 and never executed. */
+  readonly componentModules?: readonly {
+    readonly specifier:string;readonly fileName:string;
+    readonly source:string;readonly digest:string;
+  }[];
 }
 export interface RegionServerCompileResult {
   readonly diagnostics: readonly CompilerDiagnostic[];
@@ -86,6 +91,72 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     if (!root) return reject("H4 component JSX could not be matched to compiler IR");
     if (functions.has(statement.name.text)) return reject("Duplicate local H4 component");
     functions.set(statement.name.text,root);
+  }
+  if ((request.componentModules?.length??0)>32)
+    return reject("H4 imported component source budget exceeded");
+  const imports=new Map<string,{specifier:string;exportName:string}>();
+  for(const statement of sourceFile.statements){
+    if(!ts.isImportDeclaration(statement) ||
+        !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    const specifier=statement.moduleSpecifier.text;
+    const bindings=statement.importClause?.namedBindings;
+    if(!bindings || !ts.isNamedImports(bindings)) continue;
+    for(const binding of bindings.elements){
+      imports.set(binding.name.text,{
+        specifier,exportName:binding.propertyName?.text??binding.name.text
+      });
+    }
+  }
+  const configured=new Set<string>();
+  for(const module of request.componentModules??[]){
+    if(!/^\\.\\/[A-Za-z0-9_./-]+\\.[cm]?jsx?$/.test(module.specifier) ||
+        module.specifier.includes("..") || module.fileName.startsWith("/") ||
+        module.fileName.split("/").includes("..") ||
+        !/^[A-Za-z0-9_./-]+\\.[cm]?tsx?$/.test(module.fileName) ||
+        module.source.length>65536 || hash(module.source)!==module.digest ||
+        configured.has(module.specifier)){
+      return reject("H4 imported component requires unique pinned, relative source");
+    }
+    configured.add(module.specifier);
+    const imported=[...imports.entries()].filter(([,ref])=>ref.specifier===module.specifier);
+    if(!imported.length) return reject("H4 supplied source has no static named import");
+    const moduleFile=ts.createSourceFile(module.fileName,module.source,
+      ts.ScriptTarget.ES2022,true,ts.ScriptKind.TSX);
+    if(moduleFile.statements.some(statement=>
+      !ts.isFunctionDeclaration(statement) &&
+      !ts.isInterfaceDeclaration(statement) &&
+      !ts.isTypeAliasDeclaration(statement) &&
+      !(ts.isImportDeclaration(statement) && statement.importClause?.isTypeOnly))){
+      return reject("H4 imported modules must have no top-level executable declarations");
+    }
+    const diagnostics=compile({fileName:module.fileName,source:module.source});
+    if(diagnostics.diagnostics.some(item=>item.severity==="error"))
+      return reject("H4 imported component module has compiler/type errors");
+    const moduleIR=optimizeIR(parseToIR({fileName:module.fileName,source:module.source}).document);
+    for(const [localName,ref] of imported){
+      if(functions.has(localName)) return reject("Duplicate H4 imported component alias");
+      const statement=moduleFile.statements.find(value=>
+        ts.isFunctionDeclaration(value) && value.name?.text===ref.exportName);
+      if(!statement || !ts.isFunctionDeclaration(statement) ||
+          !statement.modifiers?.some(value=>value.kind===ts.SyntaxKind.ExportKeyword) ||
+          !statement.body || statement.body.statements.length!==1 ||
+          !ts.isReturnStatement(statement.body.statements[0]!) ||
+          statement.parameters.length>1 ||
+          (statement.parameters[0] &&
+            (!ts.isIdentifier(statement.parameters[0].name) ||
+              statement.parameters[0].name.text!=="props"))) {
+        return reject("Imported H4 component must export a pure single-return function");
+      }
+      const returned=statement.body.statements[0]!.expression;
+      if(!returned) return reject("Imported H4 component has no JSX return");
+      const jsx=unwrap(returned);
+      if(!ts.isJsxElement(jsx) && !ts.isJsxSelfClosingElement(jsx))
+        return reject("Imported H4 component must return native JSX");
+      const root=moduleIR.nodes.find(node=>node.span.start.offset===jsx.getStart(moduleFile));
+      if(!root || root.kind!=="StaticElement")
+        return reject("Imported H4 component IR root missing");
+      functions.set(localName,root);
+    }
   }
   const entryName = request.entryComponent ?? "Page";
   const root = functions.get(entryName) ??
