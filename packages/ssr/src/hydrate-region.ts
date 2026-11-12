@@ -26,6 +26,7 @@ export interface RegionHydrationPlanV2 {
   readonly markerId: string;
   readonly templateDigest: string;
   readonly nodes: readonly RegionNodeV2[];
+  readonly limits?: {readonly maxRows:10000;readonly maxNodes:50000;readonly maxHtmlBytes:8388608};
 }
 export interface RegionHydrationEventV2 {
   /** Compiler element ID; keyed item elements use id:key. */
@@ -49,6 +50,15 @@ const ATTR = /^ ([a-z][a-z0-9:_-]*)="([^"]*)"$/;
 const EVENT = /^[a-z][a-z0-9:_-]*$/;
 const DENIED = new Set(["__proto__", "constructor", "prototype"]);
 const MAX_NODES = 8192;
+function getBudgets(plan:RegionHydrationPlanV2){
+  if(plan.limits===undefined) return {maxRows:4096,maxNodes:MAX_NODES};
+  const limits=plan.limits;
+  if(!limits || limits.maxRows!==10000 || limits.maxNodes!==50000 ||
+      limits.maxHtmlBytes!==8388608 || Object.keys(limits).length!==3)
+    mismatch("invalid compiler-selected hydration scale");
+  return limits;
+}
+
 type ComponentNode = Extract<RegionNodeV2, {kind:"component"}>;
 type ConditionalNode = Extract<RegionNodeV2, {kind:"conditional"}>;
 type KeyedNode = Extract<RegionNodeV2, {kind:"keyed"}>;
@@ -168,6 +178,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
   const root = container.childNodes[1];
   if (!root || root.nodeType !== 1) mismatch("native root");
   const tree = zone(scopeKey,item);
+  const limits=getBudgets(plan);
   let budget = 0;
   const scan = (parent: Node, begin: Node | null, end: Node | null,
     specs: readonly RegionNodeV2[], item: unknown, target: Zone,
@@ -175,7 +186,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
     if (!Array.isArray(specs) || depth > 64) mismatch("invalid region depth");
     let cursor = begin;
     for (const spec of specs) {
-      if (++budget > MAX_NODES || !spec || typeof spec !== "object")
+      if (++budget > limits.maxNodes || !spec || typeof spec !== "object")
         mismatch("region structural budget");
       switch (spec.kind) {
         case "element": {
@@ -272,7 +283,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
               spec.rows.length !== 1 || spec.rows[0]?.kind !== "element")
             mismatch("keyed region plan");
           const data=spec.source==="item" ? own(item,spec.path) : read(spec.path);
-          if (!Array.isArray(data) || data.length > 4096) mismatch("keyed data collection");
+          if (!Array.isArray(data) || data.length > limits.maxRows) mismatch("keyed data collection");
           const start=cursor as Comment;
           cursor=cursor.nextSibling;
           const rows:Row[]=[];
@@ -374,6 +385,7 @@ export function hydrateRegionPage(
   }
   if (bindings.signal?.aborted) mismatch("navigation canceled");
   const inserted:Text[]=[];
+  const limits=getBudgets(plan);
   const read=bindings.read;
   const attachElements=(owner:OwnerScope,target:Zone):void=>{
     for(const [id,node] of target.elements){
@@ -425,7 +437,7 @@ export function hydrateRegionPage(
       if(depth>64 || !Array.isArray(items)) mismatch("dynamic region depth");
       const fragment=doc.createDocumentFragment();
       for(const spec of items){
-        if(++nodes>MAX_NODES) mismatch("dynamic region node budget");
+        if(++nodes>limits.maxNodes) mismatch("dynamic region node budget");
         if(spec.kind==="literal"){
           fragment.appendChild(doc.createTextNode(spec.value));
         } else if(spec.kind==="data"){
@@ -454,7 +466,7 @@ export function hydrateRegionPage(
           fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":end"));
         } else if(spec.kind==="keyed"){
           const rows=spec.source==="item" ? own(row,spec.path) : read(spec.path);
-          if(!Array.isArray(rows) || rows.length>4096)
+          if(!Array.isArray(rows) || rows.length>limits.maxRows)
             mismatch("invalid nested keyed data");
           const keys=new Set<string>();
           fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":start"));
