@@ -53,21 +53,32 @@ async function inventory(root) {
 const baseline = await inventory(resolve(".benchmark-baseline/packages"));
 const hardening = await inventory(resolve(".benchmark-hardening/packages"));
 const candidate = await inventory(resolve("packages"));
-const names = Object.keys(candidate);
-if (names.length !== 23 || names.length !== Object.keys(baseline).length ||
-    names.length !== Object.keys(hardening).length ||
-    names.some(name => !baseline[name] || !hardening[name])) {
-  throw new Error("Production workspace package coverage mismatch; expected the 23 published-style package directories");
+// The two pinned historical baselines contain 23 packages. A newly added
+// candidate package has no meaningful historical footprint: retain exact
+// parity checks for all existing packages and explicitly account for additions.
+const baselineNames = Object.keys(baseline).sort(byName);
+const hardeningNames = Object.keys(hardening).sort(byName);
+const candidateNames = Object.keys(candidate).sort(byName);
+const approvedAdditions = new Set(["@zaakiyjs/image"]);
+const additions = candidateNames.filter(name => !baseline[name]);
+if (baselineNames.length !== 23 || hardeningNames.length !== 23 ||
+    baselineNames.some(name => !hardening[name] || !candidate[name]) ||
+    hardeningNames.some(name => !baseline[name]) ||
+    additions.length !== approvedAdditions.size ||
+    additions.some(name => !approvedAdditions.has(name))) {
+  throw new Error("Production package coverage mismatch: missing historical package or unreviewed candidate addition");
 }
-const rows = names.sort(byName).map(name => {
-  const before = baseline[name];
+const rows = candidateNames.map(name => {
+  const before = baseline[name] ?? null;
+  const hardened = hardening[name] ?? null;
   const after = candidate[name];
   return {
-    package: name, baseline: before, hardening: hardening[name], candidate: after,
-    gzipDelta: after.gzip - before.gzip,
-    hardeningGzipDelta: after.gzip - hardening[name].gzip,
-    gzipDeltaPct: before.gzip ? 100 * (after.gzip / before.gzip - 1) : null,
-    hardeningGzipDeltaPct: hardening[name].gzip ? 100 * (after.gzip / hardening[name].gzip - 1) : null
+    package: name, baseline: before, hardening: hardened, candidate: after,
+    status: before ? "existing" : "added",
+    gzipDelta: before ? after.gzip - before.gzip : null,
+    hardeningGzipDelta: hardened ? after.gzip - hardened.gzip : null,
+    gzipDeltaPct: before?.gzip ? 100 * (after.gzip / before.gzip - 1) : null,
+    hardeningGzipDeltaPct: hardened?.gzip ? 100 * (after.gzip / hardened.gzip - 1) : null
   };
 });
 await mkdir("benchmark-artifacts", {recursive: true});
@@ -76,5 +87,6 @@ await writeFile("benchmark-artifacts/package-sizes.json", JSON.stringify({
   packages: rows
 }, null, 2) + "\n");
 for (const row of rows) console.log(row.package.padEnd(26),
-  "main", String(row.baseline.gzip).padStart(8), "candidate", String(row.candidate.gzip).padStart(8),
-  "delta", (row.gzipDeltaPct ?? 0).toFixed(1) + "%");
+  "main", String(row.baseline?.gzip ?? "new").padStart(8),
+  "candidate", String(row.candidate.gzip).padStart(8),
+  "delta", row.gzipDeltaPct === null ? "new package" : row.gzipDeltaPct.toFixed(1) + "%");

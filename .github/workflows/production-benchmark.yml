@@ -141,7 +141,7 @@ jobs:
           node benchmarks/microbench-store.mjs . benchmark-artifacts/store-candidate.json
       - name: Report raw, gzip and Brotli production assets
         run: node benchmarks/report-size.mjs
-      - name: Report all 23 compiled package footprints
+      - name: Report all candidate package footprints against frozen historical baselines
         run: node benchmarks/report-package-sizes.mjs
       - name: Enforce keyed-reorder and emitted-bundle regression budgets
         run: node benchmarks/regression-gate.mjs

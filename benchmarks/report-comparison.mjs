@@ -49,9 +49,9 @@ lines.push("## Compiled-package footprint by package", "",
   "| Package | Main gzip | Hardening gzip | Candidate gzip | Change vs hardening |",
   "| --- | ---: | ---: | ---: | ---: |");
 for (const row of packages.packages) {
-  lines.push("| " + row.package + " | " + row.baseline.gzip + " | " +
-    row.hardening.gzip + " | " + row.candidate.gzip + " | " +
-    row.hardeningGzipDelta + " |");
+  lines.push("| " + row.package + " | " + (row.baseline?.gzip ?? "—") + " | " +
+    (row.hardening?.gzip ?? "—") + " | " + row.candidate.gzip + " | " +
+    (row.hardeningGzipDelta ?? "New package") + " |");
 }
 lines.push("", "## Isolated runtime and compiler microbenchmarks", "",
   "Same-run synthetic diagnostics; no cross-host performance guarantee.", "",
