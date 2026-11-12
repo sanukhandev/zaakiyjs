@@ -196,3 +196,27 @@ These values are intentionally application-supplied; no public state or
 cover arbitrary components, named slots, JSX event lowering, nested dynamic
 regions or broad production browser certification. Do not treat this opt-in
 source implementation as a published npm feature. See ADR 0015.
+
+### H4 verified state initialization and compiler event resolution
+
+`hydrateRegionPageWithState(container, plan, envelope, manifest, routeId,
+serializedPublicState, initialize)` first decodes a bounded
+`zaakiy.hydration-state/1` public JSON packet, checks the expected deployment
+build and route, and calls the application's synchronous initializer to create
+reactive state/readers. The initialized bindings are passed to the same strict
+native DOM preflight. On rejection, state is disposed; on a successful owner
+disposal, state is disposed exactly once. This API never merges arbitrary JSON
+into an existing global store and **does not authorize private or tenant data**.
+Only explicitly allowlisted public data should be serialized.
+
+For compiler-declared typed JSX handlers, supply
+`resolveEvent: path => trustedEventHandlers[path.join(".")]`.
+The resolver must return an existing function; JavaScript source is never
+evaluated or hydrated from SSR markup. Event ownership and cancellation are
+handled by the adopted DOM owner.
+
+Nested conditional/component regions may now be recreated as detached native
+DOM through the same structural preflight before owner/effect attachment.
+Dynamic branch rollback, cross-tenant authorization, imported dependency
+attestation, unsupported JSX closure semantics, and unrestricted nested keyed
+scopes must still pass separate certification before broader production claims.
