@@ -97,6 +97,8 @@ jobs:
           cp benchmarks/h4-hydration/angular/package-lock.json benchmark-artifacts/h4-angular/generated-lock.json
       - name: AOT compile true Angular server and client hydration bundles
         run: npm run build --prefix benchmarks/h4-hydration/angular -- --base-href /angular/
+      - name: Render exact three Angular SSR documents using AOT bootstrap
+        run: node benchmarks/h4-hydration/angular/prerender.mjs
       - name: Verify Angular server-pre-rendered HTML for every workload
         run: |
           set -e
