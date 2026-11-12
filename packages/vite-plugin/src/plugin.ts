@@ -10,6 +10,7 @@ import type { ExtractedStyleToken, StyleConfig } from "@zaakiyjs/styles";
 import { createCompilerSession, type CompilerSession } from "@zaakiyjs/compiler";
 import type { CompilerDiagnostic } from "@zaakiyjs/compiler";
 import { cssSourceMapComment, portableSourceFile } from "./asset-paths.js";
+import { equalStyleInputs } from "./style-inputs.js";
 import type { ZaakiyAssetManifest, ZaakiyViteOptions, GeneratedAssetRecord } from "./index.js";
 import {
   assertBrowserOutput,
@@ -356,7 +357,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       };
       modules.set(file, record);
       try {
-        if (!buildMode) {
+        if (!buildMode && (!previous || !equalStyleInputs(previous, record))) {
           const previousCss = css;
           const previousMap = compiledCssMap;
           await collectCss(false);
