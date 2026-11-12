@@ -60,7 +60,6 @@ await mkdir(distDir, { recursive: true });
 const code = [
   'import { hydrateDataPage } from "@zaakiyjs/ssr/client";',
   'import { signal, flushSync } from "@zaakiyjs/signals";',
-  'import { createRegionEventResolver } from "./h4-generated-events.js";',
   "const plan = " + JSON.stringify(compiled.hydrationPlan) + ";",
   "const manifest = " + JSON.stringify(manifest) + ";",
   "const envelope = " + JSON.stringify(envelope) + ";",
@@ -187,6 +186,7 @@ if(!h4Compiled.clientEvents?.length)
   throw new Error("H4 compiler did not emit client event handler module");
 await writeFile(join(fixtureDir,"h4-generated-events.js"),h4Compiled.clientEvents[0].code);
 const h4Code=[
+  'import { createRegionEventResolver } from "./h4-generated-events.js";',
   'import { hydrateRegionPage, hydrateRegionPageWithState } from "@zaakiyjs/ssr/client";',
   'import { signal, flushSync } from "@zaakiyjs/signals";',
   "const plan="+JSON.stringify(h4Compiled.hydrationPlan)+";",
