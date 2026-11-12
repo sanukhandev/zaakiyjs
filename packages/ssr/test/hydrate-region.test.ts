@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
+import { flushSync, signal } from "@zaakiyjs/signals";
 import { hydrateRegionPage } from "../src/hydrate-region.js";
 import type { RegionHydrationPlanV2 } from "../src/hydrate-region.js";
 import type { HydrationEnvelopeV1, TrustedServerBuildManifestV1 } from "../src/protocol.js";
@@ -62,6 +63,40 @@ describe("H4 compiler-region client adoption", () => {
     buttons[1]!.click();
     expect(clicks).toBe(1);
     expect(container.innerHTML).toBe(html);
+    container.remove();
+  });
+  it("reconciles keyed rows and conditional branches without losing retained node identity", () => {
+    const container = fixture();
+    document.body.appendChild(container);
+    const app = signal(state());
+    const hydrate = () => hydrateRegionPage(container,plan,envelope,manifest,routeId,{
+      read:path => app.value[path[0] as keyof ReturnType<typeof state>]
+    });
+    const handle = hydrate();
+    const originalButtons = [...container.querySelectorAll("button")];
+    const header = container.querySelector("h2");
+    originalButtons[1]!.focus();
+    flushSync(() => {app.value={...app.value,rows:[app.value.rows[1]!,app.value.rows[0]!]};});
+    const reordered = [...container.querySelectorAll("button")];
+    expect(reordered[0]).toBe(originalButtons[1]);
+    expect(reordered[1]).toBe(originalButtons[0]);
+    expect(document.activeElement).toBe(originalButtons[1]);
+    flushSync(() => {app.value={...app.value,visible:false};});
+    expect(header?.parentNode).toBeNull();
+    expect(container.querySelectorAll("button")[0]).toBe(originalButtons[1]);
+    flushSync(() => {app.value={...app.value,visible:true};});
+    expect(container.querySelector("h2")?.textContent).toBe("Products");
+    expect(container.querySelectorAll("button")[1]).toBe(originalButtons[0]);
+    flushSync(() => {app.value={...app.value,rows:[
+      {id:"b",label:"Beta updated"},{id:"c",label:"Gamma"}
+    ]};});
+    expect(container.querySelector("button")?.textContent).toBe("Beta updated");
+    expect(container.querySelectorAll("button")[0]).toBe(originalButtons[1]);
+    expect(container.querySelectorAll("button")[1]?.textContent).toBe("Gamma");
+    handle.dispose();
+    const again=hydrate();
+    expect(again.root).toBe(container.lastChild);
+    again.dispose();
     container.remove();
   });
   it("aborts before mutation when keyed state disagrees with SSR", () => {
