@@ -1,6 +1,6 @@
 # ADR 0015 — H4/H5 interactive region hydration (proposed, not implemented)
 
-**Status:** Restricted H4 SSR + browser adoption slice implemented behind explicit opt-in;\nfull interactive region reconciliation and general component hydration remain proposed.\n`zaakiy.data-hydration/1` (ADR 0014) is unchanged.
+**Status:** Restricted H4 SSR + browser adoption slice implemented behind explicit opt-in;\nrestricted conditional/keyed reconciliation and pure local component adoption are implemented;\nfull general-purpose TSX hydration remains proposed.\n`zaakiy.data-hydration/1` (ADR 0014) is unchanged.
 
 ## Compatibility decision
 
@@ -78,7 +78,7 @@ the restricted v1 data plan to accept unvalidated TSX. DOM ABI v1 and normal
 ## Initial H4 compiler/browser slice (2026-11-12)
 
 - `compileRegionServer({fileName,source,routeId})` lowers validated `StaticElement`,
-  `DynamicText` data paths, `ConditionalBlock`, and one-level `KeyedLoop` IR
+  `DynamicText` data paths, `ConditionalBlock`, one-level `KeyedLoop` IR,\n  and pure local component calls with mapped data props
   to a deterministic `zaakiy.region-hydration/2` plan and reviewed Node SSR
   module. Stable marker digests and exact text-slot comment markers are emitted.
 - The Node module validates request route and safe loader-data paths,
@@ -87,9 +87,9 @@ the restricted v1 data plan to accept unvalidated TSX. DOM ABI v1 and normal
 - `hydrateRegionPage` verifies a trusted manifest/envelope, matching native
   nodes, static attributes, ordered conditional/keyed markers, initial text,
   and distinct native identities **before** owner/effect/listener creation.
-  It preserves matching DOM, focus and input state and supports explicit
+  It uses DOM owner-scoped keyed and conditional reconciliation after initial\n  adoption, preserving retained nodes on updates. It preserves matching DOM,\n  focus and input state and supports explicit
   trusted event mapping to compiler-assigned element identities.
-- Current restriction: one native root, no `ComponentCall`/named-slot lowering,
+- Current restriction: one native root, no arbitrary imported components or\n  named-slot lowering,
   JSX event expressions, nested keyed loops, runtime keyed reconciliation,
   automatic branch switching, or general signal-dependent server rendering.
   Matching snapshot adoption is useful but **not full H4 certification**.
