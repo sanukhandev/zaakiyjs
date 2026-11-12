@@ -1,8 +1,6 @@
 # ADR 0015 — H4/H5 interactive region hydration (proposed, not implemented)
 
-**Status:** Proposed; the only active runtime adoption ABI remains
-`zaakiy.data-hydration/1` (ADR 0014). Do not claim this document as
-compiler/runtime implementation.
+**Status:** Restricted H4 SSR + browser adoption slice implemented behind explicit opt-in;\nfull interactive region reconciliation and general component hydration remain proposed.\n`zaakiy.data-hydration/1` (ADR 0014) is unchanged.
 
 ## Compatibility decision
 
@@ -76,3 +74,24 @@ the restricted v1 data plan to accept unvalidated TSX. DOM ABI v1 and normal
    slow-network/navigation races, retained heap and release verification.
 
 **No public release and no PR #61 merge until behavior exists and tests pass.**
+
+## Initial H4 compiler/browser slice (2026-11-12)
+
+- `compileRegionServer({fileName,source,routeId})` lowers validated `StaticElement`,
+  `DynamicText` data paths, `ConditionalBlock`, and one-level `KeyedLoop` IR
+  to a deterministic `zaakiy.region-hydration/2` plan and reviewed Node SSR
+  module. Stable marker digests and exact text-slot comment markers are emitted.
+- The Node module validates request route and safe loader-data paths,
+  escapes interpolations, checks keyed uniqueness and bounds output.
+  It emits no user JS/TSX execution. Per-request work budgets are isolated.
+- `hydrateRegionPage` verifies a trusted manifest/envelope, matching native
+  nodes, static attributes, ordered conditional/keyed markers, initial text,
+  and distinct native identities **before** owner/effect/listener creation.
+  It preserves matching DOM, focus and input state and supports explicit
+  trusted event mapping to compiler-assigned element identities.
+- Current restriction: one native root, no `ComponentCall`/named-slot lowering,
+  JSX event expressions, nested keyed loops, runtime keyed reconciliation,
+  automatic branch switching, or general signal-dependent server rendering.
+  Matching snapshot adoption is useful but **not full H4 certification**.
+- SSR module executable and browser adoption tests are included. The latest
+  head requires TypeScript, tests, Chromium/Firefox/WebKit and security checks.
