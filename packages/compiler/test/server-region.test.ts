@@ -69,6 +69,25 @@ describe("H4 compiler-backed region SSR target", () => {
     expect((html.match(/zaakiy-r2:/g)??[]).length).toBe(4);
     expect(build(source).hydrationPlan).toEqual(result.hydrationPlan);
   });
+  it("emits declarative JSX event references without executing handler source", () => {
+    const source = "function Page(props:{onPress:(event:MouseEvent)=>void}){return <main><button onClick={props.onPress}>Save</button></main>;}";
+    const result = build(source);
+    expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    const root = result.hydrationPlan?.nodes[0];
+    expect(root?.kind).toBe("element");
+    if (root?.kind !== "element") throw Error("Expected native root");
+    const button = root.children[0];
+    expect(button?.kind).toBe("element");
+    if (button?.kind !== "element") throw Error("Expected native event target");
+    expect(button.events).toEqual([{name:"click",path:["onPress"]}]);
+    expect(result.js[0]?.code).not.toContain("props.onPress");
+  });
+  it("rejects inline closures in server JSX event expressions", () => {
+    const source = "function Page(){return <main><button onClick={() => console.log('unsafe')}>Save</button></main>;}";
+    const result = build(source);
+    expect(result.js).toHaveLength(0);
+    expect(result.diagnostics.some(d=>d.severity==="error")).toBe(true);
+  });
   it("rejects unsafe dynamic expressions and arbitrary JSX components", () => {
     const sources = [
       "function Page(props:{name:string}) { return <main>{props.name.toUpperCase()}</main>; }",
