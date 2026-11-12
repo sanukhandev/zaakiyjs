@@ -122,6 +122,34 @@ describe("H4 compiler-backed region SSR target", () => {
     });
     expect(tampered.js).toHaveLength(0);
   });
+  it("lowers named/default slots into component ownership without browser JSX evaluation",async()=>{
+    const source=[
+      'function Panel(props:{title:string}){return <article><Slot name="header"/><div><Slot name="children"/></div></article>;}',
+      'function Page(props:{title:string}){return <main><Panel header={<h2>{props.title}</h2>}><p>Body</p></Panel></main>;}'
+    ].join("\n");
+    const result=compileRegionServer({fileName,routeId:"products",source,componentSlots:true});
+    expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    expect(result.js).toHaveLength(1);
+    const mod=await import("data:text/javascript;base64,"+
+      Buffer.from(result.js[0]!.code).toString("base64"));
+    const html:string=mod.render({
+      schema:"zaakiy.render/1",route:{id:"products"},
+      request:{signal:{aborted:false}},loaderData:{title:"Slot text"}
+    }).body;
+    expect(html).toContain("<h2>");
+    expect(html).toContain("Slot text");
+    expect(html).toContain("<p>Body</p>");
+    expect(html).not.toContain("<Slot");
+  });
+  it("rejects unresolved slot outlets rather than rendering an empty fallback",()=>{
+    const source=[
+      'function Panel(){return <article><Slot name="header"/></article>;}',
+      'function Page(){return <main><Panel/></main>;}'
+    ].join("\n");
+    const result=compileRegionServer({fileName,routeId:"products",source,componentSlots:true});
+    expect(result.js).toHaveLength(0);
+    expect(result.diagnostics.some(d=>d.severity==="error")).toBe(true);
+  });
   it("rejects unsafe dynamic expressions and arbitrary JSX components", () => {
     const sources = [
       "function Page(props:{name:string}) { return <main>{props.name.toUpperCase()}</main>; }",
