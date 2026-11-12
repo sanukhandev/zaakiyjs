@@ -110,7 +110,7 @@ function inspectExisting(container: Element, plan: DataHydrationPlanV1,
         if (++budget > MAX_NODES || !ID.test(child.id) ||
             usedIds.has(child.id) || !Array.isArray(child.path) ||
             child.path.length < 1 || child.path.length > 4 ||
-            child.path.some(p => typeof p !== "string" || !FIELD.test(p) || FORBIDDEN.has(p)))
+            child.path.some((p: unknown) => typeof p !== "string" || !FIELD.test(p) || FORBIDDEN.has(p)))
           fail("invalid data slot");
         usedIds.add(child.id);
         const start = el.childNodes[cursor++];
