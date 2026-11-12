@@ -4,12 +4,14 @@
  * evaluates TSX, user expressions or unsafe HTML at request time.
  */
 import { createHash } from "node:crypto";
+import * as ts from "typescript";
 import type { CompileRequest, CompilerDiagnostic, GeneratedAsset, IRNode, SourceSpan } from "./index.js";
 import { compile, optimizeIR, parseToIR } from "./index.js";
 import { renderLiteralAttribute, SSR_STATIC_TAGS, SSR_VOID_TAGS } from "./server-static.js";
 
 type RegionNode =
   | { readonly kind: "element"; readonly id: string; readonly tag: string; readonly attrs: readonly string[]; readonly children: readonly RegionNode[] }
+  | { readonly kind: "component"; readonly id: string; readonly children: readonly RegionNode[] }
   | { readonly kind: "literal"; readonly value: string }
   | { readonly kind: "data"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item" }
   | { readonly kind: "conditional"; readonly id: string; readonly path: readonly string[]; readonly yes: readonly RegionNode[]; readonly no: readonly RegionNode[] }
@@ -21,7 +23,11 @@ export interface RegionHydrationPlanV2 {
   readonly templateDigest: string;
   readonly nodes: readonly RegionNode[];
 }
-export interface RegionServerRequest extends CompileRequest { readonly routeId: string }
+export interface RegionServerRequest extends CompileRequest {
+  readonly routeId: string;
+  /** Named local TSX entry; defaults to Page when multiple functions exist. */
+  readonly entryComponent?: string;
+}
 export interface RegionServerCompileResult {
   readonly diagnostics: readonly CompilerDiagnostic[];
   readonly js: readonly GeneratedAsset[];
@@ -53,8 +59,34 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
   if (!ROUTE.test(request.routeId) || request.source.length > 262144)
     return reject("H4 requires a bounded source and safe route identity");
   const ir = optimizeIR(parseToIR(request).document);
-  if (ir.nodes.length !== 1 || ir.nodes[0]?.kind !== "StaticElement")
-    return reject("H4 requires a single native HTML root");
+  const sourceFile = ts.createSourceFile(request.fileName,request.source,
+    ts.ScriptTarget.ES2022,true,ts.ScriptKind.TSX);
+  const functions = new Map<string,IRNode>();
+  const unwrap = (expr:ts.Expression):ts.Expression =>
+    ts.isParenthesizedExpression(expr) ? unwrap(expr.expression) : expr;
+  for (const statement of sourceFile.statements) {
+    if (!ts.isFunctionDeclaration(statement) || !statement.name ||
+        !statement.body || statement.body.statements.length !== 1 ||
+        !ts.isReturnStatement(statement.body.statements[0])) continue;
+    const returned = statement.body.statements[0].expression;
+    if (!returned) continue;
+    const jsx = unwrap(returned);
+    if (!ts.isJsxElement(jsx) && !ts.isJsxSelfClosingElement(jsx)) continue;
+    if (statement.parameters.length > 1 ||
+        (statement.parameters[0] && (!ts.isIdentifier(statement.parameters[0].name) ||
+          statement.parameters[0].name.text !== "props"))) {
+      return reject("H4 component props must use one named props parameter");
+    }
+    const root = ir.nodes.find(node => node.span.start.offset === jsx.getStart(sourceFile));
+    if (!root) return reject("H4 component JSX could not be matched to compiler IR");
+    if (functions.has(statement.name.text)) return reject("Duplicate local H4 component");
+    functions.set(statement.name.text,root);
+  }
+  const entryName = request.entryComponent ?? "Page";
+  const root = functions.get(entryName) ??
+    (functions.size === 0 && ir.nodes.length === 1 ? ir.nodes[0] : undefined);
+  if (!root || root.kind !== "StaticElement")
+    return reject("H4 requires a named Page TSX root or a single native root");
   let ordinal = 0;
   let count = 0;
   const nestedRegion = (nodes:readonly RegionNode[]):boolean => nodes.some(node =>
@@ -122,7 +154,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     return output;
   };
   try {
-    const nodes = convert(ir.nodes);
+    const nodes = convert([root]);
     const templateDigest = hash(JSON.stringify(nodes));
     const markerId = hash("zaakiy-region-root:" + request.routeId + ":" + templateDigest).slice(0, 32);
     const hydrationPlan: RegionHydrationPlanV2 = {
@@ -177,6 +209,6 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     return { diagnostics: base.diagnostics, hydrationPlan,
       js: [{ fileName: request.fileName.replace(/\.[cm]?tsx?$/i, "") + ".region.server.js", code }] };
   } catch (error) {
-    return reject(error instanceof Error ? error.message : "Unsafe H4 region source", ir.nodes[0]?.span);
+    return reject(error instanceof Error ? error.message : "Unsafe H4 region source", root.span);
   }
 }
