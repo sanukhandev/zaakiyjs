@@ -3,10 +3,7 @@ import {provideServerRendering,withRoutes,RenderMode,ServerRoute} from "@angular
 import {RootComponent,clientProviders} from "./app";
 
 const serverRoutes:ServerRoute[]=[
-  {path:":size",renderMode:RenderMode.Prerender,
-    async getPrerenderParams(){return [
-      {size:"100"},{size:"1000"},{size:"10000"}
-    ];}}
+  {path:":size",renderMode:RenderMode.Server}
 ];
 export default function bootstrap(context:BootstrapContext){
   return bootstrapApplication(RootComponent,{
