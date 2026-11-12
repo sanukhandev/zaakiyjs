@@ -109,10 +109,10 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
   }
   const configured=new Set<string>();
   for(const module of request.componentModules??[]){
-    if(!/^\\.\\/[A-Za-z0-9_.\/-]+\\.[cm]?jsx?$/.test(module.specifier) ||
+    if(!new RegExp("^\\./[A-Za-z0-9_./-]+\\.[cm]?jsx?$").test(module.specifier) ||
         module.specifier.includes("..") || module.fileName.startsWith("/") ||
         module.fileName.split("/").includes("..") ||
-        !/^[A-Za-z0-9_.\/-]+\\.[cm]?tsx?$/.test(module.fileName) ||
+        !new RegExp("^[A-Za-z0-9_./-]+\\.[cm]?tsx?$").test(module.fileName) ||
         module.source.length>65536 || hash(module.source)!==module.digest ||
         configured.has(module.specifier)){
       return reject("H4 imported component requires unique pinned, relative source");
