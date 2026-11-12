@@ -38,7 +38,7 @@ export interface RegionHydrationBindingsV2 {
   readonly read: (path: readonly string[]) => unknown;
   readonly events?: readonly RegionHydrationEventV2[];
   /** Resolve compiled onClick={props.handle} references from trusted client code. */
-  readonly resolveEvent?: (path:readonly string[]) => EventListener;
+  readonly resolveEvent?: (path:readonly string[], currentItem?:()=>unknown) => EventListener;
   readonly signal?: AbortSignal;
 }
 const ID = /^[a-f0-9]{32}$/;
@@ -343,9 +343,10 @@ export function hydrateRegionPage(
   const targetElements=new Map<string,Element>();
   allElements(tree,targetElements);
   const events=[...(bindings.events??[])];
-  const compiledEvents:Array<Zone["compiledEvents"][number]> = [];
+  const compiledEvents:Array<{event:Zone["compiledEvents"][number];item:()=>unknown}> = [];
   const collectEvents=(target:Zone):void=>{
-    compiledEvents.push(...target.compiledEvents);
+    for(const event of target.compiledEvents)
+      compiledEvents.push({event,item:()=>target.item.value});
     for(const comp of target.components) collectEvents(comp.child);
     for(const condition of target.conditions) collectEvents(condition.child);
     for(const list of target.keyed) for(const row of list.rows) collectEvents(row.child);
@@ -353,8 +354,8 @@ export function hydrateRegionPage(
   collectEvents(tree);
   if(compiledEvents.length && typeof bindings.resolveEvent!=="function")
     mismatch("compiler event resolver required");
-  for(const event of compiledEvents){
-    const handler=bindings.resolveEvent!(event.path);
+  for(const {event,item} of compiledEvents){
+    const handler=bindings.resolveEvent!(event.path,item);
     if(typeof handler!=="function") mismatch("compiled event handler unavailable");
     events.push({elementId:event.elementId,name:event.name,handler});
   }
@@ -381,7 +382,7 @@ export function hydrateRegionPage(
       for(const descriptor of target.compiledEvents){
         if(descriptor.elementId!==id ||
             eventMap.get(id)?.some(event=>event.name===descriptor.name)) continue;
-        const handler=bindings.resolveEvent?.(descriptor.path);
+        const handler=bindings.resolveEvent?.(descriptor.path,()=>target.item.value);
         if(typeof handler!=="function") mismatch("missing compiled event handler");
         listen(owner,node,descriptor.name,handler);
       }
