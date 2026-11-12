@@ -17,7 +17,7 @@ if(!shell.includes("<h4-root") || !shell.includes("type=\"module\""))
   throw new Error("Angular AOT client script or root missing from generated shell");
 for(const size of [100,1000,10000]){
   const html=await renderApplication(bootstrap,{
-    document:shell,url:"http://localhost/angular/"+size+"/"
+    document:shell,url:"http://localhost/angular/"+size+"/",allowedHosts:["localhost"]
   });
   const matches=html.match(/data-key=/g)??[];
   if(matches.length!==size){
