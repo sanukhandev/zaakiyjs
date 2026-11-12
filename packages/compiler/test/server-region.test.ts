@@ -8,6 +8,30 @@ function build(source: string) {
   return compileRegionServer({ fileName, routeId: "products", source });
 }
 describe("H4 compiler-backed region SSR target", () => {
+  it("preserves standard row caps and restricts large-tier SSR to exactly 10k",async()=>{
+    const source="function Page(props:{rows:{id:string;name:string}[]}){return <main><ul>{props.rows.map(item=><li key={item.id}>{item.name}</li>)}</ul></main>;}";
+    const normal=build(source);
+    const large=compileRegionServer({fileName,routeId:"products",source,hydrationScale:"large"});
+    expect(normal.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    expect(large.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    expect(normal.hydrationPlan?.limits).toBeUndefined();
+    expect(large.hydrationPlan?.limits).toEqual({
+      maxRows:10000,maxNodes:50000,maxHtmlBytes:8388608
+    });
+    expect(normal.hydrationPlan?.templateDigest).not.toBe(large.hydrationPlan?.templateDigest);
+    const load=async(code:string)=>import("data:text/javascript;base64,"+
+      Buffer.from(code).toString("base64"));
+    const standardModule=await load(normal.js[0]!.code);
+    const largeModule=await load(large.js[0]!.code);
+    const context=(size:number)=>({
+      schema:"zaakiy.render/1",route:{id:"products"},request:{signal:{aborted:false}},
+      loaderData:{rows:Array.from({length:size},(_,i)=>({id:"key"+i,name:"N"+i}))}
+    });
+    expect(()=>standardModule.render(context(4097))).toThrow();
+    expect(largeModule.render(context(10000)).body).toContain("key9999");
+    expect(()=>largeModule.render(context(10001))).toThrow();
+  });
+
   it("emits deterministic conditional regions and data slot markers", () => {
     const source = "function Page(props: { active: boolean; name: string }) { return <main>{props.active ? <strong>{props.name}</strong> : <em>hidden</em>}</main>; }";
     const result = build(source);
