@@ -6,12 +6,14 @@
 import { bindText, listen, setText, setAttribute, bindConditionalRegion, bindKeyedRegion } from "@zaakiyjs/dom/compiler";
 import { hydrate } from "@zaakiyjs/dom";
 import type { HydrationMountHandle } from "@zaakiyjs/dom";
+import { createOwner, disposeOwner, initializeOwnedComponent, mountOwner, onMount, runWithOwner } from "@zaakiyjs/core";
 import type { OwnerScope } from "@zaakiyjs/core";
 import { inspectHydration } from "./client.js";
 import type { HydrationEnvelopeV1, TrustedServerBuildManifestV1 } from "./protocol.js";
 
 export type RegionNodeV2 =
   | { readonly kind: "element"; readonly id: string; readonly tag: string; readonly attrs: readonly string[]; readonly children: readonly RegionNodeV2[] }
+  | { readonly kind: "component"; readonly id: string; readonly children: readonly RegionNodeV2[] }
   | { readonly kind: "literal"; readonly value: string }
   | { readonly kind: "data"; readonly id: string; readonly source: "props" | "item"; readonly path: readonly string[] }
   | { readonly kind: "conditional"; readonly id: string; readonly path: readonly string[]; readonly yes: readonly RegionNodeV2[]; readonly no: readonly RegionNodeV2[] }
@@ -43,6 +45,7 @@ const ATTR = /^ ([a-z][a-z0-9:_-]*)="([^"]*)"$/;
 const EVENT = /^[a-z][a-z0-9:_-]*$/;
 const DENIED = new Set(["__proto__", "constructor", "prototype"]);
 const MAX_NODES = 8192;
+type ComponentNode = Extract<RegionNodeV2, {kind:"component"}>;
 type ConditionalNode = Extract<RegionNodeV2, {kind:"conditional"}>;
 type KeyedNode = Extract<RegionNodeV2, {kind:"keyed"}>;
 type DataNode = Extract<RegionNodeV2, {kind:"data"}>;
@@ -108,6 +111,10 @@ interface Slot {
   readonly end: Comment;
   item: unknown;
 }
+interface ComponentScope {
+  readonly spec: ComponentNode;
+  readonly child: Zone;
+}
 interface Condition {
   readonly spec: ConditionalNode;
   readonly parent: Node;
@@ -135,11 +142,12 @@ interface Zone {
   readonly key: string;
   readonly elements: Map<string, Element>;
   readonly slots: Slot[];
+  readonly components: ComponentScope[];
   readonly conditions: Condition[];
   readonly keyed: Keyed[];
 }
 function zone(key = ""): Zone {
-  return {key, elements:new Map(),slots:[],conditions:[],keyed:[]};
+  return {key, elements:new Map(),slots:[],components:[],conditions:[],keyed:[]};
 }
 /** No user callbacks are registered and no native mutations occur in preflight. */
 function inspect(container: Element, plan: RegionHydrationPlanV2,
@@ -199,6 +207,20 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
               cursor.nodeValue !== "zaakiy-d2:" + spec.id + ":end")
             mismatch("dynamic text end");
           target.slots.push({spec,text,end:cursor as Comment,item});
+          cursor=cursor.nextSibling;
+          break;
+        }
+        case "component": {
+          if (!ID.test(spec.id) || !Array.isArray(spec.children) ||
+              !cursor || cursor===end || cursor.nodeType!==8 ||
+              cursor.nodeValue!=="zaakiy-r2:"+spec.id+":start")
+            mismatch("component boundary start");
+          const child=zone(target.key);
+          cursor=scan(parent,cursor.nextSibling,end,spec.children,item,child,depth+1);
+          if (!cursor || cursor===end || cursor.nodeType!==8 ||
+              cursor.nodeValue!=="zaakiy-r2:"+spec.id+":end")
+            mismatch("component boundary end");
+          target.components.push({spec,child});
           cursor=cursor.nextSibling;
           break;
         }
@@ -271,6 +293,7 @@ function allElements(target:Zone, output:Map<string,Element>):void {
     if (output.has(id)) mismatch("duplicate element ID");
     output.set(id,node);
   }
+  for (const component of target.components) allElements(component.child,output);
   for (const conditional of target.conditions) allElements(conditional.child,output);
   for (const keyed of target.keyed)
     for (const row of keyed.rows) allElements(row.child,output);
@@ -383,6 +406,20 @@ export function hydrateRegionPage(
   const attachZone=(owner:OwnerScope,target:Zone):void=>{
     attachSlots(owner,target.slots);
     attachElements(owner,target.elements);
+    for (const component of target.components) {
+      const child=createOwner(owner);
+      try {
+        initializeOwnedComponent(child,()=>attachZone(child,component.child));
+        if (owner.state==="created" || owner.state==="initialized") {
+          runWithOwner(owner,()=>onMount(()=>{
+            if (!child.disposed) mountOwner(child);
+          }));
+        } else mountOwner(child);
+      } catch(error) {
+        try {disposeOwner(child);} catch { /* original attachment failure takes precedence */ }
+        throw error;
+      }
+    }
     for (const condition of target.conditions) {
       bindConditionalRegion(owner,
         {parent:condition.parent,start:condition.start,end:condition.end},
