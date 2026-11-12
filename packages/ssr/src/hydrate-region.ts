@@ -368,10 +368,18 @@ export function hydrateRegionPage(
   if (bindings.signal?.aborted) mismatch("navigation canceled");
   const inserted:Text[]=[];
   const read=bindings.read;
-  const attachElements=(owner:OwnerScope,nodes:ReadonlyMap<string,Element>):void=>{
-    for (const [id,node] of nodes)
-      for (const event of eventMap.get(id)??[])
+  const attachElements=(owner:OwnerScope,target:Zone):void=>{
+    for(const [id,node] of target.elements){
+      for(const event of eventMap.get(id)??[])
         listen(owner,node,event.name,event.handler,event.options);
+      for(const descriptor of target.compiledEvents){
+        if(descriptor.elementId!==id ||
+            eventMap.get(id)?.some(event=>event.name===descriptor.name)) continue;
+        const handler=bindings.resolveEvent?.(descriptor.path);
+        if(typeof handler!=="function") mismatch("missing compiled event handler");
+        listen(owner,node,descriptor.name,handler);
+      }
+    }
   };
   const attachSlots=(owner:OwnerScope,slots:readonly Slot[]):void=>{
     for (const slot of slots) {
@@ -484,7 +492,7 @@ export function hydrateRegionPage(
   };
   const attachZone=(owner:OwnerScope,target:Zone):void=>{
     attachSlots(owner,target.slots);
-    attachElements(owner,target.elements);
+    attachElements(owner,target);
     for (const component of target.components) {
       const child=createOwner(owner);
       try {
