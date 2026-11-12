@@ -193,7 +193,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     aliases?:ReadonlyMap<string,BoundValue>):string=>{
     const parsed=ts.createSourceFile("zaakiy-event.tsx",
       "const __handler = "+source+";",ts.ScriptTarget.ES2022,true,ts.ScriptKind.TSX);
-    if(parsed.parseDiagnostics.length || parsed.statements.length!==1)
+    if(((parsed as ts.SourceFile & {parseDiagnostics?:readonly ts.Diagnostic[]}).parseDiagnostics?.length??0)>0 || parsed.statements.length!==1)
       throw new TypeError("H4 inline JSX handler syntax unsupported");
     const stmt=parsed.statements[0];
     if(!stmt || !ts.isVariableStatement(stmt)) throw new TypeError("Invalid H4 handler AST");
@@ -220,7 +220,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     const args=expr.body.arguments.map(argument=>{
       if(ts.isSpreadElement(argument)) throw new TypeError("H4 event spread calls forbidden");
       if(ts.isStringLiteral(argument)) return JSON.stringify(argument.text);
-      if(ts.isNumericLiteral(argument)) return String(Number(argument.text));
+      if(ts.isNumericLiteral(argument)) {const numeric=Number(argument.text);if(!Number.isFinite(numeric)) throw new TypeError("Invalid numeric handler argument");return String(numeric);}
       if(argument.kind===ts.SyntaxKind.TrueKeyword) return "true";
       if(argument.kind===ts.SyntaxKind.FalseKeyword) return "false";
       if(argument.kind===ts.SyntaxKind.NullKeyword) return "null";
@@ -228,7 +228,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       const bound=resolve(dotted(argument),itemName,aliases);
       return jsPath(bound.source==="item"?"getItem()":"props",bound.path);
     });
-    return "("+["event"].join(",")+")=>"+jsPath("props",callPath.path)+"("+args.join(",")+")";
+    return "(event)=>"+jsPath("props",callPath.path)+"("+args.join(",")+")";
   };
   const convert = (nodes: readonly IRNode[], itemName?: string, depth = 0,
     aliases?: ReadonlyMap<string,BoundValue>, stack: readonly string[] = [],
