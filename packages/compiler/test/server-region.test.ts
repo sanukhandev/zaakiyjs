@@ -7,7 +7,7 @@ function build(source: string) {
 }
 describe("H4 compiler-backed region SSR target", () => {
   it("emits deterministic conditional regions and data slot markers", () => {
-    const source = "function Page(props: { active: boolean; name: string }) { return <main>{props.active ? <b>{props.name}</b> : <i>hidden</i>}</main>; }";
+    const source = "function Page(props: { active: boolean; name: string }) { return <main>{props.active ? <strong>{props.name}</strong> : <em>hidden</em>}</main>; }";
     const result = build(source);
     expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
     expect(result.js).toHaveLength(1);
