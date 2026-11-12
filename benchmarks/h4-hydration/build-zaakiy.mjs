@@ -42,7 +42,7 @@ await writeFile(client,[
   'const first=[...host.querySelectorAll("[data-key]")];',
   'const input=host.querySelector("input");const button=host.querySelector("button");',
   'input.value="visitor draft";input.focus();',
-  'const rows=Array.from({length:size},(_,i)=>({id:"row-"+i,label:"Row "+i}));',
+  'const rows=Array.from({length:size},(_,i)=>({id:"row_"+i,label:"Row "+i}));',
   'const state=signal({count:0,shown:true,rows});',
   'const observe=new MutationObserver(()=>{});',
   'observe.observe(host,{subtree:true,childList:true,attributes:true,characterData:true});',
@@ -80,7 +80,7 @@ const variant={schema:"zaakiy.h4-reference/1",buildId:manifest.buildId,
   clientSha256:createHash("sha256").update(await readFile(join(root,"zaakiyjs.js"))).digest("hex"),
   generatedCases:[],rejectedCases:[]};
 for(const size of [100,1000,10000]){
-  const rows=Array.from({length:size},(_,i)=>({id:"row-"+i,label:"Row "+i}));
+  const rows=Array.from({length:size},(_,i)=>({id:"row_"+i,label:"Row "+i}));
   try{
     const html=module.render({schema:"zaakiy.render/1",
       route:{id:"h4benchmark"},request:{signal:new AbortController().signal},
