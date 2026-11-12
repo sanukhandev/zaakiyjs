@@ -384,63 +384,103 @@ export function hydrateRegionPage(
         ? read(slot.spec.path):own(slot.item,slot.spec.path));
     }
   };
-  const updateSlots=(slots:readonly Slot[],item:unknown):void=>{
-    const changes=slots.filter(slot=>slot.spec.source==="item").map(slot=>({
+  const updateSlots=(target:Zone,item:unknown):void=>{
+    target.item=item;
+    const changes=target.slots.filter(slot=>slot.spec.source==="item").map(slot=>({
       slot,value:textOf(own(item,slot.spec.path))
     }));
-    for (const change of changes) {
+    for(const change of changes){
       change.slot.item=item;
-      if (change.slot.text) setText(change.slot.text,change.value);
+      if(change.slot.text) setText(change.slot.text,change.value);
     }
+    for(const component of target.components) updateSlots(component.child,item);
+    for(const condition of target.conditions) updateSlots(condition.child,item);
   };
-  const buildStatic=(spec:RegionNodeV2,owner:OwnerScope,
-    doc:Document,item:unknown,key:string,newSlots:Slot[]):Node=>{
-    if (spec.kind==="literal") return doc.createTextNode(spec.value);
-    if (spec.kind==="data") {
-      const wrap=doc.createDocumentFragment();
-      const start=doc.createComment("zaakiy-d2:"+spec.id+":start");
-      const data=doc.createTextNode(textOf(spec.source==="props"?read(spec.path):own(item,spec.path)));
-      const end=doc.createComment("zaakiy-d2:"+spec.id+":end");
-      wrap.append(start,data,end);
-      const slot:Slot={spec,text:data,end,item};
-      newSlots.push(slot);
-      bindText(owner,data,()=>spec.source==="props"?read(spec.path):own(slot.item,spec.path));
-      return wrap;
-    }
-    if (spec.kind!=="element" || !ID.test(spec.id) ||
-        !/^[a-z][a-z0-9-]*$/.test(spec.tag))
-      mismatch("dynamic branch cannot contain nested region");
-    const el=doc.createElement(spec.tag);
-    for (const raw of spec.attrs) {
-      const parsed=ATTR.exec(raw);
-      if (!parsed) mismatch("invalid generated attribute");
-      setAttribute(el,parsed[1]!,decodeAttr(parsed[2]!));
-    }
-    const id=spec.id+(key?":"+key:"");
-    for (const event of eventMap.get(id)??[])
-      listen(owner,el,event.name,event.handler,event.options);
-    for(const event of spec.events??[]){
-      if(eventMap.get(id)?.some(binding=>binding.name===event.name)) continue;
-      const handler=bindings.resolveEvent?.(event.path);
-      if(typeof handler!=="function") mismatch("missing compiled event handler");
-      listen(owner,el,event.name,handler);
-    }
-    for (const child of spec.children)
-      el.appendChild(buildStatic(child,owner,doc,item,key,newSlots));
-    return el;
-  };
-  const buildBranch=(specs:readonly RegionNodeV2[],owner:OwnerScope,key:string):Node=>{
+  /**
+   * Build only inert native nodes, then run the exact same structural preflight
+   * as existing SSR markup. Ownership is attached after the fragment is inserted.
+   * No HTML parser, eval or second JSX renderer.
+   */
+  const stage=(specs:readonly RegionNodeV2[],item:unknown,key:string):{
+    readonly fragment:DocumentFragment;readonly discovered:Zone;
+  }=>{
     const doc=container.ownerDocument;
+    let nodes=0;
+    const draw=(items:readonly RegionNodeV2[],row:unknown,depth:number):DocumentFragment=>{
+      if(depth>64 || !Array.isArray(items)) mismatch("dynamic region depth");
+      const fragment=doc.createDocumentFragment();
+      for(const spec of items){
+        if(++nodes>MAX_NODES) mismatch("dynamic region node budget");
+        if(spec.kind==="literal"){
+          fragment.appendChild(doc.createTextNode(spec.value));
+        } else if(spec.kind==="data"){
+          fragment.appendChild(doc.createComment("zaakiy-d2:"+spec.id+":start"));
+          const value=textOf(spec.source==="props"?read(spec.path):own(row,spec.path));
+          if(value) fragment.appendChild(doc.createTextNode(value));
+          fragment.appendChild(doc.createComment("zaakiy-d2:"+spec.id+":end"));
+        } else if(spec.kind==="element"){
+          if(!ID.test(spec.id) || !/^[a-z][a-z0-9-]*$/.test(spec.tag))
+            mismatch("invalid native element template");
+          const el=doc.createElement(spec.tag);
+          for(const raw of spec.attrs){
+            const parsed=ATTR.exec(raw);
+            if(!parsed) mismatch("invalid compiled attribute");
+            setAttribute(el,parsed[1]!,decodeAttr(parsed[2]!));
+          }
+          el.appendChild(draw(spec.children,row,depth+1));
+          fragment.appendChild(el);
+        } else if(spec.kind==="component"){
+          fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":start"));
+          fragment.appendChild(draw(spec.children,row,depth+1));
+          fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":end"));
+        } else if(spec.kind==="conditional"){
+          fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":start"));
+          fragment.appendChild(draw(read(spec.path)?spec.yes:spec.no,row,depth+1));
+          fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":end"));
+        } else if(spec.kind==="keyed"){
+          const rows=read(spec.path);
+          if(!Array.isArray(rows) || rows.length>4096)
+            mismatch("invalid nested keyed data");
+          const keys=new Set<string>();
+          fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":start"));
+          for(const entry of rows){
+            const rowKeyValue=rowKey(entry,spec.key);
+            if(keys.has(rowKeyValue)) mismatch("duplicate nested keyed identity");
+            keys.add(rowKeyValue);
+            fragment.appendChild(doc.createComment("zaakiy-k2:"+spec.id+":"+rowKeyValue+":start"));
+            fragment.appendChild(draw(spec.rows,entry,depth+1));
+            fragment.appendChild(doc.createComment("zaakiy-k2:"+spec.id+":"+rowKeyValue+":end"));
+          }
+          fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":end"));
+        } else mismatch("unrecognized native region node");
+      }
+      return fragment;
+    };
+    const fake=doc.createElement("section");
+    const root=doc.createElement("div");
+    root.appendChild(draw(specs,item,0));
+    fake.append(doc.createComment("zaakiy-h:"+plan.markerId+":"+plan.templateDigest),root);
+    const synthetic:RegionHydrationPlanV2={
+      ...plan,nodes:[{kind:"element",id:"0".repeat(32),
+        tag:"div",attrs:[],children:specs}]
+    };
+    const discovered=inspect(fake,synthetic,read,item,key);
     const fragment=doc.createDocumentFragment();
-    const slots:Slot[]=[];
-    for (const spec of specs) fragment.appendChild(buildStatic(spec,owner,doc,null,key,slots));
-    return fragment;
+    while(root.firstChild) fragment.appendChild(root.firstChild);
+    return {fragment,discovered};
+  };
+  const buildBranch=(specs:readonly RegionNodeV2[],owner:OwnerScope,item:unknown,key:string):Node=>{
+    const prepared=stage(specs,item,key);
+    onMount(()=>attachZone(owner,prepared.discovered));
+    return prepared.fragment;
   };
   const buildRow=(spec:KeyedNode,owner:OwnerScope,item:unknown,key:string)=>{
-    const slots:Slot[]=[];
-    const node=buildStatic(spec.rows[0]!,owner,container.ownerDocument,item,key,slots);
-    if (node.nodeType!==1) mismatch("keyed item requires native element root");
-    return {node,update(next:unknown){updateSlots(slots,next);}};
+    const prepared=stage(spec.rows,item,key);
+    const node=prepared.fragment.firstChild;
+    if(!node || node.nodeType!==1 || prepared.fragment.childNodes.length!==1)
+      mismatch("keyed item requires a single native element");
+    onMount(()=>attachZone(owner,prepared.discovered));
+    return {node,update(next:unknown){updateSlots(prepared.discovered,next);}};
   };
   const attachZone=(owner:OwnerScope,target:Zone):void=>{
     attachSlots(owner,target.slots);
@@ -463,8 +503,8 @@ export function hydrateRegionPage(
       bindConditionalRegion(owner,
         {parent:condition.start.parentNode!,start:condition.start,end:condition.end},
         ()=>Boolean(read(condition.spec.path)),
-        child=>buildBranch(condition.spec.yes,child,target.key),
-        child=>buildBranch(condition.spec.no,child,target.key),
+        child=>buildBranch(condition.spec.yes,child,target.item,target.key),
+        child=>buildBranch(condition.spec.no,child,target.item,target.key),
         {initialBranch:condition.shown,preserveMarkupOnDispose:true,
           adopt:child=>attachZone(child,condition.child)});
     }
@@ -482,7 +522,7 @@ export function hydrateRegionPage(
           key:row.key,item:row.item,start:row.start,end:row.end,
           adopt:(_item,child)=>{
             attachZone(child,row.child);
-            return {node:row.node,update(next:unknown){updateSlots(row.child.slots,next);}};
+            return {node:row.node,update(next:unknown){updateSlots(row.child,next);}};
           }
         })),preserveMarkupOnDispose:true,
         markerForKey:(key,doc)=>({
