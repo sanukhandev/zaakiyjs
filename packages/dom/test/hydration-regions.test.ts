@@ -18,11 +18,11 @@ describe("H4 adopted native DOM region reconciliation", () => {
     let cleanups = 0;
     initializeOwnedComponent(root, () => {
       bindConditionalRegion(root, {parent,start,end}, () => shown.value,
-        _child => {
+        () => {
           const next = document.createElement("em");
           next.textContent = "new true";
           return next;
-        }, child => {
+        }, () => {
           const alternate = document.createElement("p");
           alternate.textContent = "hidden";
           return alternate;
@@ -68,9 +68,9 @@ describe("H4 adopted native DOM region reconciliation", () => {
         },
         {initial:[
           {key:"a",item:rows.value[0]!,start:aStart,end:aEnd,
-            adopt:(_item,_owner) => {onCleanup(()=>{released++;});return {node:a,update(next){a.value=next.label;}};}},
+            adopt:() => {onCleanup(()=>{released++;});return {node:a,update(next){a.value=next.label;}};}},
           {key:"b",item:rows.value[1]!,start:bStart,end:bEnd,
-            adopt:(_item,owner) => {onCleanup(()=>{released++;});return {node:b,update(next){b.value=next.label;}};}}
+            adopt:() => {onCleanup(()=>{released++;});return {node:b,update(next){b.value=next.label;}};}}
         ],preserveMarkupOnDispose:true});
     });
     mountOwner(root);
