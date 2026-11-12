@@ -63,13 +63,13 @@ jobs:
         run: |
           python3 -m py_compile benchmarks/h4-hydration/measure.py
           for framework in react vue zaakiyjs; do
-            for size in 100 1000; do
+            for size in 100 1000 10000; do
               test -s "benchmark-artifacts/h4-hydration-sites/$framework/$size/index.html"
             done
           done
-          node -e "const f=require('./benchmark-artifacts/h4-hydration-sites/zaakiyjs-build.json');if(!f.rejectedCases.some(x=>x.size===10000))throw Error('Expected explicit H4 row-budget rejection to be captured')"
+          node -e "const f=require('./benchmark-artifacts/h4-hydration-sites/zaakiyjs-build.json');if(f.rejectedCases.length||f.generatedCases.length!==3)throw Error('H4 compiler SSR scale gate failed: '+JSON.stringify(f))"
           echo 'React/Vue/ZaakiyJS reference build successful.'
-          echo 'CERTIFICATION INCOMPLETE: Angular SSR reference and ZaakiyJS 10000 hydration remain unavailable.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Build-only evidence: full four-framework browser matrix and pinned transitive lock are separate gates.' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload immutable reference sources, resolved graph and production artifacts
         if: always()
         uses: actions/upload-artifact@v4
