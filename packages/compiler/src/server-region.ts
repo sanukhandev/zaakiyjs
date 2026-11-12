@@ -14,7 +14,7 @@ type RegionNode =
   | { readonly kind: "component"; readonly id: string; readonly children: readonly RegionNode[] }
   | { readonly kind: "literal"; readonly value: string }
   | { readonly kind: "data"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item" }
-  | { readonly kind: "conditional"; readonly id: string; readonly path: readonly string[]; readonly yes: readonly RegionNode[]; readonly no: readonly RegionNode[] }
+  | { readonly kind: "conditional"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item"; readonly yes: readonly RegionNode[]; readonly no: readonly RegionNode[] }
   | { readonly kind: "keyed"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item"; readonly itemName: string; readonly key: string; readonly rows: readonly RegionNode[] };
 export interface RegionHydrationPlanV2 {
   readonly schema: "zaakiy.region-hydration/2";
@@ -236,8 +236,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           const yes = convert(node.whenTrue, itemName, depth + 1,aliases,stack,slots);
           const no = convert(node.whenFalse, itemName, depth + 1,aliases,stack);
           const condition=resolve(node.condition.source,itemName,aliases);
-          if (condition.source!=="props") throw new TypeError("H4 conditional requires root data");
-          output.push({ kind: "conditional", id, path: condition.path,yes,no });
+          output.push({ kind: "conditional", id, path: condition.path,source:condition.source,yes,no });
           break;
         }
         case "KeyedLoop": {
@@ -326,7 +325,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " result += draw(node.children,props,item,budget,depth+1);",
       " result += '<!--zaakiy-r2:' + node.id + ':end-->'; }",
       " else if (node.kind === 'conditional') { result += '<!--zaakiy-r2:' + node.id + ':start-->';",
-      " result += draw(own(props,node.path) ? node.yes : node.no,props,item,budget,depth+1);",
+      " result += draw(own(node.source === 'item' ? item : props,node.path) ? node.yes : node.no,props,item,budget,depth+1);",
       " result += '<!--zaakiy-r2:' + node.id + ':end-->'; }",
       " else if (node.kind === 'keyed') { const rows = own(node.source === 'item' ? item : props,node.path);",
       " if (!Array.isArray(rows) || rows.length > 4096) throw new TypeError('H4 keyed data must be bounded array');",
