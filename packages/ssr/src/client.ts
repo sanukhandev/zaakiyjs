@@ -92,3 +92,6 @@ export { hydrateOwnedBoundary } from "./hydration-boundary.js";
 export type { OwnedHydrationBoundary, OwnedBoundaryHydrationOptions, OwnedBoundaryHydrationHandle } from "./hydration-boundary.js";
 
 export { hydrateDataRoute } from "./hydration-route.js";
+
+export { hydrateRegionPage } from "./hydrate-region.js";
+export type { RegionNodeV2, RegionHydrationPlanV2, RegionHydrationEventV2, RegionHydrationBindingsV2 } from "./hydrate-region.js";
