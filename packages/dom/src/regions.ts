@@ -276,6 +276,10 @@ export interface KeyedHydrationSeed<Key, Item> {
   readonly initial: readonly KeyedHydrationEntry<Key, Item>[];
   /** Preserve the server/native tree on hydration-owner disposal. */
   readonly preserveMarkupOnDispose?: boolean;
+  /** Create versioned keyed markers for newly inserted rows after adoption. */
+  readonly markerForKey?: (key: Key, document: Document) => {
+    readonly start: Comment; readonly end: Comment;
+  };
 }
 
 interface RecordEntry<Key, Item> {
@@ -577,8 +581,13 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
               throw error;
             }
             const doc = region.parent.ownerDocument ?? (region.parent as Document);
-            const start = doc.createComment("zaakiy-item:start");
-            const end = doc.createComment("zaakiy-item:end");
+            const markers = hydration?.markerForKey?.(key, doc);
+            const start = markers?.start ?? doc.createComment("zaakiy-item:start");
+            const end = markers?.end ?? doc.createComment("zaakiy-item:end");
+            if (start.nodeType !== 8 || end.nodeType !== 8 ||
+                start === end || start.parentNode || end.parentNode) {
+              throw new TypeError("Invalid keyed hydration markers");
+            }
             const fragment = doc.createDocumentFragment();
             fragment.appendChild(start);
             fragment.appendChild(view.node);
