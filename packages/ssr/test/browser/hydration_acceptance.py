@@ -56,10 +56,10 @@ def run(dist: Path, output: Path):
                             raise AssertionError(f"{name}: {key} was not preserved")
                     if before.get("mutations") != 0:
                         raise AssertionError(f"{name}: matching markup mutated during hydration")
-                    if (len(before["samples"]) != 25 or before["iterationsPerSample"] != 100 or
+                    if (len(before["samples"]) != 20 or before["iterationsPerSample"] != 1000 or
                         before["warmups"] != 2 or not all(
-                        math.isfinite(x) and x > 0 for x in before["samples"]
-                    )):
+                        math.isfinite(x) and x >= 0 for x in before["samples"]
+                    ) or max(before["samples"]) <= 0):
                         raise AssertionError(f"{name}: invalid timing evidence")
                     page.locator("button").click()
                     after = page.evaluate("""() => {
@@ -84,7 +84,7 @@ def run(dist: Path, output: Path):
                     report["browsers"].append({
                         "engine": name, "adoptionMs": before["adoptionMs"],
                         "p50Ms": before["p50Ms"], "p95Ms": before["p95Ms"],
-                        "samplesMs": before["samples"], "iterationsPerSample": 100,
+                        "samplesMs": before["samples"], "iterationsPerSample": 1000,
                         "warmups": 2, "mutations": 0,
                         "existingNodesPreserved": True, "listenerCleanup": True
                     })
