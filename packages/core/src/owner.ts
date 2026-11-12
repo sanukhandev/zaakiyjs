@@ -17,7 +17,8 @@ let currentOwner: OwnerScope | null = null;
 class Scope implements OwnerScope {
   parent: Scope | null;
   state: OwnerState = "created";
-  private readonly children = new Set<Scope>();
+  // Most component owners are leaves; allocate a child set only on demand.
+  private children: Set<Scope> | null = null;
   private readonly cleanups: Cleanup[] = [];
   private readonly mountCallbacks: Cleanup[] = [];
   readonly providers = new Map<symbol, unknown>();
@@ -29,7 +30,7 @@ class Scope implements OwnerScope {
 
   constructor(parent: Scope | null) {
     this.parent = parent;
-    parent?.children.add(this);
+    if (parent) (parent.children ??= new Set()).add(this);
   }
 
   get disposed(): boolean {
@@ -76,7 +77,7 @@ class Scope implements OwnerScope {
     try {
       // Mount descendants before ancestors, after the DOM subtree has been inserted.
       // Dynamic owners created later must be mounted explicitly by the DOM adapter.
-      for (const child of [...this.children]) {
+      for (const child of [...(this.children ?? [])]) {
         if (child.disposed) continue;
         if (child.state === "created" || child.state === "initialized") {
           child.mount();
@@ -113,14 +114,14 @@ class Scope implements OwnerScope {
       if (cursor === this) throw new Error("Owner transfer would create a cycle");
     }
     if (this.parent === parent) return;
-    this.parent.children.delete(this);
+    this.parent.children?.delete(this);
     this.parent = parent;
-    parent.children.add(this);
+    (parent.children ??= new Set()).add(this);
   }
 
   /** True if a descendant is executing cleanup and still needs our providers. */
   private hasActiveDescendantCleanup(): boolean {
-    for (const child of this.children) {
+    for (const child of this.children ?? []) {
       if (child.cleanupInProgress || child.hasActiveDescendantCleanup()) return true;
     }
     return false;
@@ -146,8 +147,8 @@ class Scope implements OwnerScope {
     this.cleanupInProgress = true;
     const errors: unknown[] = [];
     try {
-      const children = [...this.children].reverse();
-      this.children.clear();
+      const children = [...(this.children ?? [])].reverse();
+      this.children?.clear();
       for (const child of children) {
         try { child.dispose(); } catch (error) { errors.push(error); }
       }
@@ -173,7 +174,7 @@ class Scope implements OwnerScope {
       for (let cursor = parent; cursor !== null; cursor = cursor.parent) {
         ancestors.push(cursor);
       }
-      parent?.children.delete(this);
+      parent?.children?.delete(this);
       this.parent = null; // Retained disposed scopes must not retain their app.
       this.cleanupInProgress = false;
       // Every pending ancestor now gets a chance to finish, child-first.
