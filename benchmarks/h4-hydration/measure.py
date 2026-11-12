@@ -79,7 +79,7 @@ def run(args):
                                 page = browser.new_page(viewport={"width":1280,"height":900})
                                 errors = []
                                 page.on("pageerror", lambda err: errors.append(str(err)))
-                                url = f"http://127.0.0.1:{serve.server_port}/{framework}/{size}/index.html"
+                                url = f"http://127.0.0.1:{serve.server_port}/{framework}/{size}/"
                                 try:
                                     page.goto(url, wait_until="load", timeout=90000)
                                     page.wait_for_function(
