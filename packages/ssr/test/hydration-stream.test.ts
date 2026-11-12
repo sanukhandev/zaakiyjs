@@ -19,9 +19,14 @@ describe("H5 bounded ordered streaming payload", () => {
   it("refuses out-of-order, duplicate and cross-route fragments", () => {
     const a = createHydrationStreamAssembler(options);
     expect(() => a.push(data(1, "late"))).toThrow();
-    expect(a.push(data(0, "ok"))).toBeNull();
-    expect(() => a.push(data(0, "again"))).toThrow();
-    expect(() => a.push({ ...data(1, "wrong"), routeId: "different" })).toThrow();
+    expect(() => a.push(data(0, "ok"))).toThrow(/aborted/);
+    const b = createHydrationStreamAssembler(options);
+    expect(b.push(data(0, "ok"))).toBeNull();
+    expect(() => b.push(data(0, "again"))).toThrow();
+    expect(() => b.push(data(1, "later"))).toThrow(/aborted/);
+    const c = createHydrationStreamAssembler(options);
+    expect(() => c.push({ ...data(0, "wrong"), routeId: "different" })).toThrow();
+    expect(() => c.push(data(0, "ok"))).toThrow(/aborted/);
   });
   it("enforces byte, fragment and abort budgets", () => {
     const controller = new AbortController();
