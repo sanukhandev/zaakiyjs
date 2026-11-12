@@ -47,7 +47,7 @@ This example uses **trusted application-supplied placeholders**; it is not a dro
 ## Usage and correctness guidelines
 
 - `@zaakiyjs/ssr` root is protocol/types; server functions live under `/node`, build helpers under `/build`, read-only checks under `/client`.
-- Hydration inspection checks markers but does not attach event listeners or adopt existing DOM nodes.
+- Hydration inspection alone checks markers; the optional `hydrateDataPage` API adopts only strictly validated data-bound SSR nodes and can attach explicitly declared client event handlers.
 - Default response caching is no-store; public/shared caches require explicit authorization and partition policy.
 
 ## Public API index
@@ -57,6 +57,11 @@ Exported symbols detected in the package root `src/index.ts`. Platform-specific 
 - `CacheScopeV1`
 - `HYDRATION_PROTOCOL`
 - `HydrationEnvelopeV1`
+- `DataHydrationNodeV1`
+- `DataHydrationPlanV1`
+- `DataHydrationElementV1`
+- `DataHydrationTextV1`
+- `DataHydrationSlotV1`
 - `HydrationMismatchV1`
 - `MANIFEST_PROTOCOL`
 - `NodeServerAdapterV1`
@@ -81,7 +86,7 @@ Exported symbols detected in the package root `src/index.ts`. Platform-specific 
 - `@zaakiyjs/ssr`: browser-safe schema IDs and TypeScript protocol declarations.
 - `@zaakiyjs/ssr/node`: `createNodeServerAdapter`, `MemoryRenderCache`, `createCacheInvalidator`, `verifyTrustedManifest`, head/hydration serializers.
 - `@zaakiyjs/ssr/build`: bounded `prerenderStatic`, strict manifest verification.
-- `@zaakiyjs/ssr/client`: `inspectHydration` performs read-only browser markup/manifest checks; **does not attach listeners or claim hydration**.
+- `@zaakiyjs/ssr/client`: `inspectHydration` performs read-only preflight. Opt-in `hydrateDataPage` now verifies and adopts existing native nodes for the compiler's restricted data-bound SSR subset, with owner-scoped text/event bindings. It is not general TSX component hydration.
 
 The Node bridge consumes deployment-controlled modules under `TrustedServerBuildManifestV1`. The `sourceDigest` is matched against the pinned registration metadata; verifying that it matches the **actual compiled module byte contents** must happen in the build pipeline (not yet available). Never populate the registry from an HTTP request, arbitrary dynamic import path, TSX expression source, or unverified source code. A handcrafted test module proves only infrastructure behavior, not compiler support.
 
@@ -145,3 +150,10 @@ No quantified bundle-size/latency/memory improvement is claimed until measured. 
 - [Public source exports](https://github.com/sanukhandev/zaakiyjs/blob/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/ssr/src/index.ts)
 - [Package test cases](https://github.com/sanukhandev/zaakiyjs/tree/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/ssr/test)
 - Update this page when public APIs, runtime semantics or platform guarantees change.
+
+
+### Data-bound native hydration (H0–H3 initial vertical slice)
+
+This opt-in path is intentionally narrow. Build-time `compileDataServer({ ..., hydratable: true })` emits a `hydrationPlan` with stable IDs and comment markers. Deployment code must deliver a matching `HydrationEnvelopeV1` with the verified buildId and route. The browser imports `hydrateDataPage` from `@zaakiyjs/ssr/client` and supplies a trusted reactive read function and optional event handlers keyed by the compiler's element IDs. A matching page retains all server-rendered nodes and input state; owner disposal unregisters listeners and effects without removing server markup. Invalid structure, mismatched initial values, bad routes/builds or unexpected attributes fail before attachment.
+
+This subset does **not** support compiler-generated JSX event expressions, arbitrary TSX components, keyed lists, conditional regions or automatic client bundle generation. Normal `compileDataServer` output remains byte-compatible when `hydratable` is disabled.

@@ -60,6 +60,8 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `MountFactory`
 - `MountHandle`
 - `MountResult`
+- `HydrationMountHandle`
+- `hydrate`
 - `Namespace`
 - `foundationStatus`
 - `mount`
@@ -146,3 +148,8 @@ The additive `createOwnedNativeSlot(owner, factory)` helper at `@zaakiyjs/dom/co
 ### Compiler-generated default slots (IR v2)
 
 The `@zaakiyjs/dom/compiler` subpath exports the branded, one-shot `mountOwnedSlot` outlet helper alongside `createOwnedNativeSlot`. With `componentSlots: true`, the compiler creates the slot under the caller's Core owner and inserts it at `{props.children}` in a native callee element. The child owner is disposed with the caller, including portal-host placement. Default IR v1 rendering and manual slot APIs remain unchanged. See [ADR 0013](../../adr/0013-component-slots-ir2.md).
+
+
+### Native hydration owner (H2)
+
+`hydrate(existingNode, (owner, existing) => { /* attach verified bindings */ })` initializes one owner for an existing DOM root, never clones/replaces it, rejects duplicate adoption and disposes owner-scoped effects/listeners without deleting SSR markup. It does **not** validate server markup itself; use `hydrateDataPage` from `@zaakiyjs/ssr/client` for the approved compiler-generated data SSR subset and the pinned manifest/marker preflight.

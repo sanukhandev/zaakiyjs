@@ -75,3 +75,6 @@ export function inspectHydration(
   }
   return { compatible: true };
 }
+
+export { hydrateDataPage } from "./hydrate-data.js";
+export type { DataHydrationBindings, DataHydrationHandle, HydrationEventV1 } from "./hydrate-data.js";

@@ -48,7 +48,8 @@
   },
   "dependencies": {
     "@zaakiyjs/core": "workspace:^",
-    "@zaakiyjs/router": "workspace:^"
+    "@zaakiyjs/router": "workspace:^",
+    "@zaakiyjs/dom": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "22.15.30"

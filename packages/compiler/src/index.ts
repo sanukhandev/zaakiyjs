@@ -38,6 +38,7 @@ export { compileStaticServer } from "./server-static.js";
 export type { StaticServerRequest, StaticServerCompileResult } from "./server-static.js";
 export { compileDataServer } from "./server-data.js";
 export type { DataServerRequest, DataServerCompileResult } from "./server-data.js";
+export type { DataHydrationPlanV1, HydrationNodeV1, HydrationElementV1, HydrationSlotV1 } from "./server-hydration-plan.js";
 
 /** Analyze a TSX source and return a stable JSON-serializable IR v1 document. */
 export function parseToIR(request: CompileRequest): { document: IRDocument; diagnostics: readonly CompilerDiagnostic[] } {

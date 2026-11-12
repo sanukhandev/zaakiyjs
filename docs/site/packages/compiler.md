@@ -55,6 +55,10 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `CompileResult`
 - `DataServerCompileResult`
 - `DataServerRequest`
+- `DataHydrationPlanV1`
+- `HydrationNodeV1`
+- `HydrationElementV1`
+- `HydrationSlotV1`
 - `CompilerDiagnostic`
 - `ComponentCall`
 - `ConditionalBlock`
@@ -204,3 +208,8 @@ This is **server rendering only**, not native DOM hydration or component composi
 ### Opt-in default JSX component children — IR v2
 
 Use `componentSlots: true` in `zaakiyPlugin` or `compile` to opt into a separate IR v2 syntax: `<Panel><button>Open</button></Panel>` passes a lazy, caller-owned native slot; `<section>{props.children}</section>` mounts the slot into a native host exactly once. The callee should type the authoring prop as `JSXChild` from `@zaakiyjs/core/jsx-runtime`. Runtime ownership, cleanup and portal placement use `createOwnedNativeSlot`/`mountOwnedSlot` from `@zaakiyjs/dom/compiler`. Dynamic text interpolation of arbitrary JSX node values remains rejected. This is **not** named slots, arbitrary JSX passed as props or SSR hydration. IR v1 remains the default and refuses component JSX children. See [ADR 0013](../../adr/0013-component-slots-ir2.md).
+
+
+### Restricted data-hydration emission
+
+`compileDataServer({ ...request, hydratable: true })` opt-in emits deterministic root/text-slot markers and a data-only `hydrationPlan` from the same optimized IR used for SSR output. The client can adopt those nodes using `hydrateDataPage`. This mode continues to reject executable JSX, events, component calls and keyed/conditional regions on the server; full TSX hydration needs a separately versioned compiler backend.

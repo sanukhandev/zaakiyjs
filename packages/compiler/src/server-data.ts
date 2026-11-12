@@ -8,6 +8,8 @@
  */
 import type { CompileRequest, CompilerDiagnostic, GeneratedAsset, IRNode, SourceSpan } from "./index.js";
 import { compile, optimizeIR, parseToIR } from "./index.js";
+import { buildDataHydrationPlan, hydrationSlotId } from "./server-hydration-plan.js";
+import type { DataHydrationPlanV1 } from "./server-hydration-plan.js";
 import {
   escapeStaticHtml, renderLiteralAttribute, SSR_STATIC_TAGS, SSR_VOID_TAGS
 } from "./server-static.js";
@@ -16,11 +18,14 @@ export interface DataServerRequest extends CompileRequest {
   readonly routeId: string;
   /** Opt-in async byte-streaming output. Does not enable DOM hydration. */
   readonly streaming?: boolean;
+  /** Opt-in root and text-slot markers for strict browser DOM adoption. */
+  readonly hydratable?: boolean;
 }
 export interface DataServerCompileResult {
   readonly diagnostics: readonly CompilerDiagnostic[];
   readonly js: readonly GeneratedAsset[];
   readonly dynamicPaths: readonly (readonly string[])[];
+  readonly hydrationPlan?: DataHydrationPlanV1;
 }
 
 const ROUTE_ID = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$/;
@@ -68,6 +73,7 @@ export function compileDataServer(request: DataServerRequest): DataServerCompile
   const fragments: string[] = [];
   const dataPaths: string[][] = [];
   let count = 0;
+  let slotOrdinal = 0;
   const emit = (node: IRNode, depth: number): void => {
     if (++count > MAX_NODES || depth > 64) {
       throw new Error("Data SSR markup exceeds its static node/depth budget");
@@ -79,7 +85,10 @@ export function compileDataServer(request: DataServerRequest): DataServerCompile
       case "DynamicText": {
         const path = dataPath(node);
         dataPaths.push(path);
+        const slot = request.hydratable ? hydrationSlotId(request.routeId, slotOrdinal++) : undefined;
+        if (slot) fragments.push(JSON.stringify("<!--zaakiy-t:" + slot + ":start-->"));
         fragments.push("__escape(__read(context.loaderData, " + JSON.stringify(path) + "))");
+        if (slot) fragments.push(JSON.stringify("<!--zaakiy-t:" + slot + ":end-->"));
         return;
       }
       case "StyleToken":
@@ -123,6 +132,18 @@ export function compileDataServer(request: DataServerRequest): DataServerCompile
     return reject(error instanceof Error ? error.message : "Unsupported data SSR markup",
       ir.nodes[0]?.span);
   }
+  let hydrationPlan: DataHydrationPlanV1 | undefined;
+  if (request.hydratable) {
+    try {
+      hydrationPlan = buildDataHydrationPlan(ir.nodes[0]!, request.routeId);
+    } catch (error) {
+      return reject(error instanceof Error ? error.message : "Unsafe hydration structure",
+        ir.nodes[0]?.span);
+    }
+    fragments.unshift(JSON.stringify(
+      "<!--zaakiy-h:" + hydrationPlan.markerId + ":" + hydrationPlan.templateDigest + "-->"
+    ));
+  }
   if (fragments.join(",").length > MAX_SOURCE_SIZE * 2) {
     return reject("Data SSR generated module exceeds size limit");
   }
@@ -131,6 +152,7 @@ export function compileDataServer(request: DataServerRequest): DataServerCompile
   // derived from TSX are quoted static HTML and a validated array of names.
   const js = [
     'export const protocol = "zaakiy.render/1";',
+    ...(hydrationPlan ? ["export const hydrationPlan = " + JSON.stringify(hydrationPlan) + ";"] : []),
     'const __escape = value => {',
     '  if (value == null || typeof value === "boolean") return "";',
     '  if (typeof value !== "string" && typeof value !== "number" && typeof value !== "bigint") throw new TypeError("SSR text must be primitive");',
@@ -189,6 +211,7 @@ export function compileDataServer(request: DataServerRequest): DataServerCompile
   return {
     diagnostics: base.diagnostics,
     dynamicPaths: dataPaths,
+    ...(hydrationPlan ? { hydrationPlan } : {}),
     js: [{
       fileName: request.fileName.replace(/\.[cm]?tsx?$/i, "") + ".server.js",
       code: js
