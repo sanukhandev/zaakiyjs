@@ -1,0 +1,52 @@
+name: H6 Native Data Hydration Browser
+
+on:
+  pull_request:
+    paths:
+      - 'packages/ssr/**'
+      - 'packages/compiler/src/server-data.ts'
+      - 'packages/compiler/src/server-hydration-plan.ts'
+      - 'packages/dom/src/index.ts'
+      - '.github/workflows/h6-data-hydration-browser.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hydration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build frozen workspace and execute strict hydration tests
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec vitest run packages/ssr/test/data-hydration.test.ts
+      - name: Compile attested SSR response and real browser bundle
+        run: node packages/ssr/test/browser/build-fixture.mjs
+      - name: Install pinned browser engines
+        run: bash scripts/ci/install-playwright-browsers.sh
+      - name: Check native adoption, disposal and timing in actual browsers
+        run: python3 packages/ssr/test/browser/hydration_acceptance.py
+      - name: Archive actual-browser hydration measurements
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h6-data-hydration-evidence
+          path: benchmark-artifacts/hydration-browser-evidence.json
+          if-no-files-found: warn
