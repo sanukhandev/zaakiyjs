@@ -154,13 +154,13 @@ function zone(key = ""): Zone {
 }
 /** No user callbacks are registered and no native mutations occur in preflight. */
 function inspect(container: Element, plan: RegionHydrationPlanV2,
-  read: RegionHydrationBindingsV2["read"]): Zone {
+  read: RegionHydrationBindingsV2["read"], item:unknown=null, scopeKey=""): Zone {
   if (container.childNodes.length !== 2 || container.childNodes[0]?.nodeType !== 8 ||
       container.childNodes[0]?.nodeValue !== "zaakiy-h:" + plan.markerId + ":" + plan.templateDigest)
     mismatch("route root marker");
   const root = container.childNodes[1];
   if (!root || root.nodeType !== 1) mismatch("native root");
-  const tree = zone();
+  const tree = zone(scopeKey);
   let budget = 0;
   const scan = (parent: Node, begin: Node | null, end: Node | null,
     specs: readonly RegionNodeV2[], item: unknown, target: Zone,
@@ -300,7 +300,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
     }
     return cursor;
   };
-  if (scan(container,root,null,plan.nodes,null,tree,0)!==null)
+  if (scan(container,root,null,plan.nodes,item,tree,0)!==null)
     mismatch("unlisted root siblings");
   return tree;
 }
@@ -460,7 +460,7 @@ export function hydrateRegionPage(
     }
     for (const condition of target.conditions) {
       bindConditionalRegion(owner,
-        {parent:condition.parent,start:condition.start,end:condition.end},
+        {parent:condition.start.parentNode!,start:condition.start,end:condition.end},
         ()=>Boolean(read(condition.spec.path)),
         child=>buildBranch(condition.spec.yes,child,target.key),
         child=>buildBranch(condition.spec.no,child,target.key),
@@ -468,7 +468,7 @@ export function hydrateRegionPage(
           adopt:child=>attachZone(child,condition.child)});
     }
     for (const list of target.keyed) {
-      bindKeyedRegion(owner,{parent:list.parent,start:list.start,end:list.end},
+      bindKeyedRegion(owner,{parent:list.start.parentNode!,start:list.start,end:list.end},
         ()=>{
           const rows=read(list.spec.path);
           if (!Array.isArray(rows) || rows.length>4096)
