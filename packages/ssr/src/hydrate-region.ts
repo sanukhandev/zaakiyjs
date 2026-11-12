@@ -12,7 +12,7 @@ import { inspectHydration } from "./client.js";
 import type { HydrationEnvelopeV1, TrustedServerBuildManifestV1 } from "./protocol.js";
 
 export type RegionNodeV2 =
-  | { readonly kind: "element"; readonly id: string; readonly tag: string; readonly attrs: readonly string[]; readonly children: readonly RegionNodeV2[] }
+  | { readonly kind: "element"; readonly id: string; readonly tag: string; readonly attrs: readonly string[]; readonly events?: readonly {readonly name:string;readonly path:readonly string[]}[]; readonly children: readonly RegionNodeV2[] }
   | { readonly kind: "component"; readonly id: string; readonly children: readonly RegionNodeV2[] }
   | { readonly kind: "literal"; readonly value: string }
   | { readonly kind: "data"; readonly id: string; readonly source: "props" | "item"; readonly path: readonly string[] }
@@ -35,6 +35,8 @@ export interface RegionHydrationEventV2 {
 export interface RegionHydrationBindingsV2 {
   readonly read: (path: readonly string[]) => unknown;
   readonly events?: readonly RegionHydrationEventV2[];
+  /** Resolve compiled onClick={props.handle} references from trusted client code. */
+  readonly resolveEvent?: (path:readonly string[]) => EventListener;
   readonly signal?: AbortSignal;
 }
 const ID = /^[a-f0-9]{32}$/;
@@ -142,12 +144,13 @@ interface Zone {
   readonly key: string;
   readonly elements: Map<string, Element>;
   readonly slots: Slot[];
+  readonly compiledEvents: {readonly elementId:string;readonly name:string;readonly path:readonly string[]}[];
   readonly components: ComponentScope[];
   readonly conditions: Condition[];
   readonly keyed: Keyed[];
 }
 function zone(key = ""): Zone {
-  return {key, elements:new Map(),slots:[],components:[],conditions:[],keyed:[]};
+  return {key, elements:new Map(),slots:[],compiledEvents:[],components:[],conditions:[],keyed:[]};
 }
 /** No user callbacks are registered and no native mutations occur in preflight. */
 function inspect(container: Element, plan: RegionHydrationPlanV2,
@@ -178,6 +181,20 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
               element.localName !== spec.tag) mismatch("native element");
           attributes(element,spec.attrs);
           target.elements.set(spec.id + (target.key ? ":" + target.key : ""),element);
+          if (spec.events !== undefined) {
+            if (!Array.isArray(spec.events) || spec.events.length>16)
+              mismatch("compiled event budget");
+            for (const event of spec.events) {
+              if (!event || !EVENT.test(event.name) || !Array.isArray(event.path) ||
+                  event.path.length<1 || event.path.length>4 ||
+                  event.path.some(key=>!FIELD.test(key) || DENIED.has(key)))
+                mismatch("compiled event descriptor");
+              target.compiledEvents.push({
+                elementId:spec.id+(target.key?":"+target.key:""),
+                name:event.name,path:event.path
+              });
+            }
+          }
           if (scan(element,element.firstChild,null,spec.children,item,target,depth+1) !== null)
             mismatch("unlisted native children");
           cursor=element.nextSibling;
@@ -318,7 +335,22 @@ export function hydrateRegionPage(
   const tree=inspect(container,plan,bindings.read);
   const targetElements=new Map<string,Element>();
   allElements(tree,targetElements);
-  const events=bindings.events??[];
+  const events=[...(bindings.events??[])];
+  const compiledEvents:(typeof tree.compiledEvents) = [];
+  const collectEvents=(target:Zone):void=>{
+    compiledEvents.push(...target.compiledEvents);
+    for(const comp of target.components) collectEvents(comp.child);
+    for(const condition of target.conditions) collectEvents(condition.child);
+    for(const list of target.keyed) for(const row of list.rows) collectEvents(row.child);
+  };
+  collectEvents(tree);
+  if(compiledEvents.length && typeof bindings.resolveEvent!=="function")
+    mismatch("compiler event resolver required");
+  for(const event of compiledEvents){
+    const handler=bindings.resolveEvent!(event.path);
+    if(typeof handler!=="function") mismatch("compiled event handler unavailable");
+    events.push({elementId:event.elementId,name:event.name,handler});
+  }
   if (!Array.isArray(events) || events.length>4096) mismatch("event count");
   const eventMap=new Map<string,RegionHydrationEventV2[]>();
   const registered=new Set<string>();
@@ -386,6 +418,12 @@ export function hydrateRegionPage(
     const id=spec.id+(key?":"+key:"");
     for (const event of eventMap.get(id)??[])
       listen(owner,el,event.name,event.handler,event.options);
+    for(const event of spec.events??[]){
+      if(eventMap.get(id)?.some(binding=>binding.name===event.name)) continue;
+      const handler=bindings.resolveEvent?.(event.path);
+      if(typeof handler!=="function") mismatch("missing compiled event handler");
+      listen(owner,el,event.name,handler);
+    }
     for (const child of spec.children)
       el.appendChild(buildStatic(child,owner,doc,item,key,newSlots));
     return el;
