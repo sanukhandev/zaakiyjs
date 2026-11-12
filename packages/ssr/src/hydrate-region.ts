@@ -187,7 +187,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
             for (const event of spec.events) {
               if (!event || !EVENT.test(event.name) || !Array.isArray(event.path) ||
                   event.path.length<1 || event.path.length>4 ||
-                  event.path.some(key=>!FIELD.test(key) || DENIED.has(key)))
+                  event.path.some((key:string)=>!FIELD.test(key) || DENIED.has(key)))
                 mismatch("compiled event descriptor");
               target.compiledEvents.push({
                 elementId:spec.id+(target.key?":"+target.key:""),
