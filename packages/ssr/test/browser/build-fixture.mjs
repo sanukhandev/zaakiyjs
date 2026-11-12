@@ -236,10 +236,17 @@ const h4Code=[
   '    input.value==="visitor draft";',
   '  const second=hydrateRegionPage(container,plan,envelope,manifest,"products",{read,',
   '    resolveEvent:createRegionEventResolver({onPress:(id)=>{clicks++;lastClicked=id;}})});',
+  '  const h4Samples=[];',
+  '  for(let sample=0;sample<20;sample++){',
+  '    const from=performance.now();',
+  '    for(let n=0;n<100;n++)flushSync(()=>{state.value={...state.value,title:"Bench "+n};});',
+  '    h4Samples.push((performance.now()-from)/100);',
+  '  }',
+  '  const benchmarkCorrect=badge.textContent==="Bench 99";',
   '  second.dispose();',
   '  window.__zaakiyH4={ready:true,mutations,identity,focus,moved,switched,',
   '    updated,focusAfter,reused,addition,changed,returned,preserved,',
-  '    eventAttached,updatedEvent,eventRemoved,',
+  '    eventAttached,updatedEvent,eventRemoved,benchmarkCorrect,h4Samples,',
   '    lastState:container.querySelectorAll("button").length};',
   '}catch(error){window.__zaakiyH4={ready:true,error:String(error)};}'
 ].join("\n");
@@ -252,6 +259,7 @@ await build({
 });
 await writeFile(join(distDir,"h4.html"),
   '<!doctype html><html><head><meta charset="utf-8"><title>H4 region adoption</title></head>'+
+  '<head><meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;; script-src &apos;self&apos;; style-src &apos;self&apos;; base-uri &apos;none&apos;">'+
   '<body><div id="app">'+h4Response.body+
   '</div><script type="module" src="./h4.js"></script></body></html>');
 console.log(JSON.stringify({h4Route,markerId:h4Compiled.hydrationPlan.markerId,
