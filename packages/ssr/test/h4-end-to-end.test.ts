@@ -18,6 +18,57 @@ const source=[
 ].join("\n");
 
 describe("H4 compiler -> SSR module -> browser adopted reactive DOM",()=>{
+  it("hydrates nested keyed lists with duplicate child keys across distinct parent owners",async()=>{
+    const nestedSource=[
+      'function Page(props:{groups:{id:string;label:string;items:{id:string;name:string}[]}[]}){',
+      'return <main>{props.groups.map(group=><section key={group.id}>',
+      '<h2>{group.label}</h2>',
+      '{group.items.map(item=><button key={item.id}>{item.name}</button>)}',
+      '</section>)}</main>;}'
+    ].join("\n");
+    const built=compileRegionServer({fileName,routeId,source:nestedSource});
+    expect(built.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    const mod=await import("data:text/javascript;base64,"+
+      Buffer.from(built.js[0]!.code).toString("base64"));
+    const state=signal({groups:[
+      {id:"a",label:"A",items:[{id:"same",name:"First"},{id:"other",name:"Second"}]},
+      {id:"b",label:"B",items:[{id:"same",name:"Third"}]}
+    ]});
+    const html:string=mod.render({
+      schema:"zaakiy.render/1",route:{id:routeId},
+      request:{signal:{aborted:false}},loaderData:state.value
+    }).body;
+    const container=document.createElement("div");
+    container.innerHTML=html;document.body.append(container);
+    const manifest:TrustedServerBuildManifestV1={
+      schema:"zaakiy.render-manifest/1",buildId:"a".repeat(64),
+      irVersion:1,domAbiVersion:1,
+      routes:{product:{routeId,moduleId:"compiled",sourceDigest:"f".repeat(64)}}
+    };
+    const envelope:HydrationEnvelopeV1={
+      schema:"zaakiy.hydration/1",buildId:manifest.buildId,routeId,
+      domAbiVersion:1,boundaries:[{markerId:built.hydrationPlan!.markerId,
+        templateDigest:built.hydrationPlan!.templateDigest}],payload:null
+    };
+    const handle=hydrateRegionPage(container,built.hydrationPlan!,envelope,manifest,routeId,{
+      read:path=>state.value[path[0] as keyof typeof state.value]
+    });
+    const original=[...container.querySelectorAll("button")];
+    original[2]!.focus();
+    flushSync(()=>{state.value={groups:[
+      {id:"b",label:"B changed",items:[{id:"same",name:"Third changed"}]},
+      {id:"a",label:"A",items:[{id:"other",name:"Second"},{id:"same",name:"First"}]}
+    ]};});
+    expect([...container.querySelectorAll("button")]).toEqual([
+      original[2],original[1],original[0]
+    ]);
+    expect(container.querySelectorAll("section")[0]?.querySelector("h2")?.textContent).toBe("B changed");
+    expect(container.querySelectorAll("button")[0]?.textContent).toBe("Third changed");
+    expect(document.activeElement).toBe(original[2]);
+    handle.dispose();
+    container.remove();
+  });
+
   it("recreates nested conditional owners after outer branch switches, without leaking old nodes",async()=>{
     const nestedSource=[
       "function Page(props:{outer:boolean;inner:boolean;title:string}){",
