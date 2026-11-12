@@ -1,0 +1,59 @@
+name: E3 Equal Keyed Snapshot Benchmark
+
+on:
+  pull_request:
+    paths:
+      - 'packages/dom/**'
+      - 'benchmarks/microbench-keyed-equal.mjs'
+      - 'benchmarks/report-keyed-equal.mjs'
+      - '.github/workflows/e3-keyed-equal.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keyed-equal:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: eab4fce38553a14ac4ff10d9f2e6f497a548e5f8
+          path: .benchmark-before-e3
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Build and test candidate
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec vitest run packages/dom/test/keyed-equal-snapshot.test.ts packages/dom/test/keyed-minimal-moves.test.ts packages/dom/test/keyed-performance.test.ts
+          pnpm exec eslint benchmarks/microbench-keyed-equal.mjs benchmarks/report-keyed-equal.mjs
+      - name: Build frozen pre-E3 reference
+        run: |
+          pnpm --dir .benchmark-before-e3 install --frozen-lockfile
+          pnpm --dir .benchmark-before-e3 build
+      - name: Compare exact equivalent snapshots
+        run: |
+          mkdir -p benchmark-artifacts
+          node benchmarks/microbench-keyed-equal.mjs .benchmark-before-e3 benchmark-artifacts/keyed-equal-baseline.json
+          node benchmarks/microbench-keyed-equal.mjs . benchmark-artifacts/keyed-equal-candidate.json
+          node benchmarks/report-keyed-equal.mjs
+          cat benchmark-artifacts/keyed-equal-comparison.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive diagnostic performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e3-keyed-equal-evidence
+          path: benchmark-artifacts/
+          if-no-files-found: warn
