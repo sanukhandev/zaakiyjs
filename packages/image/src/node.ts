@@ -95,7 +95,8 @@ function within(parent: string, child: string): boolean {
 }
 function sourcePath(file: string): void {
   if (typeof file !== "string" || file.length < 1 || file.length > 512 ||
-      isAbsolute(file) || /[\\:\u0000-\u001f\u007f]/.test(file) ||
+      isAbsolute(file) || /[\\:]/.test(file) ||
+      [...file].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127) ||
       file.split("/").some(part => part === "" || part === "." || part === "..") ||
       file.startsWith("//") || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(file))
     throw new TypeError("Image source must be a safe relative local file");

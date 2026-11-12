@@ -1,10 +1,10 @@
 import { performance } from "node:perf_hooks";
 import { createHash } from "node:crypto";
+import { Buffer } from "node:buffer";
 import { createRequire } from "node:module";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { pathToFileURL } from "node:url";
 import { createSharpProcessor, optimizeLocalImages } from "../packages/image/dist/node.js";
 import { getImageProps, renderPictureHtml } from "../packages/image/dist/index.js";
 

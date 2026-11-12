@@ -67,7 +67,8 @@ function inspect(image: OptimizedImage, options: ImageViewOptions): string {
   }
   const sizes = options.sizes ?? "100vw";
   if (typeof sizes !== "string" || !sizes || sizes.length > 1024 ||
-      /[<>"'\u0000-\u001f\u007f]/.test(sizes)) throw new TypeError("Invalid responsive sizes");
+      /[<>"']/.test(sizes) ||
+      [...sizes].some(char => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127)) throw new TypeError("Invalid responsive sizes");
   return sizes;
 }
 const escape = (text: string): string => text
