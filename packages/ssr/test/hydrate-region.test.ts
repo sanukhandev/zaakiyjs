@@ -99,6 +99,55 @@ describe("H4 compiler-region client adoption", () => {
     again.dispose();
     container.remove();
   });
+  it("hydrates compiler-declared keyed JSX events with stable owner cleanup", () => {
+    const container=fixture();
+    const rows=state();
+    const withEvents:RegionHydrationPlanV2={
+      ...plan,
+      nodes:plan.nodes.map(root => root.kind==="element" ? {
+        ...root,children:root.children.map(child => child.kind==="keyed" ? {
+          ...child, rows:child.rows.map(row=>row.kind==="element" ? {
+            ...row,events:[{name:"click",path:["onPress"]}]
+          }:row)
+        }:child)
+      }:root)
+    };
+    let count=0;
+    const handles=()=>hydrateRegionPage(container,withEvents,envelope,manifest,routeId,{
+      read:path=>rows[path[0] as keyof typeof rows],
+      resolveEvent:path=>{
+        expect(path).toEqual(["onPress"]);
+        return ()=>{count++;};
+      }
+    });
+    const a=container.querySelectorAll("button")[0]!;
+    const b=container.querySelectorAll("button")[1]!;
+    const first=handles();
+    a.click();b.click();
+    expect(count).toBe(2);
+    first.dispose();
+    a.click();b.click();
+    expect(count).toBe(2);
+    const second=handles();
+    b.click();
+    expect(count).toBe(3);
+    second.dispose();
+    expect(container.querySelectorAll("button")[0]).toBe(a);
+  });
+  it("refuses unresolved compiler JSX events before attaching any owner", () => {
+    const container=fixture();
+    const withEvents:RegionHydrationPlanV2={
+      ...plan,
+      nodes:plan.nodes.map(root=>root.kind==="element" ? {
+        ...root,events:[{name:"click",path:["onClick"]}]
+      }:root)
+    };
+    const original=container.innerHTML;
+    expect(()=>hydrateRegionPage(container,withEvents,envelope,manifest,routeId,{
+      read:path=>state()[path[0] as keyof ReturnType<typeof state>]
+    })).toThrow(/resolver/);
+    expect(container.innerHTML).toBe(original);
+  });
   it("aborts before mutation when keyed state disagrees with SSR", () => {
     const container = fixture();
     const html = container.innerHTML;
