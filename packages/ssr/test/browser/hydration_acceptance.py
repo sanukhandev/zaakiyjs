@@ -104,7 +104,7 @@ def run(dist: Path, output: Path):
                                     "updated", "focusAfter", "reused", "addition",
                                     "changed", "returned", "preserved",
                                     "eventAttached", "updatedEvent", "eventRemoved",
-                                    "benchmarkCorrect"):
+                                    "xssSafe", "benchmarkCorrect"):
                             if h4_result.get(key) is not True:
                                 raise AssertionError(
                                     f"{name}: H4 {key} failed: {h4_result}"
