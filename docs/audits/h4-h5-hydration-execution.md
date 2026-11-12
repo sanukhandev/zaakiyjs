@@ -43,12 +43,33 @@ reentrant-abort navigation have focused regression tests. The coordinator is
 an opt-in primitive, **not yet integrated with `@zaakiyjs/router` or SSR
 stream delivery**. ADR 0015 proposes the future versioned region ABI.
 
+## H5 bounded streaming and owned-boundary recovery increments
+
+- `createHydrationStreamAssembler` accepts only monotonically ordered,
+  identity-matched, bounded Uint8Array payload fragments. It copies each
+  fragment and aborts permanently on malformed/duplicate/out-of-order data.
+  Completed bytes are **inert**; no HTML parsing, DOM attachment or implied
+  authorization occurs.
+- `hydrateOwnedBoundary` offers an opt-in lower-level H5 primitive for a
+  validated `zaakiy-r2:<id>:start/end` bounded region. It keeps existing
+  native nodes for a matching boundary, refuses mismatch without explicit
+  recovery, prepares detached replacements before mutation, preserves
+  unrelated siblings, supports parent-scoped cleanup, and attempts rollback
+  on setup/mount failure. The caller must independently verify the trusted
+  compiler blueprint, build, route, partition and marker ownership.
+- Added jsdom tests for matching attachment, default mismatch abort, scoped
+  replacement, rollback, cancellation, and stream ordering/budgets.
+- These are **manually composed low-level primitives**, not proof of
+  compiler-generated interactive H4 regions or a validated router/stream
+  application integration. In particular, no compiler emits the region v2
+  markers yet.
+
 ## H5 remaining acceptance blockers
 
-1. Versioned nested owned-boundary mismatch policy; abort-by-default and
-   opt-in replacement of **only** owned boundaries with transactional cleanup.
-2. Integrate the new navigation guard with the router, and implement
-   stream/partial-chunk interleaving with sequence ordering and buffering.
+1. Compiler-generated v2 region markers, nested boundary ownership and
+   independent production tests of opt-in replacement/rollback.
+2. Integrate navigation guard and inert ordered-fragment assembler with
+   actual router and streamed SSR adapter, including concurrent requests.
 3. Explicit client state initialization, selective redaction/allowlisting and
    prevention of cross-user/tenant state reuse.
 4. Integration tests with dynamic component/keyed/conditional hydration,
