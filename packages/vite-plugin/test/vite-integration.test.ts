@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { build, createServer, type ViteDevServer, type RollupOutput } from "vite";
 import { fileURLToPath } from "node:url";
 import { cpSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { hasCompiler, hasStyles } from "../src/bridge.js";
 import { zaakiyPlugin } from "../src/index.js";
@@ -238,7 +238,7 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
   });
 
   it("preserves CSS on JS-only hot updates and regenerates it for changed utility tokens", async () => {
-    const temp = mkdtempSync(join(tmpdir(), "zaakiy-vite-css-hmr-"));
+    const temp = mkdtempSync(join(dirname(fixtureRoot), ".zaakiy-vite-css-hmr-"));
     cpSync(fixtureRoot, temp, { recursive: true });
     const sourcePath = join(temp, "src", "main.tsx");
     try {
