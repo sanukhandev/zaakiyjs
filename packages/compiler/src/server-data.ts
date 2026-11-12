@@ -14,6 +14,8 @@ import {
 
 export interface DataServerRequest extends CompileRequest {
   readonly routeId: string;
+  /** Opt-in async byte-streaming output. Does not enable DOM hydration. */
+  readonly streaming?: boolean;
 }
 export interface DataServerCompileResult {
   readonly diagnostics: readonly CompilerDiagnostic[];
@@ -153,8 +155,27 @@ export function compileDataServer(request: DataServerRequest): DataServerCompile
     '  if (!context || context.schema !== "zaakiy.render/1" || !context.request || !context.route) throw new TypeError("Invalid SSR context");',
     '  if (context.route.id !== ' + JSON.stringify(request.routeId) + ') throw new TypeError("SSR route mismatch");',
     '  if (context.request.signal.aborted) throw context.request.signal.reason;',
-    '  const body = [' + fragments.join(",") + '].join("");',
-    '  if (body.length > 1048576) throw new RangeError("SSR response exceeded output limit");',
+    ...(request.streaming === true ? [
+      '  const body = (async function* () {',
+      '    const encoder = new TextEncoder();',
+      '    let pending = "";',
+      '    let total = 0;',
+      '    for (const piece of (function* () {',
+      ...fragments.map(part => "      yield " + part + ";"),
+      '    })()) {',
+      '      if (context.request.signal.aborted) throw context.request.signal.reason;',
+      '      total += piece.length;',
+      '      if (total > 1048576) throw new RangeError("SSR response exceeded output limit");',
+      '      pending += piece;',
+      '      if (pending.length >= 16384) { yield encoder.encode(pending); pending = ""; }',
+      '    }',
+      '    if (context.request.signal.aborted) throw context.request.signal.reason;',
+      '    if (pending) yield encoder.encode(pending);',
+      '  })();'
+    ] : [
+      '  const body = [' + fragments.join(",") + '].join("");',
+      '  if (body.length > 1048576) throw new RangeError("SSR response exceeded output limit");'
+    ]),
     '  return { version: 1, status: 200, headers: { "content-type": "text/html; charset=utf-8" }, body,',
     '    cache: { scope: "no-store", tags: [] } };',
     '}'
