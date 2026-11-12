@@ -124,7 +124,7 @@ describe("H4 compiler-backed region SSR target", () => {
   });
   it("lowers named/default slots into component ownership without browser JSX evaluation",async()=>{
     const source=[
-      'function Panel(props:{title:string}){return <article><Slot name="header"/><div><Slot name="children"/></div></article>;}',
+      'function Panel(props:{header?:unknown;children?:unknown}){return <article><Slot name="header"/><div><Slot name="children"/></div></article>;}',
       'function Page(props:{title:string}){return <main><Panel header={<h2>{props.title}</h2>}><p>Body</p></Panel></main>;}'
     ].join("\n");
     const result=compileRegionServer({fileName,routeId:"products",source,componentSlots:true});
