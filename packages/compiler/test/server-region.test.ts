@@ -49,6 +49,26 @@ describe("H4 compiler-backed region SSR target", () => {
     Object.defineProperty(unsafe,"title",{enumerable:true,get(){throw Error("unsafe");}});
     expect(() => module.render(context(unsafe))).toThrow(/getter forbidden/);
   });
+  it("compiles pure local nested TSX components through owner-boundary plans", async () => {
+    const source = [
+      "function Badge(props:{title:string}) { return <span>{props.title}</span>; }",
+      "function Card(props:{title:string}) { return <article><Badge title={props.title} /></article>; }",
+      "function Page(props:{title:string}) { return <main><Card title={props.title} /></main>; }"
+    ].join("\\n");
+    const result = build(source);
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.js).toHaveLength(1);
+    expect(result.hydrationPlan?.nodes[0]?.kind).toBe("element");
+    const module = await import("data:text/javascript;base64," +
+      Buffer.from(result.js[0]!.code).toString("base64"));
+    const html: string = module.render({
+      schema:"zaakiy.render/1",route:{id:"products"},
+      request:{signal:{aborted:false}},loaderData:{title:"Safe <title>"}
+    }).body;
+    expect(html).toContain("Safe &lt;title&gt;");
+    expect((html.match(/zaakiy-r2:/g)??[]).length).toBe(4);
+    expect(build(source).hydrationPlan).toEqual(result.hydrationPlan);
+  });
   it("rejects unsafe dynamic expressions and arbitrary JSX components", () => {
     const sources = [
       "function Page(props:{name:string}) { return <main>{props.name.toUpperCase()}</main>; }",
