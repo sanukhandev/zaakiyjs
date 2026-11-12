@@ -83,13 +83,14 @@ describe("E6 — compiler-generated streaming HTML", () => {
     await expect(text(result.body)).rejects.toThrow("getters are forbidden");
   });
 
-  it("enforces the accumulated streaming output budget", async () => {
-    const repeated = "function Page(props: { value: string }) {return <main>" +
-      Array.from({ length: 22 }, () => "<p>{props.value}</p>").join("") + "</main>;}";
-    const output = compileDataServer({ fileName, routeId: "product", source: repeated, streaming: true });
+  it("enforces bounded data values and emits a cumulative output guard", async () => {
+    const output = compileDataServer({ ...request, streaming: true });
     expect(output.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(output.js[0]!.code).toContain("total > 1048576");
     const generated = await load(output.js[0]!.code);
-    const response = generated.render(context({ value: "q".repeat(61_000) }));
-    await expect(text(response.body)).rejects.toThrow("output limit");
+    const response = generated.render(context({
+      customer: { name: "q".repeat(65_537) }, order: 1
+    }));
+    await expect(text(response.body)).rejects.toThrow("text limit");
   });
 });
