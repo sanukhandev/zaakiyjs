@@ -83,6 +83,26 @@ describe("E6 — compiler-generated streaming HTML", () => {
     await expect(text(result.body)).rejects.toThrow("getters are forbidden");
   });
 
+  it("preserves UTF-8 when adjacent read-only text segments split a surrogate pair", async () => {
+    const requestWithAdjacent = {
+      fileName,
+      routeId: "product",
+      source: "function Page(props: { first: string; last: string }) {" +
+        "return <main>{props.first}{props.last}</main>;}"
+    };
+    const classic = compileDataServer(requestWithAdjacent);
+    const bytes = compileDataServer({ ...requestWithAdjacent, streaming: true });
+    expect(classic.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(bytes.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    const stringModule = await load(classic.js[0]!.code);
+    const streamModule = await load(bytes.js[0]!.code);
+    const data = { first: "a".repeat(16_380) + "\uD83D", last: "\uDE00" };
+    const expected = await text(stringModule.render(context(data)).body);
+    const actual = await text(streamModule.render(context(data)).body);
+    expect(actual).toBe(expected);
+    expect(actual).toContain("😀");
+  });
+
   it("enforces bounded data values and emits a cumulative output guard", async () => {
     const output = compileDataServer({ ...request, streaming: true });
     expect(output.diagnostics.filter(d => d.severity === "error")).toEqual([]);
