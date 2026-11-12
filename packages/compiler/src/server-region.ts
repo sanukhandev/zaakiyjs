@@ -66,9 +66,10 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     ts.isParenthesizedExpression(expr) ? unwrap(expr.expression) : expr;
   for (const statement of sourceFile.statements) {
     if (!ts.isFunctionDeclaration(statement) || !statement.name ||
-        !statement.body || statement.body.statements.length !== 1 ||
-        !ts.isReturnStatement(statement.body.statements[0])) continue;
-    const returned = statement.body.statements[0].expression;
+        !statement.body || statement.body.statements.length !== 1) continue;
+    const only = statement.body.statements[0];
+    if (!only || !ts.isReturnStatement(only)) continue;
+    const returned = only.expression;
     if (!returned) continue;
     const jsx = unwrap(returned);
     if (!ts.isJsxElement(jsx) && !ts.isJsxSelfClosingElement(jsx)) continue;
