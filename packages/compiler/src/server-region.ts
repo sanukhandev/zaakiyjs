@@ -109,9 +109,10 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     if (mapped.length>4) throw new TypeError("H4 component prop path depth exceeded");
     return {source:from.source,path:mapped};
   };
-  const nestedRegion = (nodes:readonly RegionNode[]):boolean => nodes.some(node =>
-    node.kind === "conditional" || node.kind === "keyed" || node.kind === "component" ||
-    (node.kind === "element" && nestedRegion(node.children)));
+  const containsKeyed = (nodes:readonly RegionNode[]):boolean => nodes.some(node =>
+    node.kind==="keyed" || ((node.kind==="element" || node.kind==="component") &&
+      containsKeyed(node.children)) || (node.kind==="conditional" &&
+      (containsKeyed(node.yes) || containsKeyed(node.no))));
   const convert = (nodes: readonly IRNode[], itemName?: string, depth = 0,
     aliases?: ReadonlyMap<string,BoundValue>, stack: readonly string[] = []): RegionNode[] => {
     if (depth > 64) throw new RangeError("Hydration blueprint nesting limit exceeded");
@@ -160,8 +161,6 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           const id = hash("zaakiy-region:" + request.routeId + ":" + ordinal++).slice(0, 32);
           const yes = convert(node.whenTrue, itemName, depth + 1,aliases,stack);
           const no = convert(node.whenFalse, itemName, depth + 1,aliases,stack);
-          if (nestedRegion(yes) || nestedRegion(no))
-            throw new TypeError("Nested dynamic regions inside a conditional need a later H4 ABI");
           const condition=resolve(node.condition.source,itemName,aliases);
           if (condition.source!=="props") throw new TypeError("H4 conditional requires root data");
           output.push({ kind: "conditional", id, path: condition.path,yes,no });
@@ -175,8 +174,8 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           if (key.length !== 1) throw new TypeError("H4 key must be one own item property");
           const id = hash("zaakiy-region:" + request.routeId + ":" + ordinal++).slice(0, 32);
           const rows = convert(node.body, node.itemParameter, depth + 1,aliases,stack);
-          if (rows.length !== 1 || rows[0]?.kind !== "element" || nestedRegion(rows))
-            throw new TypeError("H4 keyed row must have one native element and no nested regions");
+          if (rows.length !== 1 || rows[0]?.kind !== "element" || containsKeyed(rows))
+            throw new TypeError("H4 keyed row must have one native root without nested keyed loops");
           const collection=resolve(node.collection.source,itemName,aliases);
           if (collection.source!=="props") throw new TypeError("H4 keyed list requires root data");
           output.push({ kind: "keyed", id, path: collection.path,
