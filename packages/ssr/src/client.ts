@@ -90,3 +90,5 @@ export type { HydrationStreamFragment, HydrationStreamOptions, HydrationStreamAs
 
 export { hydrateOwnedBoundary } from "./hydration-boundary.js";
 export type { OwnedHydrationBoundary, OwnedBoundaryHydrationOptions, OwnedBoundaryHydrationHandle } from "./hydration-boundary.js";
+
+export { hydrateDataRoute } from "./hydration-route.js";
