@@ -258,8 +258,8 @@ await build({
     lib:{entry:h4Entry,formats:["es"],fileName:"h4"}}
 });
 await writeFile(join(distDir,"h4.html"),
-  '<!doctype html><html><head><meta charset="utf-8"><title>H4 region adoption</title></head>'+
-  '<head><meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;; script-src &apos;self&apos;; style-src &apos;self&apos;; base-uri &apos;none&apos;">'+
+  '<!doctype html><html><head><meta charset="utf-8"><title>H4 region adoption</title>'+
+  '<meta http-equiv="Content-Security-Policy" content="default-src &apos;none&apos;; script-src &apos;self&apos;; style-src &apos;self&apos;; base-uri &apos;none&apos;"></head>'+
   '<body><div id="app">'+h4Response.body+
   '</div><script type="module" src="./h4.js"></script></body></html>');
 console.log(JSON.stringify({h4Route,markerId:h4Compiled.hydrationPlan.markerId,
