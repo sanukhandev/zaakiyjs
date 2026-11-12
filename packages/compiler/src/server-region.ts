@@ -37,6 +37,8 @@ export interface RegionServerCompileResult {
   readonly diagnostics: readonly CompilerDiagnostic[];
   readonly js: readonly GeneratedAsset[];
   readonly hydrationPlan?: RegionHydrationPlanV2;
+  /** Trusted build-generated browser module; never included in SSR HTML. */
+  readonly clientEvents?: readonly GeneratedAsset[];
 }
 const hash = (value: string): string => createHash("sha256").update(value).digest("hex");
 const ROUTE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$/;
@@ -186,6 +188,48 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     readonly aliases?:ReadonlyMap<string,BoundValue>;
     readonly stack:readonly string[];
   }
+  const inlineHandlers: Array<{id:string; body:string}>=[];
+  const handlerFor=(source:string,itemName?:string,
+    aliases?:ReadonlyMap<string,BoundValue>):string=>{
+    const parsed=ts.createSourceFile("zaakiy-event.tsx",
+      "const __handler = "+source+";",ts.ScriptTarget.ES2022,true,ts.ScriptKind.TSX);
+    if(parsed.parseDiagnostics.length || parsed.statements.length!==1)
+      throw new TypeError("H4 inline JSX handler syntax unsupported");
+    const stmt=parsed.statements[0];
+    if(!stmt || !ts.isVariableStatement(stmt)) throw new TypeError("Invalid H4 handler AST");
+    const expr=stmt.declarationList.declarations[0]?.initializer;
+    if(!expr || !ts.isArrowFunction(expr) || expr.modifiers?.length ||
+        expr.parameters.length>1 || !ts.isCallExpression(expr.body) ||
+        expr.body.questionDotToken || expr.body.typeArguments?.length)
+      throw new TypeError("H4 only permits synchronous direct action-call arrow handlers");
+    const parameter=expr.parameters[0]?.name;
+    if(parameter && (!ts.isIdentifier(parameter) || Boolean(expr.parameters[0]?.initializer) ||
+        Boolean(expr.parameters[0]?.dotDotDotToken)))
+      throw new TypeError("Unsupported H4 event parameter");
+    const paramName=parameter && ts.isIdentifier(parameter)?parameter.text:undefined;
+    const dotted=(candidate:ts.Expression):string=>{
+      if(ts.isIdentifier(candidate)) return candidate.text;
+      if(ts.isPropertyAccessExpression(candidate) && !candidate.questionDotToken)
+        return dotted(candidate.expression)+"."+candidate.name.text;
+      throw new TypeError("Unsafe H4 handler reference");
+    };
+    const callPath=resolve(dotted(expr.body.expression),itemName,aliases);
+    if(callPath.source!=="props") throw new TypeError("H4 actions must be root-props methods");
+    const jsPath=(base:string,path:readonly string[]):string=>
+      base+path.map(segment=>"["+JSON.stringify(segment)+"]").join("");
+    const args=expr.body.arguments.map(argument=>{
+      if(ts.isSpreadElement(argument)) throw new TypeError("H4 event spread calls forbidden");
+      if(ts.isStringLiteral(argument)) return JSON.stringify(argument.text);
+      if(ts.isNumericLiteral(argument)) return String(Number(argument.text));
+      if(argument.kind===ts.SyntaxKind.TrueKeyword) return "true";
+      if(argument.kind===ts.SyntaxKind.FalseKeyword) return "false";
+      if(argument.kind===ts.SyntaxKind.NullKeyword) return "null";
+      if(ts.isIdentifier(argument) && paramName && argument.text===paramName) return "event";
+      const bound=resolve(dotted(argument),itemName,aliases);
+      return jsPath(bound.source==="item"?"getItem()":"props",bound.path);
+    });
+    return "("+["event"].join(",")+")=>"+jsPath("props",callPath.path)+"("+args.join(",")+")";
+  };
   const convert = (nodes: readonly IRNode[], itemName?: string, depth = 0,
     aliases?: ReadonlyMap<string,BoundValue>, stack: readonly string[] = [],
     slots?:ReadonlyMap<string,SlotInput>): RegionNode[] => {
@@ -215,12 +259,21 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           const events: {name:string;path:string[]}[] = [];
           for (const child of node.children) {
             if (child.kind !== "EventBinding") continue;
-            const bound = resolve(child.expression.source,itemName,aliases);
-            if (bound.source !== "props" || !/^[a-z][a-z0-9]*$/.test(child.name))
-              throw new TypeError("H4 JSX events require a direct named root-props handler");
-            if (events.some(event => event.name === child.name))
+            if(!/^[a-z][a-z0-9]*$/.test(child.name))
+              throw new TypeError("Invalid typed JSX event name");
+            if(events.some(event=>event.name===child.name))
               throw new TypeError("Duplicate H4 JSX event handler");
-            events.push({name:child.name,path:[...bound.path]});
+            if(child.expression.source.trim().includes("=>")){
+              const handlerId="h"+hash("zaakiy-event:"+request.routeId+":"+(ordinal++)).slice(0,31);
+              const body=handlerFor(child.expression.source,itemName,aliases);
+              inlineHandlers.push({id:handlerId,body});
+              events.push({name:child.name,path:["zaakiyEvent",handlerId]});
+            } else {
+              const bound=resolve(child.expression.source,itemName,aliases);
+              if(bound.source!=="props")
+                throw new TypeError("H4 handler reference must point to root props");
+              events.push({name:child.name,path:[...bound.path]});
+            }
           }
           const children = convert(node.children.filter(child => child.kind !== "PropertyBinding" &&
             child.kind !== "EventBinding"),
@@ -347,7 +400,15 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " return {version:1,status:200,headers:{'content-type':'text/html; charset=utf-8'},body,cache:{scope:'no-store',tags:[]}};",
       "}"
     ].join("\n") + "\n";
-    return { diagnostics: base.diagnostics, hydrationPlan,
+    const clientEvents=inlineHandlers.length ? [{
+      fileName:request.fileName.replace(/\.[cm]?tsx?$/i,"")+".region.events.js",
+      code:"export function createRegionEventResolver(props){return (path,getItem=()=>null)=>{"+
+        inlineHandlers.map(handler=>
+          "if(path[0]==='zaakiyEvent'&&path[1]==="+JSON.stringify(handler.id)+
+          ")return "+handler.body+";").join("")+
+        "return undefined;};}\n"
+    }] : [];
+    return { diagnostics: base.diagnostics, hydrationPlan,clientEvents,
       js: [{ fileName: request.fileName.replace(/\.[cm]?tsx?$/i, "") + ".region.server.js", code }] };
   } catch (error) {
     return reject(error instanceof Error ? error.message : "Unsafe H4 region source", root.span);
