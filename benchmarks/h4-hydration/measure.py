@@ -107,10 +107,11 @@ def run(args):
                                         raise AssertionError(f"{framework}/{engine}/{size}: invalid hydration duration")
                                     changes = page.evaluate("""() => {
                                         const b=window.__h4;
-                                        return Promise.resolve(b.update()).then(()=>b.reverse()).then(()=>{
-                                          const result=b.verify();
-                                          b.dispose();
-                                          return {result,disposed:b.verifyDisposed()};
+                                        return Promise.resolve(b.update()).then(()=>b.reverse()).then(async()=>{
+                                          const result=await Promise.resolve(b.verify());
+                                          await Promise.resolve(b.dispose());
+                                          const disposed=await Promise.resolve(b.verifyDisposed());
+                                          return {result,disposed};
                                         });
                                     }""")
                                     if changes["result"] is not True or changes["disposed"] is not True:
