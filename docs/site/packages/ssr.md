@@ -220,3 +220,29 @@ DOM through the same structural preflight before owner/effect attachment.
 Dynamic branch rollback, cross-tenant authorization, imported dependency
 attestation, unsupported JSX closure semantics, and unrestricted nested keyed
 scopes must still pass separate certification before broader production claims.
+
+### H4-E compiler-owned mismatch recovery (explicit opt-in)
+
+`hydrateRegionPageRecoverBoundary(container, plan, envelope, manifest,
+routeId, bindings, {boundaryId, prepare})` first attempts strict zero-mutation
+adoption. Only when that fails does it consider one explicitly selected,
+unique compiler-authored region identifier. Manifest, build, route and template
+identity are checked **before** invoking the caller's trusted detached-native
+node factory. The replacement is confined to the ordered region markers,
+revalidated with the complete v2 plan and rolled back on failure.
+Missing, duplicate, foreign or canceled boundaries fail closed. This cannot
+be used to recover an untrusted deployment or bypass per-user authorization.
+
+Generated JSX event factories from `compileRegionServer().clientEvents` are
+trusted browser bundles, not serialized closures. For the audited inline
+subset, only synchronous direct calls to root-props actions with literal,
+event-parameter, root-props-path or lexical keyed-row data arguments are
+lowered. The browser resolver receives a live `getItem` callback, so a
+retained keyed row observes current item data when clicked after a reorder.
+Arbitrary statements, async callbacks, dynamic computed properties, direct
+global calls and spread arguments fail the compiler gate.
+
+Nested keyed loops use distinct lexical item scopes and are keyed by their
+full parent/child identity. Named and default slots are inserted by compiler
+IR lowering (`componentSlots: true`), not interpreted at runtime.
+Complex application component graphs still require independent validation.
