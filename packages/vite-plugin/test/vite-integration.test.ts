@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { build, createServer, type ViteDevServer, type RollupOutput } from "vite";
 import { fileURLToPath } from "node:url";
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { hasCompiler, hasStyles } from "../src/bridge.js";
@@ -236,4 +236,54 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
       expect(manifest).toBeDefined();
       expect(js.every(chunk => !/@zaakiyjs\/(?:ai|proxy|compiler|styles|vite-plugin)/.test(chunk.type === "chunk" ? chunk.code : ""))).toBe(true);
   });
+
+  it("preserves CSS on JS-only hot updates and regenerates it for changed utility tokens", async () => {
+    const temp = mkdtempSync(join(tmpdir(), "zaakiy-vite-css-hmr-"));
+    cpSync(fixtureRoot, temp, { recursive: true });
+    const sourcePath = join(temp, "src", "main.tsx");
+    try {
+      server = await createServer({
+        configFile: false, root: temp,
+        plugins: [zaakiyPlugin()], server: { middlewareMode: true, hmr: true }
+      });
+      const loadCss = async (): Promise<string> => {
+        const result = await server!.pluginContainer.load("\u0000virtual:zaakiy-styles.css");
+        return typeof result === "string" ? result : result?.code ?? "";
+      };
+      const first = await server.transformRequest("/src/main.tsx");
+      expect(first?.code).toContain("Count:");
+      const cssBefore = await loadCss();
+      expect(cssBefore).toContain("flex");
+
+      const original = readFileSync(sourcePath, "utf8");
+      writeFileSync(sourcePath, original.replace("Count:", "Clicks:"));
+      const socketSpy = vi.spyOn(server.ws, "send");
+      server.watcher.emit("change", sourcePath);
+      await vi.waitFor(() =>
+        expect(socketSpy).toHaveBeenCalledWith({ type: "full-reload", path: "*" }),
+        { timeout: 4000, interval: 50 }
+      );
+      const updated = await server.transformRequest("/src/main.tsx");
+      expect(updated?.code).toContain("Clicks:");
+      expect(await loadCss()).toBe(cssBefore);
+
+      socketSpy.mockClear();
+      writeFileSync(sourcePath, readFileSync(sourcePath, "utf8").replace("flex gap-4", "grid gap-4"));
+      server.watcher.emit("change", sourcePath);
+      await vi.waitFor(() =>
+        expect(socketSpy).toHaveBeenCalledWith({ type: "full-reload", path: "*" }),
+        { timeout: 4000, interval: 50 }
+      );
+      await server.transformRequest("/src/main.tsx");
+      const updatedCss = await loadCss();
+      expect(updatedCss).toContain("grid");
+      expect(updatedCss).not.toBe(cssBefore);
+      socketSpy.mockRestore();
+    } finally {
+      await server?.close();
+      server = undefined;
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
 });

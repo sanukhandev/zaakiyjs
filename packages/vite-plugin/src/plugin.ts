@@ -387,11 +387,18 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         ctx.server.ws.send({ type: "full-reload", path: "*" });
         return [];
       }
-      if (isTsx(file) || evictDependents(file, ctx.server)) {
+      if (isTsx(file)) {
+        // Preserve the previous CSS contribution until the new TSX transform
+        // replaces it. Source bytes/revision still invalidate the JS cache.
+        // This lets a JavaScript-only edit skip global CSS regeneration, while
+        // a style-token edit regenerates CSS with exact source positions.
+        // Owner-safe stateful HMR is not implemented: reload remains required.
+        ctx.server.ws.send({ type: "full-reload", path: "*" });
+        return [];
+      }
+      if (evictDependents(file, ctx.server)) {
         modules.delete(file);
         lastStyleKey = "";
-        // No owner-compatible HMR ABI exists yet. A full document reload is the
-        // only defensible way to guarantee disposal of all previous owners.
         ctx.server.ws.send({ type: "full-reload", path: "*" });
         return [];
       }
