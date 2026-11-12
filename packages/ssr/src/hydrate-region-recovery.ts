@@ -84,17 +84,17 @@ export function hydrateRegionPageRecoverBoundary(
         node.nodeType===9 || node.nodeType===10 || node.nodeType===11))
       throw new TypeError("H4 recovery factory must return unique detached native nodes");
     if(bindings.signal?.aborted) throw new Error("H4 recovery canceled");
-    let committed=false;
+    let inserted=false;
     try {
       const staged=doc.createDocumentFragment();
       for(const node of replacements) staged.appendChild(node);
       parent.insertBefore(staged,end);
+      inserted=true;
       for(const node of old) parent.removeChild(node);
-      committed=true;
       if(bindings.signal?.aborted) throw new Error("H4 recovery canceled");
       return hydrateRegionPage(container,plan,envelope,manifest,routeId,bindings);
     }catch(error){
-      if(committed){
+      if(inserted){
         for(const node of replacements) node.parentNode?.removeChild(node);
         for(const node of old) parent.insertBefore(node,end);
       }
