@@ -157,3 +157,42 @@ No quantified bundle-size/latency/memory improvement is claimed until measured. 
 This opt-in path is intentionally narrow. Build-time `compileDataServer({ ..., hydratable: true })` emits a `hydrationPlan` with stable IDs and comment markers. Deployment code must deliver a matching `HydrationEnvelopeV1` with the verified buildId and route. The browser imports `hydrateDataPage` from `@zaakiyjs/ssr/client` and supplies a trusted reactive read function and optional event handlers keyed by the compiler's element IDs. A matching page retains all server-rendered nodes and input state; owner disposal unregisters listeners and effects without removing server markup. Invalid structure, mismatched initial values, bad routes/builds or unexpected attributes fail before attachment.
 
 This subset does **not** support compiler-generated JSX event expressions, arbitrary TSX components, keyed lists, conditional regions or automatic client bundle generation. Normal `compileDataServer` output remains byte-compatible when `hydratable` is disabled.
+
+### H4 native interactive-region hydration (opt-in, experimental)
+
+The Node-only compiler target `compileRegionServer` emits a deterministic
+`zaakiy.region-hydration/2` plan and escaped server HTML from reviewed TSX IR.
+Its restricted compiler subset supports one native root, static attributes,
+own-data text paths, safe conditional/keyed regions and pure local component
+calls with mapped data props. It rejects runtime TSX execution, unsafe URLs,
+arbitrary JSX event expressions, nested dynamic regions and unsupported slots.
+
+A verified deployment serves exact compiled module bytes with a matching
+`HydrationEnvelopeV1` and trusted manifest. The browser imports
+`hydrateRegionPage` from `@zaakiyjs/ssr/client`, supplies a trusted reactive
+`read(path)` callback, and optionally provides explicit event callbacks keyed
+to compiler-generated element IDs (for repeated rows, `id:key`). Strict
+preflight checks every server node, marker, key, attribute and initial text
+before constructing owners. Matching nodes retain identity, focus and live
+input drafts. DOM/Signals handle post-adoption keyed ordering and branch
+switching; owner disposal releases listeners/effects without removing
+remaining SSR markup.
+
+```ts
+import { hydrateRegionPage } from "@zaakiyjs/ssr/client";
+
+// plan and envelope come from the verified compiler/deployment artifacts.
+// manifest must be byte-bound to the actual server module.
+const handle = hydrateRegionPage(
+  container, plan, envelope, manifest, "products", {
+    read: path => trustedClientState.read(path)
+  }
+);
+handle.dispose();
+```
+
+These values are intentionally application-supplied; no public state or
+`read(path)` implementation is invented by the framework. H4 does not yet
+cover arbitrary components, named slots, JSX event lowering, nested dynamic
+regions or broad production browser certification. Do not treat this opt-in
+source implementation as a published npm feature. See ADR 0015.
