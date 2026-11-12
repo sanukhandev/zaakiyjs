@@ -16,7 +16,7 @@ const source=[
 ].join("\n");
 const compiled=compileRegionServer({
   fileName:"benchmarks/h4-hydration/h4-benchmark.tsx",
-  source,routeId:"h4benchmark"
+  source,routeId:"h4benchmark",hydrationScale:"large"
 });
 if(compiled.diagnostics.some(x=>x.severity==="error") ||
   !compiled.hydrationPlan || !compiled.js[0])
