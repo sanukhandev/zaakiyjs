@@ -3,14 +3,18 @@
  * client-rendered placeholders as an SSR benchmark substitute.
  */
 import "@angular/compiler";
-import {readFile,writeFile,mkdir} from "node:fs/promises";
+import {readFile,writeFile,mkdir,readdir} from "node:fs/promises";
 import {join,dirname,resolve} from "node:path";
 import {renderApplication} from "@angular/platform-server";
 import bootstrap from "./dist/server/main.server.mjs";
 
 const root=resolve("benchmarks/h4-hydration/angular/dist/browser");
-const shell=await readFile(join(root,"index.html"),"utf8");
-if(!shell.includes("<h4-root")) throw new Error("Angular production shell not found");
+const files=await readdir(root);
+const shellName=["index.csr.html","index.html"].find(name=>files.includes(name));
+if(!shellName) throw new Error("Angular production browser shell missing: "+files.join(","));
+const shell=await readFile(join(root,shellName),"utf8");
+if(!shell.includes("<h4-root") || !shell.includes("type=\"module\""))
+  throw new Error("Angular AOT client script or root missing from generated shell");
 for(const size of [100,1000,10000]){
   const html=await renderApplication(bootstrap,{
     document:shell,url:"http://localhost/angular/"+size+"/"
