@@ -167,7 +167,7 @@ if (h4Compiled.diagnostics.some(d=>d.severity==="error") ||
 const h4Bytes = new TextEncoder().encode(h4Compiled.js[0].code);
 const h4Server = await import("data:text/javascript;base64,"+
   Buffer.from(h4Bytes).toString("base64"));
-const h4Data={title:"Initial",shown:true,
+const h4Data={title:"<script>window.__zaakiyXss=1</script>",shown:true,
   rows:[{id:"a",label:"Alpha"},{id:"b",label:"Beta"}]};
 const h4Response=h4Server.render({
   schema:"zaakiy.render/1",route:{id:h4Route},
@@ -215,6 +215,9 @@ const h4Code=[
   '  const identity=container.querySelector("main")===root && container.querySelector("span")===badge',
   '    && [...container.querySelectorAll("button")].every((node,i)=>node===buttons[i]);',
   '  const focus=document.activeElement===input && input.value==="visitor draft";',
+  '  const xssSafe=badge.textContent==="<script>window.__zaakiyXss=1</script>"',
+  '    && window.__zaakiyXss===undefined',
+  '    && document.querySelector("meta[http-equiv=Content-Security-Policy]")!==null;',
   '  flushSync(()=>{state.value={...state.value,title:"Updated",shown:false,',
   '    rows:[state.value.rows[1],state.value.rows[0]]};});',
   '  buttons[1].click();const updatedEvent=clicks===2 && lastClicked==="b";',
@@ -246,7 +249,7 @@ const h4Code=[
   '  second.dispose();',
   '  window.__zaakiyH4={ready:true,mutations,identity,focus,moved,switched,',
   '    updated,focusAfter,reused,addition,changed,returned,preserved,',
-  '    eventAttached,updatedEvent,eventRemoved,benchmarkCorrect,h4Samples,',
+  '    eventAttached,updatedEvent,eventRemoved,xssSafe,benchmarkCorrect,h4Samples,',
   '    lastState:container.querySelectorAll("button").length};',
   '}catch(error){window.__zaakiyH4={ready:true,error:String(error)};}'
 ].join("\n");
