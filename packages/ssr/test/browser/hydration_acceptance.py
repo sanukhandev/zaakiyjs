@@ -81,12 +81,45 @@ def run(dist: Path, output: Path):
                     })""")
                     if disposed != {"clicks": 1, "text": "Count: 1"}:
                         raise AssertionError(f"{name}: listener survived disposal: {disposed}")
+                    # H4 compiler-generated component/keyed/conditional hydration,
+                    # using an independently generated production Vite bundle.
+                    h4 = browser.new_page(viewport={"width": 1200, "height": 800})
+                    h4_errors = []
+                    h4.on("pageerror", lambda error: h4_errors.append(str(error)))
+                    try:
+                        h4.goto(
+                            f"http://127.0.0.1:{server.server_port}/h4.html",
+                            wait_until="load", timeout=60000
+                        )
+                        h4.wait_for_function(
+                            "window.__zaakiyH4 && window.__zaakiyH4.ready",
+                            timeout=20000
+                        )
+                        h4_result = h4.evaluate("window.__zaakiyH4")
+                        if h4_errors or h4_result.get("error"):
+                            raise AssertionError(
+                                f"{name}: H4 failed: {h4_errors}, {h4_result.get('error')}"
+                            )
+                        for key in ("identity", "focus", "moved", "switched",
+                                    "updated", "focusAfter", "reused", "addition",
+                                    "changed", "returned", "preserved"):
+                            if h4_result.get(key) is not True:
+                                raise AssertionError(
+                                    f"{name}: H4 {key} failed: {h4_result}"
+                                )
+                        if h4_result.get("mutations") != 0 or h4_result.get("lastState") != 2:
+                            raise AssertionError(
+                                f"{name}: H4 matching hydration mutated DOM: {h4_result}"
+                            )
+                    finally:
+                        h4.close()
                     report["browsers"].append({
                         "engine": name, "adoptionMs": before["adoptionMs"],
                         "p50Ms": before["p50Ms"], "p95Ms": before["p95Ms"],
                         "samplesMs": before["samples"], "iterationsPerSample": 1000,
                         "warmups": 2, "mutations": 0,
-                        "existingNodesPreserved": True, "listenerCleanup": True
+                        "existingNodesPreserved": True, "listenerCleanup": True,
+                        "h4RegionHydration": True
                     })
                     page.close()
                 finally:
