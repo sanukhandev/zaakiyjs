@@ -61,7 +61,6 @@ const code = [
   'import { hydrateDataPage } from "@zaakiyjs/ssr/client";',
   'import { signal, flushSync } from "@zaakiyjs/signals";',
   'import { createRegionEventResolver } from "./h4-generated-events.js";',
-  'import { createRegionEventResolver } from "./h4-generated-events.js";',
   "const plan = " + JSON.stringify(compiled.hydrationPlan) + ";",
   "const manifest = " + JSON.stringify(manifest) + ";",
   "const envelope = " + JSON.stringify(envelope) + ";",
