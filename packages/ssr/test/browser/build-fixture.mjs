@@ -225,7 +225,7 @@ const h4Code=[
   '  buttons[1].click();const eventRemoved=clicks===1 && released===1;',
   '  const preserved=container.querySelector("main")===root &&',
   '    input.value==="visitor draft";',
-  '  const second=hydrateRegionPage(container,plan,envelope,manifest,"products",{read});',
+  '  const second=hydrateRegionPage(container,plan,envelope,manifest,"products",{read,resolveEvent:()=>()=>{clicks++;}});',
   '  second.dispose();',
   '  window.__zaakiyH4={ready:true,mutations,identity,focus,moved,switched,',
   '    updated,focusAfter,reused,addition,changed,returned,preserved,',
