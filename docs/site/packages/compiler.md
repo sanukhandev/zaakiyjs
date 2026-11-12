@@ -243,6 +243,16 @@ After validating exact server-module bytes and delivering a trusted
 `@zaakiyjs/ssr/client` to validate and adopt the matching existing nodes,
 attach explicit trusted event listeners and owner-scoped text bindings. This
 is a restricted initial snapshot-adoption target: **not** full dynamic component
-hydration. Runtime keyed reconciliation, branch transitions, component calls,
-named slots, compiler JSX-event lowering, and browser certification remain
-pending. No client-side compiler dependency is introduced. See ADR 0015.
+hydration. Runtime keyed reconciliation, branch transitions, and pure local component
+composition are now implemented in the restricted v2 path. Named slots,
+compiler JSX-event lowering, parser-normalized HTML elements, complex nested
+regions, and three-engine production/browser certification remain pending. No client-side compiler dependency is introduced. See ADR 0015.
+
+Pure local components may be composed using one native TSX return, a named
+`props` argument, and explicit own-data prop references. Their nested DOM is
+adopted into child owners without invoking server JSX functions. The H4
+browser target uses the existing DOM keyed/conditional scheduler to move or
+replace only affected native ranges; matching attachment makes no first-pass
+DOM replacements. The server and browser share deterministic v2 markers. Tests
+cover matching adoption, keyed reorder, conditional switching, focus, state
+updates and disposal. This is still not general-purpose TSX hydration.
