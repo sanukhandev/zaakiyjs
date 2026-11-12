@@ -79,6 +79,12 @@ importers:
         version: link:../signals
 
 
+  packages/image:
+    devDependencies:
+      '@types/node':
+        specifier: 22.15.30
+        version: 22.15.30
+
   packages/http:
     devDependencies:
       '@zaakiyjs/async':
