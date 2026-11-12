@@ -72,9 +72,13 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     if (!returned) continue;
     const jsx = unwrap(returned);
     if (!ts.isJsxElement(jsx) && !ts.isJsxSelfClosingElement(jsx)) continue;
-    if (statement.parameters.length > 1 ||
+    if (statement.asteriskToken ||
+        statement.modifiers?.some(m => m.kind===ts.SyntaxKind.AsyncKeyword) ||
+        statement.parameters.length > 1 ||
         (statement.parameters[0] && (!ts.isIdentifier(statement.parameters[0].name) ||
-          statement.parameters[0].name.text !== "props"))) {
+          statement.parameters[0].name.text !== "props" ||
+          Boolean(statement.parameters[0].initializer) ||
+          Boolean(statement.parameters[0].dotDotDotToken)))) {
       return reject("H4 component props must use one named props parameter");
     }
     const root = ir.nodes.find(node => node.span.start.offset === jsx.getStart(sourceFile));
@@ -100,7 +104,9 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     if (!aliases) return { source:"props",path };
     const from=aliases.get(path[0]!);
     if (!from) throw new TypeError("Unbound component data prop: "+path[0]);
-    return {source:from.source,path:[...from.path,...path.slice(1)]};
+    const mapped=[...from.path,...path.slice(1)];
+    if (mapped.length>4) throw new TypeError("H4 component prop path depth exceeded");
+    return {source:from.source,path:mapped};
   };
   const nestedRegion = (nodes:readonly RegionNode[]):boolean => nodes.some(node =>
     node.kind === "conditional" || node.kind === "keyed" || node.kind === "component" ||
