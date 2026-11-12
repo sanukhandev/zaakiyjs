@@ -18,6 +18,51 @@ const source=[
 ].join("\n");
 
 describe("H4 compiler -> SSR module -> browser adopted reactive DOM",()=>{
+  it("recreates nested conditional owners after outer branch switches, without leaking old nodes",async()=>{
+    const nestedSource=[
+      "function Page(props:{outer:boolean;inner:boolean;title:string}){",
+      "return <main>{props.outer ? <section>{props.inner ? <strong>{props.title}</strong> : <em>Off</em>}</section> : <p>Closed</p>}</main>;",
+      "}"
+    ].join("\n");
+    const built=compileRegionServer({fileName,routeId,source:nestedSource});
+    expect(built.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    const plan=built.hydrationPlan!;
+    const rendered=await import("data:text/javascript;base64,"+
+      Buffer.from(built.js[0]!.code).toString("base64"));
+    const state=signal({outer:true,inner:true,title:"Initial"});
+    const html:string=rendered.render({
+      schema:"zaakiy.render/1",route:{id:routeId},
+      request:{signal:{aborted:false}},loaderData:state.value
+    }).body;
+    const container=document.createElement("div");
+    container.innerHTML=html;document.body.appendChild(container);
+    const manifest:TrustedServerBuildManifestV1={
+      schema:"zaakiy.render-manifest/1",buildId:"a".repeat(64),
+      irVersion:1,domAbiVersion:1,
+      routes:{product:{routeId,moduleId:"compiled",sourceDigest:"f".repeat(64)}}
+    };
+    const envelope:HydrationEnvelopeV1={
+      schema:"zaakiy.hydration/1",buildId:manifest.buildId,routeId,
+      domAbiVersion:1,boundaries:[{markerId:plan.markerId,
+        templateDigest:plan.templateDigest}],payload:null
+    };
+    const handle=hydrateRegionPage(container,plan,envelope,manifest,routeId,{
+      read:path=>state.value[path[0] as keyof typeof state.value]
+    });
+    const original=container.querySelector("strong");
+    expect(original?.textContent).toBe("Initial");
+    flushSync(()=>{state.value={...state.value,outer:false};});
+    expect(container.querySelector("p")?.textContent).toBe("Closed");
+    expect(original?.isConnected).toBe(false);
+    flushSync(()=>{state.value={...state.value,inner:false,outer:true};});
+    expect(container.querySelector("em")?.textContent).toBe("Off");
+    flushSync(()=>{state.value={...state.value,inner:true,title:"Reopened"};});
+    expect(container.querySelector("strong")?.textContent).toBe("Reopened");
+    expect(container.querySelectorAll("section")).toHaveLength(1);
+    handle.dispose();
+    container.remove();
+  });
+
   it("preserves server identity/focus and precisely updates component, conditional and keyed regions",async()=>{
     const built=compileRegionServer({fileName,routeId,source});
     expect(built.diagnostics.filter(item=>item.severity==="error")).toEqual([]);
