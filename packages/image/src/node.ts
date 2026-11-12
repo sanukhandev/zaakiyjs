@@ -26,7 +26,7 @@ interface SharpPipeline {
   metadata(): Promise<ImageMetadata>;
   rotate(): SharpPipeline;
   resize(options: { width: number; withoutEnlargement: boolean }): SharpPipeline;
-  toFormat(format: EncodedFormat, options: { quality: number }): SharpPipeline;
+  toFormat(format: EncodedFormat, options: { quality: number; effort?: number }): SharpPipeline;
   toBuffer(): Promise<Uint8Array>;
 }
 /** Sharp is injected from the build toolchain, never imported by browser modules. */
@@ -43,7 +43,9 @@ export function createSharpProcessor(factory: SharpFactory, id: string): ImagePr
     encode: (source, request) => factory(Buffer.from(source), options)
       .rotate()
       .resize({ width: request.width, withoutEnlargement: true })
-      .toFormat(request.format, { quality: request.quality })
+      .toFormat(request.format, request.format === "avif"
+        ? { quality: request.quality, effort: 2 }
+        : { quality: request.quality })
       .toBuffer()
   };
 }
@@ -117,7 +119,7 @@ function qualityOf(value: number | undefined): number {
   return q;
 }
 function formatsOf(value: LocalImageSource["formats"]): ("avif" | "webp")[] {
-  const formats = value ?? ["webp", "avif"];
+  const formats = value ?? ["webp"];
   if (!Array.isArray(formats) || formats.length > 2 ||
       formats.some(f => f !== "webp" && f !== "avif") ||
       new Set(formats).size !== formats.length)

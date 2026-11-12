@@ -8,6 +8,8 @@ A local-first, compiler-compatible image optimization foundation for ZaakiyJS. I
 
 Install @zaakiyjs/image plus a supported image codec in the **build environment**. Version-pin Sharp and your lockfile independently. Image transformation runs in Node/CI, never on a client.
 
+The default modern format is **WebP**. AVIF is an explicit opt-in because encoding it is more CPU-intensive. The Sharp adapter uses AVIF effort 2 to bound build cost; do not interpret this as universal file-size superiority.
+
 ## Build responsive images (Node/Vite build step)
 
 ~~~ts

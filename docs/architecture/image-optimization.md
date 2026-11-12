@@ -6,3 +6,5 @@
 - All ordinary builds work offline with explicit processor injection. Sharp is an explicit, consumer-owned build dependency; its version must be pinned in each consuming app.
 - Accessibility: mandatory alt (empty permitted for decorative images), explicit intrinsic dimensions to prevent layout shift, default lazy loading and optional priority/eager request for LCP assets.
 - Benchmark matched deterministic photo data: source JPEG bytes versus selected per-viewport AVIF/WebP/JPEG output bytes; measure cold complete build p50/p95, exact output dimensions and hashed bytes. Image transfer savings are workload-specific; **not** proof of Next.js-relative throughput or browser LCP.
+
+- Default modern output is WebP; AVIF is opt-in. The Sharp encoder uses AVIF effort 2 to bound build CPU time while preserving the explicit quality setting.
