@@ -84,15 +84,29 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
   }
   const entryName = request.entryComponent ?? "Page";
   const root = functions.get(entryName) ??
-    (functions.size === 0 && ir.nodes.length === 1 ? ir.nodes[0] : undefined);
+    (functions.size === 1 ? [...functions.values()][0] :
+      (functions.size === 0 && ir.nodes.length === 1 ? ir.nodes[0] : undefined));
   if (!root || root.kind !== "StaticElement")
     return reject("H4 requires a named Page TSX root or a single native root");
   let ordinal = 0;
   let count = 0;
+  type BoundValue = { readonly source: "props" | "item"; readonly path: readonly string[] };
+  const resolve = (source: string,itemName?: string,
+    aliases?: ReadonlyMap<string,BoundValue>): BoundValue => {
+    const value = source.trim();
+    if (itemName && value.startsWith(itemName + "."))
+      return { source:"item",path:pathOf(value,itemName) };
+    const path=pathOf(value,"props");
+    if (!aliases) return { source:"props",path };
+    const from=aliases.get(path[0]!);
+    if (!from) throw new TypeError("Unbound component data prop: "+path[0]);
+    return {source:from.source,path:[...from.path,...path.slice(1)]};
+  };
   const nestedRegion = (nodes:readonly RegionNode[]):boolean => nodes.some(node =>
-    node.kind === "conditional" || node.kind === "keyed" ||
+    node.kind === "conditional" || node.kind === "keyed" || node.kind === "component" ||
     (node.kind === "element" && nestedRegion(node.children)));
-  const convert = (nodes: readonly IRNode[], itemName?: string, depth = 0): RegionNode[] => {
+  const convert = (nodes: readonly IRNode[], itemName?: string, depth = 0,
+    aliases?: ReadonlyMap<string,BoundValue>, stack: readonly string[] = []): RegionNode[] => {
     if (depth > 64) throw new RangeError("Hydration blueprint nesting limit exceeded");
     const output: RegionNode[] = [];
     for (const node of nodes) {
@@ -102,9 +116,8 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
         case "StaticText": output.push({ kind: "literal", value: node.text }); break;
         case "DynamicText": {
           if (node.expression.reactive) throw new TypeError("H4 server data cannot read runtime signals");
-          const value = node.expression.source.trim();
-          const source = itemName && value.startsWith(itemName + ".") ? "item" : "props";
-          output.push({ kind: "data", id: hash("zaakiy-region-data:" + request.routeId + ":" + ordinal++).slice(0, 32), source, path: pathOf(value, source === "item" ? itemName! : "props") });
+          const bound = resolve(node.expression.source,itemName,aliases);
+          output.push({ kind: "data", id: hash("zaakiy-region-data:" + request.routeId + ":" + ordinal++).slice(0, 32), ...bound });
           break;
         }
         case "StaticElement": {
@@ -117,7 +130,8 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
               if (rendered) attrs.push(rendered);
             }
           }
-          const children = convert(node.children.filter(child => child.kind !== "PropertyBinding"), itemName, depth + 1);
+          const children = convert(node.children.filter(child => child.kind !== "PropertyBinding"),
+            itemName, depth + 1,aliases,stack);
           if (SSR_VOID_TAGS.has(node.tag) && children.length)
             throw new TypeError("Void elements cannot contain hydration children");
           output.push({ kind: "element", id: hash("zaakiy-region-element:" + request.routeId + ":" + ordinal++).slice(0, 32), tag: node.tag, attrs, children });
@@ -126,12 +140,13 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
         case "ConditionalBlock": {
           if (node.condition.reactive) throw new TypeError("H4 conditional cannot execute server signals");
           const id = hash("zaakiy-region:" + request.routeId + ":" + ordinal++).slice(0, 32);
-          const yes = convert(node.whenTrue, itemName, depth + 1);
-          const no = convert(node.whenFalse, itemName, depth + 1);
+          const yes = convert(node.whenTrue, itemName, depth + 1,aliases,stack);
+          const no = convert(node.whenFalse, itemName, depth + 1,aliases,stack);
           if (nestedRegion(yes) || nestedRegion(no))
             throw new TypeError("Nested dynamic regions inside a conditional need a later H4 ABI");
-          output.push({ kind: "conditional", id, path: pathOf(node.condition.source, "props"),
-            yes, no });
+          const condition=resolve(node.condition.source,itemName,aliases);
+          if (condition.source!=="props") throw new TypeError("H4 conditional requires root data");
+          output.push({ kind: "conditional", id, path: condition.path,yes,no });
           break;
         }
         case "KeyedLoop": {
@@ -141,10 +156,12 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           const key = pathOf(node.key.source, node.itemParameter);
           if (key.length !== 1) throw new TypeError("H4 key must be one own item property");
           const id = hash("zaakiy-region:" + request.routeId + ":" + ordinal++).slice(0, 32);
-          const rows = convert(node.body, node.itemParameter, depth + 1);
+          const rows = convert(node.body, node.itemParameter, depth + 1,aliases,stack);
           if (rows.length !== 1 || rows[0]?.kind !== "element" || nestedRegion(rows))
             throw new TypeError("H4 keyed row must have one native element and no nested regions");
-          output.push({ kind: "keyed", id, path: pathOf(node.collection.source, "props"),
+          const collection=resolve(node.collection.source,itemName,aliases);
+          if (collection.source!=="props") throw new TypeError("H4 keyed list requires root data");
+          output.push({ kind: "keyed", id, path: collection.path,
             itemName: node.itemParameter, key: key[0]!, rows });
           break;
         }
