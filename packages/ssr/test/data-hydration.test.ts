@@ -47,7 +47,7 @@ describe("H0–H3 compiler-backed native DOM adoption", () => {
     const compiled = compileDataServer(request);
     expect(compiled.diagnostics.filter(d => d.severity === "error")).toEqual([]);
     expect(compiled.hydrationPlan).toBeDefined();
-    const bytes = new TextEncoder().encode(compiled.js[0]!.code);
+    const bytes = Uint8Array.from(Buffer.from(compiled.js[0]!.code));
     const server = await moduleFor(compiled.js[0]!.code);
     expect(server.hydrationPlan).toEqual(compiled.hydrationPlan);
     const manifest = buildVerifiedManifestV1([
@@ -113,7 +113,7 @@ describe("H0–H3 compiler-backed native DOM adoption", () => {
     const compiled = compileDataServer(request);
     const server = await moduleFor(compiled.js[0]!.code);
     const manifest = buildVerifiedManifestV1([{
-      routeId, moduleId: "generated/counter", bytes: new TextEncoder().encode(compiled.js[0]!.code)
+      routeId, moduleId: "generated/counter", bytes: Uint8Array.from(Buffer.from(compiled.js[0]!.code))
     }]);
     const envelope: HydrationEnvelopeV1 = {
       schema: "zaakiy.hydration/1", domAbiVersion: 1, routeId,
@@ -170,7 +170,7 @@ describe("H0–H3 compiler-backed native DOM adoption", () => {
     const container = document.createElement("div");
     container.innerHTML = markup;
     const manifest = buildVerifiedManifestV1([{
-      routeId, moduleId: "generated/counter", bytes: new TextEncoder().encode(output.js[0]!.code)
+      routeId, moduleId: "generated/counter", bytes: Uint8Array.from(Buffer.from(output.js[0]!.code))
     }]);
     const envelope: HydrationEnvelopeV1 = {
       schema: "zaakiy.hydration/1", routeId, buildId: manifest.buildId,
