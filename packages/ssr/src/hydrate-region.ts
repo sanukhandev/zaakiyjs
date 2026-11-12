@@ -84,14 +84,14 @@ function discover(container: Element, plan: RegionHydrationPlanV2, read: RegionH
   const slots: TextBinding[] = [];
   let count = 0;
   const cursorFor = (parent: Node, begin: Node | null, end: Node | null,
-    specs: readonly RegionNodeV2[], item: unknown, depth: number): Node | null => {
+    specs: readonly RegionNodeV2[], item: unknown, depth: number, scope = ""): Node | null => {
     if (depth > 64 || !Array.isArray(specs)) mismatch("region plan bounds");
     let cursor = begin;
     for (const spec of specs) {
       if (++count > MAX || !spec || typeof spec !== "object") mismatch("region budget");
       switch (spec.kind) {
         case "element": {
-          if (!ID.test(spec.id) || elements.has(spec.id) ||
+          if (!ID.test(spec.id) || elements.has(scope ? spec.id + ":" + scope : spec.id) ||
               !cursor || cursor === end || cursor.nodeType !== 1 ||
               !Array.isArray(spec.children) || !Array.isArray(spec.attrs))
             mismatch("element id/tree");
@@ -107,8 +107,8 @@ function discover(container: Element, plan: RegionHydrationPlanV2, read: RegionH
                 encode(element.getAttribute(parsed[1]!)!) !== parsed[2]) mismatch("static attribute");
           }
           if (element.attributes.length !== names.size) mismatch("unexpected attribute");
-          elements.set(spec.id, element);
-          const remainder = cursorFor(element, element.firstChild, null, spec.children, item, depth+1);
+          elements.set(scope ? spec.id + ":" + scope : spec.id, element);
+          const remainder = cursorFor(element, element.firstChild, null, spec.children, item, depth+1,scope);
           if (remainder !== null) mismatch("unexpected element children");
           cursor = element.nextSibling;
           break;
@@ -142,7 +142,7 @@ function discover(container: Element, plan: RegionHydrationPlanV2, read: RegionH
               cursor.nodeValue !== "zaakiy-r2:" + spec.id + ":start")
             mismatch("conditional start");
           const selected = read(spec.path) ? spec.yes : spec.no;
-          cursor = cursorFor(parent,cursor.nextSibling,end,selected,item,depth+1);
+          cursor = cursorFor(parent,cursor.nextSibling,end,selected,item,depth+1,scope);
           if (!cursor || cursor === end || cursor.nodeType !== 8 ||
               cursor.nodeValue !== "zaakiy-r2:" + spec.id + ":end") mismatch("conditional end");
           cursor = cursor.nextSibling;
@@ -164,7 +164,7 @@ function discover(container: Element, plan: RegionHydrationPlanV2, read: RegionH
             if (!cursor || cursor === end || cursor.nodeType !== 8 ||
                 cursor.nodeValue !== "zaakiy-k2:" + spec.id + ":" + key + ":start")
               mismatch("keyed item start");
-            cursor = cursorFor(parent,cursor.nextSibling,end,spec.rows,row,depth+1);
+            cursor = cursorFor(parent,cursor.nextSibling,end,spec.rows,row,depth+1,key);
             if (!cursor || cursor === end || cursor.nodeType !== 8 ||
                 cursor.nodeValue !== "zaakiy-k2:" + spec.id + ":" + key + ":end")
               mismatch("keyed item end");
@@ -206,7 +206,7 @@ export function hydrateRegionPage(
   if (!Array.isArray(events) || events.length > 4096) mismatch("event budget");
   const seen = new Set<string>();
   for (const event of events) {
-    if (!event || !ID.test(event.elementId) || !found.elements.has(event.elementId) ||
+    if (!event || !/^([a-f0-9]{32})(:[A-Za-z0-9_.:]{1,64})?$/.test(event.elementId) || !found.elements.has(event.elementId) ||
         !EVENT.test(event.name) || typeof event.handler !== "function" ||
         seen.has(event.elementId + ":" + event.name)) mismatch("event target/duplicate");
     seen.add(event.elementId + ":" + event.name);
