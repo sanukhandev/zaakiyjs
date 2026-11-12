@@ -336,7 +336,7 @@ export function hydrateRegionPage(
   const targetElements=new Map<string,Element>();
   allElements(tree,targetElements);
   const events=[...(bindings.events??[])];
-  const compiledEvents:(typeof tree.compiledEvents) = [];
+  const compiledEvents:Array<Zone["compiledEvents"][number]> = [];
   const collectEvents=(target:Zone):void=>{
     compiledEvents.push(...target.compiledEvents);
     for(const comp of target.components) collectEvents(comp.child);
