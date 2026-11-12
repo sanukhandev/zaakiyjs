@@ -60,6 +60,7 @@ await mkdir(distDir, { recursive: true });
 const code = [
   'import { hydrateDataPage } from "@zaakiyjs/ssr/client";',
   'import { signal, flushSync } from "@zaakiyjs/signals";',
+  'import { createRegionEventResolver } from "./h4-generated-events.js";',
   "const plan = " + JSON.stringify(compiled.hydrationPlan) + ";",
   "const manifest = " + JSON.stringify(manifest) + ";",
   "const envelope = " + JSON.stringify(envelope) + ";",
@@ -145,10 +146,10 @@ console.log(JSON.stringify({
 const h4Route = "products";
 const h4Source = [
   'import { Badge } from "./h4-badge.js";',
-  'function Page(props: { title:string;shown:boolean;rows:{id:string;label:string}[];onPress:(event:MouseEvent)=>void }) {',
+  'function Page(props: { title:string;shown:boolean;rows:{id:string;label:string}[];onPress:(id:string,event:MouseEvent)=>void }) {',
   'return <main><input value="server"/><Badge title={props.title}/>',
   '{props.shown ? <h2>Shown</h2> : <p>Hidden</p>}',
-  '{props.rows.map(item=><button key={item.id} onClick={props.onPress}>{item.label}</button>)}</main>;',
+  '{props.rows.map(item=><button key={item.id} onClick={(event)=>props.onPress(item.id,event)}>{item.label}</button>)}</main>;',
   '}'
 ].join("\n");
 const h4ModuleSource=await readFile(join(root,"packages/ssr/test/browser/h4-badge.tsx"),"utf8");
@@ -182,6 +183,9 @@ const h4Envelope={
     templateDigest:h4Compiled.hydrationPlan.templateDigest}]
 };
 const h4SerializedState=serializeHydrationState(h4Manifest.buildId,h4Route,h4Data);
+if(!h4Compiled.clientEvents?.length)
+  throw new Error("H4 compiler did not emit client event handler module");
+await writeFile(join(fixtureDir,"h4-generated-events.js"),h4Compiled.clientEvents[0].code);
 const h4Code=[
   'import { hydrateRegionPage, hydrateRegionPageWithState } from "@zaakiyjs/ssr/client";',
   'import { signal, flushSync } from "@zaakiyjs/signals";',
@@ -189,7 +193,7 @@ const h4Code=[
   "const manifest="+JSON.stringify(h4Manifest)+";",
   "const envelope="+JSON.stringify(h4Envelope)+";",
   "const serialized="+JSON.stringify(h4SerializedState)+";",
-  "let state;let clicks=0;let released=0;",
+  "let state;let clicks=0;let released=0;let lastClicked=null;",
   'const container=document.querySelector("#app");',
   'const root=container.querySelector("main");',
   'const badge=container.querySelector("span");',
@@ -203,16 +207,16 @@ const h4Code=[
   '  observer.observe(container,{subtree:true,childList:true,attributes:true,characterData:true});',
   '  handle=hydrateRegionPageWithState(container,plan,envelope,manifest,"products",serialized,publicState=>{',
   '    state=signal(publicState);return {read,disposeState:()=>{released++;},',
-  '      resolveEvent:path=>{if(path.join(".")!=="onPress")throw Error("unapproved event");',
-  '        return ()=>{clicks++;};}};',
+  '      resolveEvent:createRegionEventResolver({onPress:(id)=>{clicks++;lastClicked=id;}})};',
   '  });',
   '  const mutations=observer.takeRecords().length;observer.disconnect();',
-  '  buttons[1].click();const eventAttached=clicks===1;',
+  '  buttons[1].click();const eventAttached=clicks===1 && lastClicked==="b";',
   '  const identity=container.querySelector("main")===root && container.querySelector("span")===badge',
   '    && [...container.querySelectorAll("button")].every((node,i)=>node===buttons[i]);',
   '  const focus=document.activeElement===input && input.value==="visitor draft";',
   '  flushSync(()=>{state.value={...state.value,title:"Updated",shown:false,',
   '    rows:[state.value.rows[1],state.value.rows[0]]};});',
+  '  buttons[1].click();const updatedEvent=clicks===2 && lastClicked==="b";',
   '  const moved=container.querySelectorAll("button")[0]===buttons[1] &&',
   '    container.querySelectorAll("button")[1]===buttons[0];',
   '  const switched=container.querySelector("p")?.textContent==="Hidden" &&',
@@ -226,14 +230,15 @@ const h4Code=[
   '  const changed=container.querySelectorAll("button")[0]?.textContent==="Beta changed";',
   '  const returned=container.querySelector("h2")?.textContent==="Shown";',
   '  handle.dispose();',
-  '  buttons[1].click();const eventRemoved=clicks===1 && released===1;',
+  '  buttons[1].click();const eventRemoved=clicks===2 && released===1;',
   '  const preserved=container.querySelector("main")===root &&',
   '    input.value==="visitor draft";',
-  '  const second=hydrateRegionPage(container,plan,envelope,manifest,"products",{read,resolveEvent:()=>()=>{clicks++;}});',
+  '  const second=hydrateRegionPage(container,plan,envelope,manifest,"products",{read,',
+  '    resolveEvent:createRegionEventResolver({onPress:(id)=>{clicks++;lastClicked=id;}})});',
   '  second.dispose();',
   '  window.__zaakiyH4={ready:true,mutations,identity,focus,moved,switched,',
   '    updated,focusAfter,reused,addition,changed,returned,preserved,',
-  '    eventAttached,eventRemoved,',
+  '    eventAttached,updatedEvent,eventRemoved,',
   '    lastState:container.querySelectorAll("button").length};',
   '}catch(error){window.__zaakiyH4={ready:true,error:String(error)};}'
 ].join("\n");
