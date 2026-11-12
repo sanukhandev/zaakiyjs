@@ -72,16 +72,25 @@ function ownEffect(owner: OwnerScope, run: () => void, teardown: () => void): Bi
   });
 }
 
+/** Additive H4 first-attachment seed for a compiler-verified SSR region. */
+export interface ConditionalHydrationSeed {
+  readonly initialBranch: boolean;
+  /** Attach to already-verified nodes without replacing them. */
+  readonly adopt: (child: OwnerScope) => void;
+  /** Retain adopted SSR markup when the hydration owner unmounts. */
+  readonly preserveMarkupOnDispose?: boolean;
+}
 export function bindConditionalRegion(
   owner: OwnerScope,
   region: DomRegion,
   when: () => boolean,
   create: (child: OwnerScope) => Node,
-  createOtherwise?: (child: OwnerScope) => Node
+  createOtherwise?: (child: OwnerScope) => Node,
+  hydration?: ConditionalHydrationSeed
 ): BindingHandle {
   let current: OwnerScope | null = null;
   let currentBranch: boolean | null = null;
-  const clear = (): void => {
+  const clear = (removeMarkup = true): void => {
     if (current) {
       const outgoing = current;
       current = null;
@@ -89,12 +98,24 @@ export function bindConditionalRegion(
       try {
         disposeOwner(outgoing);
       } finally {
-        removeBetween(region.start, region.end);
+        if (removeMarkup) removeBetween(region.start, region.end);
       }
       return;
     }
-    removeBetween(region.start, region.end);
+    if (removeMarkup) removeBetween(region.start, region.end);
   };
+  if (hydration) {
+    const adopted = createOwner(owner);
+    try {
+      untrack(() => initializeOwnedComponent(adopted, () => hydration.adopt(adopted)));
+      current = adopted;
+      currentBranch = hydration.initialBranch;
+      mountChild(owner, adopted);
+    } catch (error) {
+      try { disposeOwner(adopted); } catch { /* preserve original failure */ }
+      throw error;
+    }
+  }
   return ownEffect(owner, () => {
     const active = Boolean(when());
     if (current !== null && currentBranch === active) return;
@@ -120,7 +141,7 @@ export function bindConditionalRegion(
       }
       throw error;
     }
-  }, clear);
+  }, () => clear(!hydration?.preserveMarkupOnDispose));
 }
 
 
