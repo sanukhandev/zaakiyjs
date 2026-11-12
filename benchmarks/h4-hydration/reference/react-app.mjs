@@ -1,7 +1,7 @@
 import React, { useState, useLayoutEffect } from "react";
 
 export const makeRows = count => Array.from({ length: count }, (_,i) => ({
-  id:"row-"+i, label:"Row "+i
+  id:"row_"+i, label:"Row "+i
 }));
 
 export function ReactBenchmarkApp({ size, onReady }) {
