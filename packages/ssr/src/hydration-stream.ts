@@ -60,12 +60,15 @@ export function createHydrationStreamAssembler(options: HydrationStreamOptions):
       if (finished) throw new Error("Hydration stream already complete");
       if (!fragment || fragment.buildId !== options.buildId ||
           fragment.routeId !== options.routeId ||
-          fragment.boundaryId !== options.boundaryId)
+          fragment.boundaryId !== options.boundaryId) {
+        detach(); abort();
         throw new TypeError("Hydration stream identity mismatch");
+      }
       // Out-of-order, duplicate and missing fragments always fail closed.
       if (!Number.isSafeInteger(fragment.index) || fragment.index !== parts.length ||
           fragment.index >= maxFragments || typeof fragment.final !== "boolean" ||
           !(fragment.bytes instanceof Uint8Array)) {
+        detach(); abort();
         throw new TypeError("Hydration stream sequence or fragment invalid");
       }
       // Ensure input can no longer be mutated by the producer after acceptance.
