@@ -43,7 +43,6 @@ const ATTR = /^ ([a-z][a-z0-9:_-]*)="([^"]*)"$/;
 const EVENT = /^[a-z][a-z0-9:_-]*$/;
 const DENIED = new Set(["__proto__", "constructor", "prototype"]);
 const MAX_NODES = 8192;
-type ElementNode = Extract<RegionNodeV2, {kind:"element"}>;
 type ConditionalNode = Extract<RegionNodeV2, {kind:"conditional"}>;
 type KeyedNode = Extract<RegionNodeV2, {kind:"keyed"}>;
 type DataNode = Extract<RegionNodeV2, {kind:"data"}>;
@@ -276,13 +275,6 @@ function allElements(target:Zone, output:Map<string,Element>):void {
   for (const keyed of target.keyed)
     for (const row of keyed.rows) allElements(row.child,output);
 }
-function visitSlots(target:Zone, callback:(slot:Slot)=>void):void {
-  for (const slot of target.slots) callback(slot);
-  for (const condition of target.conditions) visitSlots(condition.child,callback);
-  for (const keyed of target.keyed)
-    for (const row of keyed.rows) visitSlots(row.child,callback);
-}
-
 /** Adopt exactly matching server markup; a mismatched region is never replaced. */
 export function hydrateRegionPage(
   container:Element,plan:RegionHydrationPlanV2,
