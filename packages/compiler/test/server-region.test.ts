@@ -124,6 +124,7 @@ describe("H4 compiler-backed region SSR target", () => {
   });
   it("lowers named/default slots into component ownership without browser JSX evaluation",async()=>{
     const source=[
+      'import { Slot } from "@zaakiyjs/core";',
       'function Panel(props:{header?:unknown;children?:unknown}){return <article><Slot name="header"/><div><Slot name="children"/></div></article>;}',
       'function Page(props:{title:string}){return <main><Panel header={<h2>{props.title}</h2>}><p>Body</p></Panel></main>;}'
     ].join("\n");
@@ -143,6 +144,7 @@ describe("H4 compiler-backed region SSR target", () => {
   });
   it("rejects unresolved slot outlets rather than rendering an empty fallback",()=>{
     const source=[
+      'import { Slot } from "@zaakiyjs/core";',
       'function Panel(){return <article><Slot name="header"/></article>;}',
       'function Page(){return <main><Panel/></main>;}'
     ].join("\n");
