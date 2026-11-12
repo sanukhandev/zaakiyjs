@@ -1,0 +1,80 @@
+name: H4 Hydration Reference Builds
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'benchmarks/h4-hydration/**'
+      - 'packages/compiler/**'
+      - 'packages/ssr/**'
+      - '.github/workflows/h4-hydration-reference.yml'
+  push:
+    branches: ['feat/production-hardening-integration']
+    paths:
+      - 'benchmarks/h4-hydration/**'
+      - 'packages/compiler/**'
+      - 'packages/ssr/**'
+      - '.github/workflows/h4-hydration-reference.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: h4-reference-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-references:
+    name: h4 / React Vue Zaakiy production fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Build frozen ZaakiyJS workspace
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - name: Install exact direct React Vue dependencies and retain resolved graph
+        run: |
+          npm install --prefix benchmarks/h4-hydration/reference --ignore-scripts --no-audit --no-fund --package-lock
+          mkdir -p benchmark-artifacts/h4-hydration-sites
+          cp benchmarks/h4-hydration/reference/package-lock.json benchmark-artifacts/h4-hydration-sites/reference-generated-lock.json
+      - name: Compile independent React Vue SSR and browser hydration
+        env:
+          H4_SITE: benchmark-artifacts/h4-hydration-sites
+          NODE_ENV: production
+        run: node benchmarks/h4-hydration/reference/build.mjs
+      - name: Compile ZaakiyJS H4 SSR from exact PR head
+        env:
+          H4_SITE: benchmark-artifacts/h4-hydration-sites
+          NODE_ENV: production
+        run: node benchmarks/h4-hydration/build-zaakiy.mjs
+      - name: Verify generated baseline HTML and expose certified gaps
+        run: |
+          python3 -m py_compile benchmarks/h4-hydration/measure.py
+          for framework in react vue zaakiyjs; do
+            for size in 100 1000; do
+              test -s "benchmark-artifacts/h4-hydration-sites/$framework/$size/index.html"
+            done
+          done
+          node -e "const f=require('./benchmark-artifacts/h4-hydration-sites/zaakiyjs-build.json');if(!f.rejectedCases.some(x=>x.size===10000))throw Error('Expected explicit H4 row-budget rejection to be captured')"
+          echo 'React/Vue/ZaakiyJS reference build successful.'
+          echo 'CERTIFICATION INCOMPLETE: Angular SSR reference and ZaakiyJS 10000 hydration remain unavailable.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload immutable reference sources, resolved graph and production artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h4-reference-build-${{ github.sha }}
+          path: benchmark-artifacts/h4-hydration-sites/
+          if-no-files-found: warn
+          retention-days: 14
