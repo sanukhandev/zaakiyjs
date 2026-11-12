@@ -281,3 +281,26 @@ Within the supported H4 subset, conditional regions can contain nested
 components and other conditional regions. Keyed row templates permit nested
 conditionals but not ambiguous nested keyed lexical scopes. Full general JSX
 event closures, named slots, and unrestricted component graphs remain deferred.
+
+### H4-E event codegen, lexical keyed scopes and slot lowering
+
+`RegionServerCompileResult.clientEvents` optionally contains a standalone,
+build-generated browser handler module. For allowlisted typed JSX closures
+such as `onClick={(event) => props.onPress(item.id, event)}`, the module
+exports `createRegionEventResolver(props)`. Build tooling bundles this
+artifact with the application; the SSR response contains only a stable
+event descriptor. No browser runtime receives TSX source or evaluates
+serialized JavaScript. The browser supplies a live keyed-item getter to each
+handler, preserving captured row semantics across updates.
+
+The inline-closure allowlist permits only synchronous direct calls to
+trusted `props` action paths with event parameters, literals, safe own-data
+paths and lexical `item` properties. Arbitrary statements, dynamic
+property lookup, global calls, async code and spread arguments are rejected.
+Full JavaScript closure equivalence is not certified.
+
+The v2 plan also distinguishes root-props data from lexical parent-item data
+for nested conditional and keyed collections. Named/default JSX slots opt in
+through `componentSlots: true`; the compiler inlines supplied IR nodes
+at audited `SlotOutlet` sites. Unresolved or duplicate slots fail closed.
+The v1 compiler and DOM ABI remain unchanged.
