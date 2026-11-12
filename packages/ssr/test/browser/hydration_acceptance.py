@@ -103,11 +103,27 @@ def run(dist: Path, output: Path):
                         for key in ("identity", "focus", "moved", "switched",
                                     "updated", "focusAfter", "reused", "addition",
                                     "changed", "returned", "preserved",
-                                    "eventAttached", "updatedEvent", "eventRemoved"):
+                                    "eventAttached", "updatedEvent", "eventRemoved",
+                                    "benchmarkCorrect"):
                             if h4_result.get(key) is not True:
                                 raise AssertionError(
                                     f"{name}: H4 {key} failed: {h4_result}"
                                 )
+                        h4_samples = h4_result.get("h4Samples")
+                        if (not isinstance(h4_samples, list) or len(h4_samples) != 20 or
+                            not all(isinstance(x, (float, int)) and math.isfinite(x) and x >= 0
+                                    for x in h4_samples) or
+                            max(h4_samples) <= 0):
+                            raise AssertionError(f"{name}: H4 timing invalid: {h4_samples}")
+                        ordered = sorted(h4_samples)
+                        h4_stats = {
+                            "p50Ms": ordered[9],
+                            "p95Ms": ordered[18],
+                            "samplesMs": h4_samples,
+                            "updatesPerSample": 100,
+                            "comparator": "none",
+                            "interpretation": "ZaakiyJS-only diagnostic, not React/Vue/Angular matched"
+                        }
                         if h4_result.get("mutations") != 0 or h4_result.get("lastState") != 2:
                             raise AssertionError(
                                 f"{name}: H4 matching hydration mutated DOM: {h4_result}"
@@ -120,7 +136,8 @@ def run(dist: Path, output: Path):
                         "samplesMs": before["samples"], "iterationsPerSample": 1000,
                         "warmups": 2, "mutations": 0,
                         "existingNodesPreserved": True, "listenerCleanup": True,
-                        "h4RegionHydration": True
+                        "h4RegionHydration": True,
+                        "h4Diagnostic": h4_stats
                     })
                     page.close()
                 finally:
