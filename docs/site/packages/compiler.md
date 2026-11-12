@@ -53,6 +53,9 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `CompileRequest`
 - `CompilerSession`
 - `CompileResult`
+- `RegionServerRequest`
+- `RegionServerCompileResult`
+- `RegionHydrationPlanV2`
 - `DataServerCompileResult`
 - `DataServerRequest`
 - `DataHydrationPlanV1`
@@ -86,6 +89,7 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `compile`
 - `createCompilerSession`
 - `compileStaticServer`
+- `compileRegionServer`
 - `compileDataServer`
 - `foundationStatus`
 - `parseToIR`
@@ -213,3 +217,32 @@ Use `componentSlots: true` in `zaakiyPlugin` or `compile` to opt into a separate
 ### Restricted data-hydration emission
 
 `compileDataServer({ ...request, hydratable: true })` opt-in emits deterministic root/text-slot markers and a data-only `hydrationPlan` from the same optimized IR used for SSR output. The client can adopt those nodes using `hydrateDataPage`. This mode continues to reject executable JSX, events, component calls and keyed/conditional regions on the server; full TSX hydration needs a separately versioned compiler backend.
+
+### H4 restricted interactive-region SSR target (hardening branch)
+
+`compileRegionServer({ fileName, routeId, source })` emits a deterministic
+`zaakiy.region-hydration/2` plan plus a trusted Node `zaakiy.render/1`
+server module. It supports native HTML roots with compiler-lowered conditional
+branches and one-level keyed `array.map` regions, safe root/item data paths,
+static attributes and text-slot markers. The SSR module escapes text,
+validates own data and keyed identities, and enforces request-local size budgets.
+
+Example (supported compiler subset, not general components):
+
+```tsx
+function Page(props: { active: boolean; rows: { id: string; name: string }[] }) {
+  return <main>
+    {props.active ? <h1>Available</h1> : <p>Unavailable</p>}
+    {props.rows.map(item => <div key={item.id}>{item.name}</div>)}
+  </main>;
+}
+```
+
+After validating exact server-module bytes and delivering a trusted
+`HydrationEnvelopeV1`, a browser can use `hydrateRegionPage` from
+`@zaakiyjs/ssr/client` to validate and adopt the matching existing nodes,
+attach explicit trusted event listeners and owner-scoped text bindings. This
+is a restricted initial snapshot-adoption target: **not** full dynamic component
+hydration. Runtime keyed reconciliation, branch transitions, component calls,
+named slots, compiler JSX-event lowering, and browser certification remain
+pending. No client-side compiler dependency is introduced. See ADR 0015.
