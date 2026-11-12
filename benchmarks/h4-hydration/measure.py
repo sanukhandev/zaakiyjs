@@ -75,6 +75,7 @@ def run(args):
                         for framework in variants:
                             samples = []
                             mutation_counts = []
+                            heap_diagnostics = []
                             for iteration in range(args.samples + args.warmups):
                                 page = browser.new_page(viewport={"width":1280,"height":900})
                                 errors = []
@@ -92,7 +93,8 @@ def run(args):
                                           adopted:b.adopted,mutations:b.mutations,
                                           preservedDraft:b.preservedDraft,
                                           preservedFocus:b.preservedFocus,
-                                          liveRows:b.liveRows
+                                          liveRows:b.liveRows,
+                                          heapAfterHydrationBytes:performance.memory?.usedJSHeapSize??null
                                         };
                                     }""")
                                     if errors or before.get("error"):
@@ -111,7 +113,8 @@ def run(args):
                                           const result=await Promise.resolve(b.verify());
                                           await Promise.resolve(b.dispose());
                                           const disposed=await Promise.resolve(b.verifyDisposed());
-                                          return {result,disposed};
+                                          return {result,disposed,
+                                          heapAfterDisposeBytes:performance.memory?.usedJSHeapSize??null};
                                         });
                                     }""")
                                     if changes["result"] is not True or changes["disposed"] is not True:
@@ -119,6 +122,10 @@ def run(args):
                                     if iteration >= args.warmups:
                                         samples.append(duration)
                                         mutation_counts.append(before["mutations"])
+                                        heap_diagnostics.append({
+                                            "afterHydrationBytes":before.get("heapAfterHydrationBytes"),
+                                            "afterDisposeBytes":changes.get("heapAfterDisposeBytes")
+                                        })
                                 finally:
                                     page.close()
                             case={
@@ -129,6 +136,8 @@ def run(args):
                                   "p99":percentile(samples,.99),
                                   "raw":samples},
                                 "hydrationMutations":mutation_counts,
+                                "heapDiagnostics":heap_diagnostics,
+                                "heapInterpretation":"Non-standard performance.memory; missing engines return null. Not a controlled GC/retained-heap or 100-cycle leak certification.",
                                 "correctness":"passed"
                             }
                             report["cases"].append(case)
