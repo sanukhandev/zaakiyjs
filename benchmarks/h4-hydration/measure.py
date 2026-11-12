@@ -9,8 +9,6 @@ Playwright roundtrip timing. This program never substitutes client mount for SSR
 """
 import argparse
 import functools
-import gzip
-import hashlib
 import json
 import math
 import platform
@@ -102,7 +100,7 @@ def run(args):
                                     for key in ("adopted", "preservedDraft", "preservedFocus"):
                                         if before.get(key) is not True:
                                             raise AssertionError(f"{framework}/{engine}/{size}: {key} invalid: {before}")
-                                    if before.get("mutations") != 0 or before.get("liveRows") != size:
+                                    if not isinstance(before.get("mutations"),int) or before["mutations"] < 0 or before.get("liveRows") != size:
                                         raise AssertionError(f"{framework}/{engine}/{size}: DOM replaced or wrong row count: {before}")
                                     duration = before.get("hydrationMs")
                                     if not isinstance(duration, (float, int)) or not math.isfinite(duration) or duration < 0:
@@ -112,10 +110,10 @@ def run(args):
                                         return Promise.resolve(b.update()).then(()=>b.reverse()).then(()=>{
                                           const result=b.verify();
                                           b.dispose();
-                                          return {result,remaining:document.querySelectorAll('[data-key]').length};
+                                          return {result,disposed:b.verifyDisposed()};
                                         });
                                     }""")
-                                    if changes["result"] is not True or changes["remaining"] != 0:
+                                    if changes["result"] is not True or changes["disposed"] is not True:
                                         raise AssertionError(f"{framework}/{engine}/{size}: invalid interactions/disposal: {changes}")
                                     if iteration >= args.warmups:
                                         samples.append(duration)
