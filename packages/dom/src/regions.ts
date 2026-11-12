@@ -264,6 +264,20 @@ export interface KeyedView<Item> {
   readonly update?: (item: Item) => void;
 }
 
+/** H4 verified first-adoption seed for a native keyed SSR range. */
+export interface KeyedHydrationEntry<Key, Item> {
+  readonly key: Key;
+  readonly item: Item;
+  readonly start: Comment;
+  readonly end: Comment;
+  readonly adopt: (item: Item, child: OwnerScope) => KeyedView<Item>;
+}
+export interface KeyedHydrationSeed<Key, Item> {
+  readonly initial: readonly KeyedHydrationEntry<Key, Item>[];
+  /** Preserve the server/native tree on hydration-owner disposal. */
+  readonly preserveMarkupOnDispose?: boolean;
+}
+
 interface RecordEntry<Key, Item> {
   readonly key: Key;
   readonly owner: OwnerScope;
@@ -273,10 +287,11 @@ interface RecordEntry<Key, Item> {
   item: Item;
 }
 
-function removeEntry<Key, Item>(entry: RecordEntry<Key, Item>): void {
+function removeEntry<Key, Item>(entry: RecordEntry<Key, Item>, removeMarkup = true): void {
   try {
     disposeOwner(entry.owner);
   } finally {
+    if (!removeMarkup) return;
     let cursor: Node | null = entry.start;
     while (cursor) {
       const next: Node | null = cursor.nextSibling;
@@ -434,7 +449,8 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
   region: DomRegion,
   read: () => readonly Item[],
   keyOf: (item: Item) => Key,
-  create: (item: Item, child: OwnerScope) => KeyedView<Item>
+  create: (item: Item, child: OwnerScope) => KeyedView<Item>,
+  hydration?: KeyedHydrationSeed<Key, Item>
 ): BindingHandle {
   const records = new Map<Key, RecordEntry<Key, Item>>();
   // The previous committed order is already allocated by reconciliation.
@@ -445,7 +461,7 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
     const errors: unknown[] = [];
     for (const record of records.values()) {
       try {
-        removeEntry(record);
+        removeEntry(record, !hydration?.preserveMarkupOnDispose);
       } catch (error) {
         errors.push(error);
       }
@@ -454,6 +470,55 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
     if (errors.length === 1) throw errors[0];
     if (errors.length > 1) throw new AggregateError(errors, "Keyed region teardown failed");
   };
+  if (hydration) {
+    // Reject mismatched/stale SSR boundaries before attaching child owners.
+    const unique = new Set<Key>();
+    let cursor = region.start.nextSibling;
+    for (const entry of hydration.initial) {
+      if (unique.has(entry.key) || entry.start.parentNode !== region.parent ||
+          entry.end.parentNode !== region.parent || entry.start !== cursor) {
+        throw new TypeError("Hydrated keyed range identity or order mismatch");
+      }
+      unique.add(entry.key);
+      let walk: Node | null = entry.start;
+      let steps = 0;
+      while (walk && walk !== entry.end && steps++ <= 4096) walk = walk.nextSibling;
+      if (walk !== entry.end) throw new TypeError("Unclosed hydrated keyed range");
+      cursor = entry.end.nextSibling;
+    }
+    if (cursor !== region.end)
+      throw new TypeError("Unexpected native nodes within hydrated keyed region");
+    const initialRecords: RecordEntry<Key, Item>[] = [];
+    try {
+      for (const entry of hydration.initial) {
+        const child = createOwner(owner);
+        try {
+          const view = untrack(() => initializeOwnedComponent(child, () => entry.adopt(entry.item, child)));
+          if (!view || typeof view.node?.nodeType !== "number") {
+            throw new TypeError("Hydrated keyed entry must adopt a native node");
+          }
+          const record: RecordEntry<Key, Item> = {
+            key: entry.key, item: entry.item, start: entry.start, end: entry.end,
+            owner: child, view
+          };
+          records.set(entry.key, record);
+          initialRecords.push(record);
+          mountChild(owner, child);
+        } catch (error) {
+          try { disposeOwner(child); } catch { /* original error takes precedence */ }
+          throw error;
+        }
+      }
+      lastOrder = initialRecords;
+    } catch (error) {
+      for (const record of initialRecords) {
+        try { disposeOwner(record.owner); } catch { /* preserve original error */ }
+      }
+      records.clear();
+      lastOrder = null;
+      throw error;
+    }
+  }
   return ownEffect(owner, () => {
     const items = read();
     const next = new Map<Key, Item>();
