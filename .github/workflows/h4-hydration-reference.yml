@@ -151,6 +151,13 @@ jobs:
           node benchmarks/h4-hydration/assemble-manifest.mjs
       - name: Install exact three Playwright browser engines
         run: bash scripts/ci/install-playwright-browsers.sh
+      - name: Fast correctness smoke for all four native hydration bootstraps
+        run: |
+          python3 benchmarks/h4-hydration/measure.py \
+            --site benchmark-artifacts/h4-hydration-sites \
+            --output benchmark-artifacts/h4-hydration-smoke.json \
+            --head "${{ github.sha }}" --engines chromium --sizes 100 \
+            --warmups 0 --samples 1 --timeout-ms 12000
       - name: Strict production hydration correctness and latency measurements
         run: |
           python3 benchmarks/h4-hydration/measure.py \
@@ -164,6 +171,7 @@ jobs:
           name: h4-hydration-comparative-matrix-${{ github.sha }}
           path: |
             benchmark-artifacts/h4-hydration-matrix.json
+            benchmark-artifacts/h4-hydration-smoke.json
             benchmark-artifacts/h4-hydration-sites/build-manifest.json
           if-no-files-found: warn
           retention-days: 14
