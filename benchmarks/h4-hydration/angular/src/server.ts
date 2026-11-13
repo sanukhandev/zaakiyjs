@@ -10,7 +10,7 @@ const angularApp = new AngularNodeAppEngine({allowedHosts:["localhost"]});
 /** Run the exact bundled Angular SSR engine (same AOT-injected token graph). */
 export async function renderBenchmarkRoute(url:string):Promise<string>{
   const parsed=new URL(url);
-  if(parsed.hostname!=="localhost" || !/^\\/angular\\/(100|1000|10000)\\/$/.test(parsed.pathname))
+  if(parsed.hostname!=="localhost" || !/^\/angular\/(100|1000|10000)\/$/.test(parsed.pathname))
     throw new TypeError("Unapproved SSR benchmark route");
   const response=await angularApp.handle(new Request(parsed.href));
   if(!response || response.status!==200)
