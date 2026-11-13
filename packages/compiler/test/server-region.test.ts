@@ -39,19 +39,23 @@ describe("H4 compiler-backed region SSR target", () => {
     expect(()=>largeModule.render(context(10001))).toThrow();
   });
 
-  it("rejects UTF-8 SSR output exceeding the byte ceiling even when UTF-16 length is lower",async()=>{
-    const source='function Page(props:{text:string}){return <main>{props.text}</main>;}';
-    const compiled=build(source);
+  it("bounds aggregate UTF-8 SSR output after valid per-scalar checks",async()=>{
+    const source='function Page(props:{rows:{id:string;label:string}[]}){return <main>{props.rows.map(item=><p key={item.id}>{item.label}</p>)}</main>;}';
+    const compiled=compileRegionServer({fileName,routeId:"products",source,hydrationScale:"large"});
     expect(compiled.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
     const server=await import("data:text/javascript;base64,"+
       Buffer.from(compiled.js[0]!.code).toString("base64"));
-    const render=(text:string)=>server.render({
+    const render=(label:string,size:number)=>server.render({
       schema:"zaakiy.render/1",route:{id:"products"},
-      request:{signal:{aborted:false}},loaderData:{text}
+      request:{signal:{aborted:false}},
+      loaderData:{rows:Array.from({length:size},(_,i)=>({id:"r"+i,label}))}
     });
-    expect(render("é".repeat(100)).body).toContain("é");
-    expect(()=>render("é".repeat(600000))).toThrow(/output too large/);
+    expect(render("🦄",2).body).toContain("🦄");
+    // Each 440-byte text value is valid; together 10k values exceed
+    // 8 MiB of UTF-8 while the UTF-16 string stays below that bound.
+    expect(()=>render("🦄".repeat(220),10000)).toThrow(/output too large/);
   });
+
   it("emits deterministic conditional regions and data slot markers", () => {
     const source = "function Page(props: { active: boolean; name: string }) { return <main>{props.active ? <strong>{props.name}</strong> : <em>hidden</em>}</main>; }";
     const result = build(source);
