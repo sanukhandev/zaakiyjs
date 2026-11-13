@@ -51,6 +51,18 @@ describe("H4 compiler -> SSR module -> browser adopted reactive DOM",()=>{
     expect(container.querySelectorAll("main > div")).toHaveLength(4097);
     expect(container.querySelector("main > div:last-child")?.textContent).toBe("Row 4096");
     handle.dispose();
+    const walker=document.createTreeWalker(container,NodeFilter.SHOW_COMMENT);
+    let firstCompact:Comment|null=null;
+    while(walker.nextNode()){
+      const current=walker.currentNode as Comment;
+      if(current.data.startsWith("z-k:")){firstCompact=current;break;}
+    }
+    expect(firstCompact).not.toBeNull();
+    const original=firstCompact!.data;
+    firstCompact!.data="zaakiy-k2:"+original;
+    expect(()=>hydrateRegionPage(container,plan,envelope,manifest,routeId,{
+      read:path=>state.value[path[0] as keyof typeof state.value]
+    })).toThrow(/mismatch/i);
     container.remove();
   });
 
