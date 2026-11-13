@@ -16,7 +16,7 @@ export const VueBenchmarkApp = {
     };
     onMounted(()=>props.onReady?.(actions));
     return ()=>h("main",null,[
-      h("input",{"data-draft":"yes",value:"server"}),
+      h("input",{"data-draft":"yes"}),
       h("button",{type:"button","data-counter":"yes",
         onClick:actions.update},"Count: "+count.value),
       enabled.value?h("p",{"data-condition":"yes"},"Visible"):null,
