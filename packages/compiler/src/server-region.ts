@@ -24,6 +24,8 @@ export interface RegionHydrationPlanV2 {
   readonly nodes: readonly RegionNode[];
   /** Optional explicit compiler-selected limits; standard plan omits this field. */
   readonly limits?: {readonly maxRows:10000;readonly maxNodes:50000;readonly maxHtmlBytes:8388608};
+  /** Selected v2-only marker layout. Omission preserves prior long markers. */
+  readonly markerFormat?: "compact-v1";
 }
 export interface RegionServerRequest extends CompileRequest {
   readonly routeId: string;
@@ -373,11 +375,11 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       };
       inspectMarkers(nodes);
     }
-    const templateDigest = hash(JSON.stringify(limits ? {nodes,limits} : nodes));
+    const templateDigest = hash(JSON.stringify(limits ? {nodes,limits,markerFormat:"compact-v1"} : nodes));
     const markerId = hash("zaakiy-region-root:" + request.routeId + ":" + templateDigest).slice(0, 32);
     const hydrationPlan: RegionHydrationPlanV2 = {
       schema: "zaakiy.region-hydration/2", routeId: request.routeId, markerId, templateDigest, nodes,
-      ...(limits ? {limits}: {})
+      ...(limits ? {limits,markerFormat:"compact-v1" as const}: {})
     };
     // Only compiler-validated data literals are embedded. The code has no
     // TSX evaluator, dynamic import, arbitrary JavaScript or client dependency.
