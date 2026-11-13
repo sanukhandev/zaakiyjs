@@ -210,3 +210,36 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+
+  memory-owners:
+    name: h4 / 100-cycle owner cleanup across three browsers
+    needs: [compile-references]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: h4-reference-build-${{ github.sha }}
+          path: benchmark-artifacts/h4-hydration-sites
+      - name: Install exact Chromium Firefox and WebKit
+        run: bash scripts/ci/install-playwright-browsers.sh
+      - name: Certify 100 owner dispose/re-hydrate cycles in each browser
+        run: |
+          python3 benchmarks/h4-hydration/owner-memory.py \
+            --site benchmark-artifacts/h4-hydration-sites \
+            --output benchmark-artifacts/h4-owner-memory.json \
+            --head "${{ github.sha }}" --sizes 100,1000
+      - name: Archive verified owner-retention evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h4-owner-disposal-${{ github.sha }}
+          path: benchmark-artifacts/h4-owner-memory.json
+          if-no-files-found: warn
+          retention-days: 14
