@@ -38,7 +38,6 @@ const report={
   schema:"zaakiy.h4-reference-build/1",
   commit:process.env.GITHUB_SHA??"UNVERIFIED_LOCAL_HEAD",
   node:process.version,
-  generatedAt:new Date().toISOString(),
   locks:{reference:referenceLock.sha256,angular:angularLock.sha256},
   variants:{}
 };
