@@ -18,6 +18,42 @@ const source=[
 ].join("\n");
 
 describe("H4 compiler -> SSR module -> browser adopted reactive DOM",()=>{
+  it("keeps the explicit large-list budget during reactive keyed reconciliation",async()=>{
+    const listSource='function Page(props:{rows:{id:string;label:string}[]}){return <main>{props.rows.map(item=><div key={item.id}>{item.label}</div>)}</main>;}';
+    const built=compileRegionServer({fileName,routeId,source:listSource,hydrationScale:"large"});
+    expect(built.diagnostics.filter(x=>x.severity==="error")).toEqual([]);
+    expect(built.hydrationPlan?.limits?.maxRows).toBe(10000);
+    const server=await import("data:text/javascript;base64,"+
+      Buffer.from(built.js[0]!.code).toString("base64"));
+    const rows=(n:number)=>Array.from({length:n},(_,i)=>({id:"r"+i,label:"Row "+i}));
+    const state=signal({rows:rows(2)});
+    const container=document.createElement("div");
+    container.innerHTML=server.render({
+      schema:"zaakiy.render/1",route:{id:routeId},
+      request:{signal:{aborted:false}},loaderData:state.value
+    }).body;
+    document.body.append(container);
+    const plan=built.hydrationPlan!;
+    const manifest:TrustedServerBuildManifestV1={
+      schema:"zaakiy.render-manifest/1",buildId:"a".repeat(64),
+      irVersion:1,domAbiVersion:1,
+      routes:{product:{routeId,moduleId:"compiled",sourceDigest:"f".repeat(64)}}
+    };
+    const envelope:HydrationEnvelopeV1={
+      schema:"zaakiy.hydration/1",buildId:manifest.buildId,routeId,
+      domAbiVersion:1,payload:null,
+      boundaries:[{markerId:plan.markerId,templateDigest:plan.templateDigest}]
+    };
+    const handle=hydrateRegionPage(container,plan,envelope,manifest,routeId,{
+      read:path=>state.value[path[0] as keyof typeof state.value]
+    });
+    flushSync(()=>{state.value={rows:rows(4097)};});
+    expect(container.querySelectorAll("main > div")).toHaveLength(4097);
+    expect(container.querySelector("main > div:last-child")?.textContent).toBe("Row 4096");
+    handle.dispose();
+    container.remove();
+  });
+
   it("hydrates nested keyed lists with duplicate child keys across distinct parent owners",async()=>{
     const nestedSource=[
       'function Page(props:{groups:{id:string;label:string;items:{id:string;name:string}[]}[]}){',
