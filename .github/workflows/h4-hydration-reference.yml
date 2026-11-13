@@ -24,6 +24,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  freeze-locks:
+    name: h4 / commit pinned comparator transitive npm locks
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'feat/production-hardening-integration'
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/production-hardening-integration
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generate exact comparator transitive locks
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund --prefix benchmarks/h4-hydration/reference
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund --prefix benchmarks/h4-hydration/angular
+      - name: Commit generated lockfiles only on the draft integration branch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add benchmarks/h4-hydration/reference/package-lock.json benchmarks/h4-hydration/angular/package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'chore(benchmark): freeze H4 React Vue Angular comparator dependency graphs'
+            git push origin HEAD:feat/production-hardening-integration
+          fi
   compile-references:
     name: h4 / React Vue Zaakiy production fixtures
     runs-on: ubuntu-24.04
