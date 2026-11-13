@@ -42,10 +42,15 @@ def run(args):
     if not manifest.is_file():
         raise AssertionError("Missing signed-off build manifest")
     builds = json.loads(manifest.read_text())
-    for framework in FRAMEWORKS:
+    requested_frameworks = tuple(args.frameworks.split(",")) if args.frameworks else FRAMEWORKS
+    requested_engines = tuple(args.engines.split(",")) if args.engines else ENGINES
+    requested_sizes = tuple(int(s) for s in args.sizes.split(",")) if args.sizes else SCALES
+    if any(x not in FRAMEWORKS for x in requested_frameworks) or any(x not in ENGINES for x in requested_engines) or any(x not in SCALES for x in requested_sizes):
+        raise ValueError("Unknown framework/browser/size filter")
+    for framework in requested_frameworks:
         if framework not in builds.get("variants", {}):
             raise AssertionError(f"Missing comparator build: {framework}")
-        for size in SCALES:
+        for size in requested_sizes:
             if not (root / framework / str(size) / "index.html").is_file():
                 raise AssertionError(f"Missing real SSR HTML: {framework}/{size}")
     serve = ThreadingHTTPServer(("127.0.0.1", 0),
@@ -64,14 +69,16 @@ def run(args):
     }
     try:
         with sync_playwright() as pw:
-            for engine in ENGINES:
+            for engine in requested_engines:
                 browser = getattr(pw, engine).launch(headless=True)
                 try:
                     version = browser.version
-                    for size in SCALES:
+                    for size in requested_sizes:
                         # Rotate order to mitigate repeatable runner warm-cache bias.
-                        variants = FRAMEWORKS[(SCALES.index(size)+ENGINES.index(engine)) % 4:]
-                        variants += FRAMEWORKS[:(SCALES.index(size)+ENGINES.index(engine)) % 4]
+                        variants = tuple(x for x in FRAMEWORKS[
+                            (SCALES.index(size)+ENGINES.index(engine))%4:] +
+                            FRAMEWORKS[:(SCALES.index(size)+ENGINES.index(engine))%4]
+                            if x in requested_frameworks)
                         for framework in variants:
                             samples = []
                             mutation_counts = []
@@ -166,7 +173,7 @@ def run(args):
         serve.shutdown()
     args.output.parent.mkdir(parents=True,exist_ok=True)
     args.output.write_text(json.dumps(report,indent=2)+"\n")
-    if len(report["cases"]) != len(FRAMEWORKS)*len(SCALES)*len(ENGINES):
+    if len(report["cases"]) != len(requested_frameworks)*len(requested_sizes)*len(requested_engines):
         raise AssertionError("Incomplete benchmark matrix")
     print("H4 HYDRATION MATRIX PASS",args.output)
 
@@ -175,6 +182,9 @@ if __name__=="__main__":
     parser.add_argument("--site",type=Path,required=True)
     parser.add_argument("--output",type=Path,required=True)
     parser.add_argument("--head",required=True)
+    parser.add_argument("--frameworks",default="")
+    parser.add_argument("--engines",default="")
+    parser.add_argument("--sizes",default="")
     parser.add_argument("--samples",type=int,default=50)
     parser.add_argument("--warmups",type=int,default=10)
     parser.add_argument("--timeout-ms",type=int,default=60000)
