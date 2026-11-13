@@ -2,6 +2,7 @@
 import {resolve,join,dirname} from "node:path";
 import {mkdir,writeFile,readFile} from "node:fs/promises";
 import {createHash} from "node:crypto";
+import {gzipSync,brotliCompressSync} from "node:zlib";
 import {build} from "vite";
 import {compileRegionServer} from "../../packages/compiler/dist/index.js";
 import {buildVerifiedManifestV1} from "../../packages/ssr/dist/build.js";
@@ -22,6 +23,32 @@ if(compiled.diagnostics.some(x=>x.severity==="error") ||
   !compiled.hydrationPlan || !compiled.js[0])
   throw new Error("H4 benchmark compiler rejected source: "+JSON.stringify(compiled.diagnostics));
 const plan=compiled.hydrationPlan;
+const dataIds=new Map(),keyedIds=[];
+const indexMarkers=nodes=>{
+  for(const node of nodes){
+    if(node.kind==="data")dataIds.set(node.id.slice(0,16),node.id);
+    else if(node.kind==="keyed"){keyedIds.push(node.id);indexMarkers(node.rows);}
+    else if(node.kind==="element"||node.kind==="component")indexMarkers(node.children);
+    else if(node.kind==="conditional"){indexMarkers(node.yes);indexMarkers(node.no);}
+  }
+};
+indexMarkers(plan.nodes);
+if(plan.limits && keyedIds.length!==1)
+  throw new Error("Marker size comparison requires one unambiguous compiler keyed region");
+const sizeOf=value=>{
+  const buf=Buffer.from(value);
+  return {raw:buf.length,gzip:gzipSync(buf,{level:9}).length,brotli:brotliCompressSync(buf).length};
+};
+const markerImpact={};
+const previousMarkerFormat=html=>html
+  .replace(/<!--z-d:([0-9a-f]{16}):([se])-->/g,(_,prefix,end)=>{
+    const id=dataIds.get(prefix);
+    if(!id)throw new Error("Unknown compact data marker");
+    return "<!--zaakiy-d2:"+id+":"+(end==="s"?"start":"end")+"-->";
+  })
+  .replace(/<!--z-k:([A-Za-z0-9_.:]{1,64}):([se])-->/g,(_,key,end)=>
+    "<!--zaakiy-k2:"+keyedIds[0]+":"+key+":"+(end==="s"?"start":"end")+"-->");
+
 const bytes=Buffer.from(compiled.js[0].code);
 const module=await import("data:text/javascript;base64,"+bytes.toString("base64"));
 const manifest=buildVerifiedManifestV1([
@@ -104,6 +131,16 @@ for(const size of [100,1000,10000]){
     const html=module.render({schema:"zaakiy.render/1",
       route:{id:"h4benchmark"},request:{signal:new AbortController().signal},
       loaderData:{count:0,shown:true,rows}}).body;
+    const compact=sizeOf(html);
+    const expanded=sizeOf(previousMarkerFormat(html));
+    markerImpact[size]={
+      compact,unoptimizedV2Markers:expanded,
+      savedRawBytes:expanded.raw-compact.raw,
+      savedGzipBytes:expanded.gzip-compact.gzip,
+      savedBrotliBytes:expanded.brotli-compact.brotli
+    };
+    if(plan.limits && compact.raw>=expanded.raw)
+      throw new Error("H4 compact markers did not reduce raw SSR payload");
     const output=join(root,"zaakiyjs",String(size),"index.html");
     await mkdir(dirname(output),{recursive:true});
     await writeFile(output,'<!doctype html><html><head><meta charset="utf-8"><title>H4 ZaakiyJS</title></head>'+
@@ -114,5 +151,6 @@ for(const size of [100,1000,10000]){
     variant.rejectedCases.push({size,error:String(error)});
   }
 }
+variant.markerImpact=markerImpact;
 await writeFile(join(root,"zaakiyjs-build.json"),JSON.stringify(variant,null,2)+"\n");
 console.log(JSON.stringify(variant));
