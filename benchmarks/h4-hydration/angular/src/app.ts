@@ -10,7 +10,7 @@ export const sizes=[100,1000,10000] as const;
   selector:"h4-bench-page",
   template:`
     <main>
-      <input data-draft="yes" value="server" />
+      <input data-draft="yes" />
       <button data-counter="yes" type="button" (click)="increment()">Count: {{ count() }}</button>
       @if (visible()) { <p data-condition="yes">Visible</p> }
       <ul data-list="yes">
