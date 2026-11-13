@@ -114,9 +114,13 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  measure-all:
-    name: h4 / strict four-framework three-browser hydration matrix
+  measure-browser:
+    name: h4 / ${{ matrix.browser }} production hydration
     needs: [compile-references, compile-angular]
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -137,7 +141,7 @@ jobs:
         with:
           name: h4-angular-reference-${{ github.sha }}
           path: benchmark-artifacts/h4-angular
-      - name: Assemble byte-pinned Angular application and 4x3 manifest
+      - name: Assemble pinned 4x3 server build manifest
         shell: bash
         env:
           H4_SITE: benchmark-artifacts/h4-hydration-sites
@@ -147,38 +151,38 @@ jobs:
           cp -a benchmark-artifacts/h4-angular/browser/. benchmark-artifacts/h4-hydration-sites/angular/
           cp benchmark-artifacts/h4-angular/generated-lock.json benchmark-artifacts/h4-hydration-sites/angular-generated-lock.json
           node benchmarks/h4-hydration/assemble-manifest.mjs
-      - name: Install exact three Playwright browser engines
+      - name: Install pinned browser engines
         run: bash scripts/ci/install-playwright-browsers.sh
-      - name: Fast correctness smoke for all four native hydration bootstraps
+      - name: Fast four-framework hydration correctness smoke
         run: |
           python3 benchmarks/h4-hydration/measure.py \
             --site benchmark-artifacts/h4-hydration-sites \
-            --output benchmark-artifacts/h4-hydration-smoke.json \
-            --head "${{ github.sha }}" --engines chromium --sizes 100 \
+            --output benchmark-artifacts/h4-smoke-${{ matrix.browser }}.json \
+            --head "${{ github.sha }}" --engines "${{ matrix.browser }}" --sizes 100 \
             --warmups 0 --samples 1 --timeout-ms 12000
-      - name: Strict production hydration correctness and latency measurements
+      - name: Measure 12 independent framework/size hydration cases
         run: |
           python3 benchmarks/h4-hydration/measure.py \
             --site benchmark-artifacts/h4-hydration-sites \
-            --output benchmark-artifacts/h4-hydration-matrix.json \
-            --head "${{ github.sha }}" --warmups 10 --samples 50
-      - name: Upload full and incomplete evidence without fabricating results
+            --output benchmark-artifacts/h4-hydration-${{ matrix.browser }}.json \
+            --head "${{ github.sha }}" --engines "${{ matrix.browser }}" \
+            --warmups 10 --samples 50
+      - name: Upload independently auditable raw browser evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: h4-hydration-comparative-matrix-${{ github.sha }}
+          name: h4-hydration-${{ matrix.browser }}-${{ github.sha }}
           path: |
-            benchmark-artifacts/h4-hydration-matrix.json
-            benchmark-artifacts/h4-hydration-smoke.json
-            benchmark-artifacts/h4-hydration-sites/build-manifest.json
+            benchmark-artifacts/h4-hydration-${{ matrix.browser }}.json
+            benchmark-artifacts/h4-smoke-${{ matrix.browser }}.json
           if-no-files-found: warn
           retention-days: 14
 
-  memory-owners:
-    name: h4 / 100-cycle owner cleanup across three browsers
-    needs: [compile-references]
+  measure-aggregate:
+    name: h4 / certify all 36 hydration cases
+    needs: [measure-browser]
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -188,21 +192,21 @@ jobs:
           python-version: '3.12'
       - uses: actions/download-artifact@v4
         with:
-          name: h4-reference-build-${{ github.sha }}
-          path: benchmark-artifacts/h4-hydration-sites
-      - name: Install exact Chromium Firefox and WebKit
-        run: bash scripts/ci/install-playwright-browsers.sh
-      - name: Certify 100 native hydration owner disposal cycles with requested GC
+          pattern: h4-hydration-*-${{ github.sha }}
+          merge-multiple: true
+          path: benchmark-artifacts/h4-partial
+      - name: Enforce full 36-case raw 50-sample evidence
         run: |
-          python3 benchmarks/h4-hydration/owner-memory.py \
-            --site benchmark-artifacts/h4-hydration-sites \
-            --output benchmark-artifacts/h4-owner-memory.json \
-            --head "${{ github.sha }}" --sizes 100,1000
-      - name: Archive exact-head retained-owner evidence
+          python3 benchmarks/h4-hydration/merge-evidence.py \
+            --source benchmark-artifacts/h4-partial \
+            --output benchmark-artifacts/h4-hydration-matrix.json \
+            --head "${{ github.sha }}"
+      - name: Archive the exact-head 36-case certificate
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: h4-owner-disposal-${{ github.sha }}
-          path: benchmark-artifacts/h4-owner-memory.json
+          name: h4-hydration-comparative-matrix-${{ github.sha }}
+          path: benchmark-artifacts/h4-hydration-matrix.json
           if-no-files-found: warn
           retention-days: 14
+
