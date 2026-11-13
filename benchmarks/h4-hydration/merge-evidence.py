@@ -23,7 +23,8 @@ def merge(source:Path,output:Path,head:str):
     for report,browser in zip(reports,BROWSERS):
         if report.get("head")!=head or report.get("samplesPerCase")!=50 or report.get("warmups")!=10:
             raise AssertionError("Inconsistent benchmark head, sample count or warmups")
-        if report.get("comparators")!=reference:
+        stable=lambda value:{k:v for k,v in value.items() if k not in ("generatedAt","timestamp")}
+        if stable(report.get("comparators",{}))!=stable(reference):
             raise AssertionError("Inconsistent dependency/bundle manifest across browser workers")
         if len(report.get("cases",[]))!=len(FRAMEWORKS)*len(SIZES):
             raise AssertionError("Missing per-browser framework/scale cases for "+browser)
