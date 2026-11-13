@@ -27,6 +27,8 @@ export interface RegionHydrationPlanV2 {
   readonly templateDigest: string;
   readonly nodes: readonly RegionNodeV2[];
   readonly limits?: {readonly maxRows:10000;readonly maxNodes:50000;readonly maxHtmlBytes:8388608};
+  /** Omission deliberately selects the original full-length v2 markers. */
+  readonly markerFormat?: "compact-v1";
 }
 export interface RegionHydrationEventV2 {
   /** Compiler element ID; keyed item elements use id:key. */
@@ -51,17 +53,21 @@ const EVENT = /^[a-z][a-z0-9:_-]*$/;
 const DENIED = new Set(["__proto__", "constructor", "prototype"]);
 const MAX_NODES = 8192;
 function dataMarker(plan:RegionHydrationPlanV2,id:string,side:"start"|"end"):string{
-  return plan.limits!==undefined
+  return plan.markerFormat==="compact-v1"
     ? "z-d:"+id.slice(0,16)+":"+(side==="start"?"s":"e")
     : "zaakiy-d2:"+id+":"+side;
 }
 function keyedMarker(plan:RegionHydrationPlanV2,id:string,key:string,side:"start"|"end"):string{
-  return plan.limits!==undefined
+  return plan.markerFormat==="compact-v1"
     ? "z-k:"+key+":"+(side==="start"?"s":"e")
     : "zaakiy-k2:"+id+":"+key+":"+side;
 }
 
 function getBudgets(plan:RegionHydrationPlanV2){
+  if(plan.markerFormat!==undefined && plan.markerFormat!=="compact-v1")
+    mismatch("unsupported hydration marker format");
+  if(plan.markerFormat==="compact-v1" && !plan.limits)
+    mismatch("compact markers require an approved large-list plan");
   if(plan.limits===undefined) return {maxRows:4096,maxNodes:MAX_NODES};
   const limits=plan.limits;
   if(!limits || limits.maxRows!==10000 || limits.maxNodes!==50000 ||
