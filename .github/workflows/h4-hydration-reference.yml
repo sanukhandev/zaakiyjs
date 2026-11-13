@@ -46,7 +46,7 @@ jobs:
           pnpm build
       - name: Install exact direct React Vue dependencies and retain resolved graph
         run: |
-          npm install --prefix benchmarks/h4-hydration/reference --ignore-scripts --no-audit --no-fund --package-lock
+          npm ci --prefix benchmarks/h4-hydration/reference --ignore-scripts --no-audit --no-fund
           mkdir -p benchmark-artifacts/h4-hydration-sites
           cp benchmarks/h4-hydration/reference/package-lock.json benchmark-artifacts/h4-hydration-sites/reference-generated-lock.json
       - name: Compile independent React Vue SSR and browser hydration
@@ -92,13 +92,11 @@ jobs:
           node-version: '22'
       - name: Install pinned Angular 21 direct references and record resolved lock
         run: |
-          npm install --prefix benchmarks/h4-hydration/angular --no-audit --no-fund --package-lock
+          npm ci --prefix benchmarks/h4-hydration/angular --no-audit --no-fund
           mkdir -p benchmark-artifacts/h4-angular
           cp benchmarks/h4-hydration/angular/package-lock.json benchmark-artifacts/h4-angular/generated-lock.json
       - name: AOT compile true Angular server and client hydration bundles
         run: npm run build --prefix benchmarks/h4-hydration/angular -- --base-href /angular/
-      - name: Render exact three Angular SSR documents using AOT bootstrap
-        run: node benchmarks/h4-hydration/angular/prerender.mjs
       - name: Verify Angular server-pre-rendered HTML for every workload
         run: |
           set -e
