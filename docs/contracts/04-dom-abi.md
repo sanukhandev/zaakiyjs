@@ -24,3 +24,8 @@ No compiler tool/AST/Vite import is allowed in browser runtime code. ABI evoluti
 ## ADR 0004 extension: conditional and keyed regions
 
 The exported browser runtime subpath `@zaakiyjs/dom/compiler` now additionally defines `createRegion`, `bindConditionalRegion` (optional false branch) and `bindKeyedRegion`, together with `DomRegion` and `KeyedView`. See [ADR 0004](../adr/0004-dom-region-abi.md) for signatures, identity, duplicate-key, owner teardown, mount timing, and same-key updates. Exposing an ABI does not prove all TSX authoring forms are compiled; unsupported source must fail closed until verified.
+
+
+## Opt-in exit-aware extension (not part of frozen CompilerDomAbiV1)
+
+A separately exported `bindExitAwareConditionalRegion` helper may hold one native Element and its owner during a cancellable, bounded Promise exit. The standard `bindConditionalRegion` and `bindKeyedRegion` remain immediate-disposal APIs. The exit extension is not a compiler code-generation contract or replacement for ADR 0004 keyed ranges. On re-entry a pending exit is aborted and the live node reused; parent disposal always aborts and removes synchronously. Completing a stale exit cannot delete a re-entered node. Fragments, keyed exits and portals require a separate reviewed owner/range protocol.

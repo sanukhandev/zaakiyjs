@@ -7,6 +7,8 @@ export interface ZaakiyViteOptions {
   readonly exclude?: readonly string[];
   readonly cssVirtualId?: string;
   readonly browserTargets?: readonly string[];
+  /** Explicit IR v2 opt-in for compiled default component children slots. */
+  readonly componentSlots?: boolean;
   /** Relative file path for the single generated CSS asset, under assets/. */
   readonly cssFileName?: string;
 }

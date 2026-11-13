@@ -4,7 +4,7 @@ This directory implements **pre-publication validation**. Passing the automated 
 
 ## Packed artifact consumer
 
-`node scripts/release/verify-packages.mjs` discovers and packs every publishable workspace package (currently ten) with `pnpm pack`, checks each archive's public JS/types exports and CLI binaries, verifies that workspace-protocol dependencies are rewritten, and installs **actual tarballs outside the repository** using consumer-local file overrides. It imports all public ESM entrypoints, compiles a small TSX module and runs a strict TypeScript type check.
+`node scripts/release/verify-packages.mjs` discovers and packs every publishable workspace package without a hard-coded count with `pnpm pack`, checks each archive's public JS/types exports and CLI binaries, verifies that workspace-protocol dependencies are rewritten, and installs **actual tarballs outside the repository** using consumer-local file overrides. It imports all public ESM entrypoints, compiles a small TSX module and runs a strict TypeScript type check.
 
 `node scripts/release/verify-packages.mjs --enforce-release` additionally rejects placeholder `0.0.0` versions, missing explicit package licenses and missing root LICENSE; the current repository is intentionally **not release-ready**. This mode is for an approved future release PR, not an attempted automatic publication. The npm scope ownership and trusted-publisher identity must be verified by the owner separately; a local pack test cannot verify them.
 

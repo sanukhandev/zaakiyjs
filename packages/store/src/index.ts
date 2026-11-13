@@ -49,10 +49,13 @@ export interface CreateStoreOptions<S extends object, A extends ActionDefinition
 }
 
 /** Copy and freeze plain data to prevent writable references escaping the store. */
-function immutableCopy<T>(value: T, ancestors = new Set<object>()): T {
+function immutableCopy<T>(value: T, owned: WeakSet<object>, ancestors = new Set<object>()): T {
   if (value === null || value === undefined || typeof value === "string" ||
       typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") return value;
   if (typeof value !== "object") throw new TypeError("Store state must contain only plain data");
+  // Only objects previously copied and frozen by THIS store can be reused.
+  // Externally frozen inputs are still validated and cloned defensively.
+  if (owned.has(value)) return value;
   const prototype: unknown = Object.getPrototypeOf(value);
   if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
     throw new TypeError("Store state must contain only plain objects and arrays");
@@ -75,11 +78,13 @@ function immutableCopy<T>(value: T, ancestors = new Set<object>()): T {
         throw new TypeError("Store state cannot include accessors or non-enumerable data");
       }
       Object.defineProperty(output, key, {
-        value: immutableCopy(descriptor.value as unknown, ancestors),
+        value: immutableCopy(descriptor.value as unknown, owned, ancestors),
         enumerable: true, configurable: false, writable: false
       });
     }
-    return Object.freeze(output) as T;
+    const frozen = Object.freeze(output);
+    owned.add(frozen);
+    return frozen as T;
   } finally { ancestors.delete(value); }
 }
 
@@ -110,8 +115,11 @@ export function createStore<S extends object, A extends ActionDefinitions>(
   const assertOpen = (): void => {
     if (closed || owner.disposed) throw new Error("Store has been disposed");
   };
+  // Provenance is owner-scoped: never treat arbitrary frozen or foreign-store
+  // objects as trusted snapshots, and never retain user data globally.
+  const ownedSnapshots = new WeakSet<object>();
   const initialInput = typeof options.state === "function" ? (options.state as () => S)() : options.state;
-  const initial = asRecord(immutableCopy(initialInput));
+  const initial = asRecord(immutableCopy(initialInput, ownedSnapshots));
   const fields = Object.keys(initial) as (keyof S & string)[];
   const sources = new Map<keyof S, WritableSignal<unknown>>();
   const publicState: Record<string, ReadonlySignal<unknown>> = Object.create(null) as Record<string, ReadonlySignal<unknown>>;
@@ -142,17 +150,17 @@ export function createStore<S extends object, A extends ActionDefinitions>(
     set<K extends keyof S>(key: K, value: S[K]): void {
       assertAction();
       const source = lookup(key);
-      source.value = immutableCopy(value);
+      source.value = immutableCopy(value, ownedSnapshots);
     },
     update<K extends keyof S>(key: K, change: (previous: DeepReadonly<S[K]>) => S[K]): void {
       assertAction();
       const source = lookup(key);
       const next = change(source.peek() as DeepReadonly<S[K]>);
-      source.value = immutableCopy(next);
+      source.value = immutableCopy(next, ownedSnapshots);
     },
     patch(next: Partial<S>): void {
       assertAction();
-      const entries = Object.entries(asRecord(immutableCopy(next)));
+      const entries = Object.entries(asRecord(immutableCopy(next, ownedSnapshots)));
       // Validation and cloning precede all writes; an invalid patch is not partially applied.
       const prepared = entries.map(([key, value]) => [lookup(key as keyof S), value] as const);
       for (const [source, value] of prepared) source.value = value;
@@ -205,7 +213,7 @@ export function createStore<S extends object, A extends ActionDefinitions>(
     reset(): void {
       assertOpen();
       batch(() => {
-        for (const key of fields) lookup(key).value = immutableCopy(initial[key]);
+        for (const key of fields) lookup(key).value = immutableCopy(initial[key], ownedSnapshots);
       });
     },
     dispose(): void { closed = true; }

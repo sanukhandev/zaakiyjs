@@ -8,8 +8,9 @@ on:
       - "scripts/ci/verify-workspaces.mjs"
       - ".github/workflows/p3-ads-browser.yml"
   push:
-    branches: [main]
+    branches: [main, 'perf/**']
     paths:
+      - "benchmarks/**"
       - "packages/ads/**"
       - ".github/workflows/p3-ads-browser.yml"
   merge_group:

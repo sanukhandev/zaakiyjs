@@ -57,6 +57,11 @@ interface AbiAliases {
   readonly setAttribute: string;
   readonly bindText: string;
   readonly bindProperty: string;
+  readonly bindAttribute: string;
+  readonly bindClass: string;
+  readonly bindMountedRef: string;
+  readonly createOwnedNativeSlot: string;
+  readonly mountOwnedSlot: string;
   readonly listen: string;
   readonly createRegion: string;
   readonly bindConditionalRegion: string;
@@ -91,6 +96,11 @@ function allocateRuntimeAliases(source: ts.SourceFile): {
       setAttribute: free("__zSetAttribute"),
       bindText: free("__zBindText"),
       bindProperty: free("__zBindProperty"),
+      bindAttribute: free("__zBindAttribute"),
+      bindClass: free("__zBindClass"),
+      bindMountedRef: free("__zBindMountedRef"),
+      createOwnedNativeSlot: free("__zCreateOwnedNativeSlot"),
+      mountOwnedSlot: free("__zMountOwnedSlot"),
       listen: free("__zListen"),
       createRegion: free("__zCreateRegion"),
       bindConditionalRegion: free("__zBindConditionalRegion"),
@@ -126,9 +136,11 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
         node.body.forEach(child => visit(child, true));
         break;
       case "PropertyBinding":
-        if (node.expression.reactive && node.target !== "property") {
-          error("ZC2203", "Reactive class, style and attributes need a distinct safe DOM binding ABI.", node.span);
+        if (node.name === "ref" && node.expression.reactive) {
+          error("ZC2211", "Native JSX ref callback must remain stable for the owner lifetime.", node.span);
         }
+        // Class and attribute updates use the existing vetted DOM bindings.
+        // Inline style remains unsupported pending a safe per-property contract.
         if (node.target === "style") {
           error("ZC2204", "Inline style JSX requires a safe per-property style ABI; DOM v1 rejects style attributes.", node.span);
         }
@@ -139,11 +151,15 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
         }
         break;
       case "ComponentCall":
+        node.children?.forEach(child => visit(child, insideKeyed));
+        node.slots?.forEach(slot => slot.children.forEach(child => visit(child, insideKeyed)));
         node.props.forEach(prop => {
           if (prop.expression.reactive) {
             error("ZC2206", "Passing a signal value as a component prop would become stale. Pass the signal or introduce an agreed reactive prop contract.", prop.span);
           }
         });
+        break;
+      case "SlotOutlet":
         break;
       case "CompatFeature":
         error("ZC2207", "Compatibility feature transform is not implemented: " + node.feature, node.span);
@@ -153,6 +169,9 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
     }
   };
   for (const node of document.nodes) {
+    if (node.kind === "SlotOutlet") {
+      error("ZC2502", "A slot outlet needs a native host element.", node.span);
+    }
     if (node.kind === "ConditionalBlock" || node.kind === "KeyedLoop") {
       error(node.kind === "ConditionalBlock" ? "ZC2201" : "ZC2202",
         "Dynamic control flow requires a native host parent element in the current DOM ABI.",
@@ -210,10 +229,24 @@ class Builder {
   private attribute(el: string, node: PropertyBinding): void {
     const resolved = this.resolveExpression(node.expression.source, node.expression.reactive);
     const expr = "(" + resolved.source + ")";
+    if (node.name === "ref") {
+      const reference = this.variable("ref");
+      this.push("const " + reference + " = " + expr + ";", node.expression.span);
+      this.push(this.abi.bindMountedRef + "(" + this.owner + ", " + el + ", " + reference + ");", node.span);
+      return;
+    }
     if (resolved.reactive) {
-      if (node.target !== "property") {
-        throw new Error("ZC2203: reactive keyed class/attribute requires a specialized safe DOM binding");
+      if (node.target === "class" || node.target === "attribute") {
+        const value = this.variable("reactive_attribute");
+        const read = "() => { const " + value + " = " + expr +
+          "; return " + value + " == null ? null : String(" + value + "); }";
+        const binding = node.target === "class" ? this.abi.bindClass : this.abi.bindAttribute;
+        const prefix = node.target === "class" ? "" : jsLiteral(node.name) + ", ";
+        this.push(binding + "(" + this.owner + ", " + el + ", " + prefix + read + ");",
+          node.expression.span);
+        return;
       }
+      if (node.target !== "property") throw new Error("ZC2204: inline style is unsupported");
       this.push(this.abi.bindProperty + "(" + this.owner + ", " + el + ", " +
         jsLiteral(node.name) + ", () => " + expr + ");", node.expression.span);
       return;
@@ -299,11 +332,32 @@ class Builder {
           }
           return jsLiteral(prop.name) + ": (" + mapped.source + ")";
         }).join(", ");
+        let compiledProps = props;
+        if (node.children?.length) {
+          const slot = this.variable("slot");
+          const slotOwner = this.variable("slot_owner");
+          this.push("const " + slot + " = " + this.abi.createOwnedNativeSlot + "(" +
+            this.owner + ", (" + slotOwner + ") => " + this.branch(node.children, slotOwner) + ");",
+            node.span);
+          compiledProps += (compiledProps ? ", " : "") + '"children": ' + slot;
+        }
+        for (const named of node.slots ?? []) {
+          const slot = this.variable("named_slot");
+          const slotOwner = this.variable("named_slot_owner");
+          this.push("const " + slot + " = " + this.abi.createOwnedNativeSlot + "(" +
+            this.owner + ", (" + slotOwner + ") => " + this.branch(named.children, slotOwner) + ");",
+            node.span);
+          compiledProps += (compiledProps ? ", " : "") + jsLiteral(named.name) + ": " + slot;
+        }
         this.push("const " + scope + " = " + this.abi.createOwner + "(" + this.owner + ");");
         this.push("const " + name + " = " + this.abi.initializeOwnedComponent + "(" + scope + ", () => " +
-          node.component + "({" + props + "}));");
+          node.component + "({" + compiledProps + "}));");
         break;
       }
+      case "SlotOutlet":
+        if (!parent) throw new Error("ZC2502: slot outlet requires a native host element");
+        this.push(this.abi.mountOwnedSlot + "(props[" + jsLiteral(node.name) + "], " + parent + ");", node.span);
+        return undefined;
       case "ConditionalBlock": {
         const literal = node.condition.source.trim();
         if (literal === "true" || literal === "false") {
@@ -437,16 +491,48 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
     };
     const visited = ts.visitEachChild(file, visit, context);
     if (!loweredJsx) return visited;
-    const dom = runtimeImport("@zaakiyjs/dom/compiler", [
+    const containsSlot = (nodes: readonly IRNode[]): boolean => nodes.some(node => {
+      if (node.kind === "SlotOutlet") return true;
+      if (node.kind === "ComponentCall") return Boolean(node.children?.length) ||
+        Boolean(node.slots?.length) || containsSlot(node.children ?? []) ||
+        (node.slots?.some(slot => containsSlot(slot.children)) ?? false);
+      if (node.kind === "StaticElement") return containsSlot(node.children);
+      if (node.kind === "ConditionalBlock") return containsSlot(node.whenTrue) || containsSlot(node.whenFalse);
+      if (node.kind === "KeyedLoop") return containsSlot(node.body);
+      return false;
+    });
+    const containsRef = (nodes: readonly IRNode[]): boolean => nodes.some(node => {
+      if (node.kind === "PropertyBinding" && node.name === "ref") return true;
+      if (node.kind === "StaticElement") return containsRef(node.children);
+      if (node.kind === "ConditionalBlock") return containsRef(node.whenTrue) || containsRef(node.whenFalse);
+      if (node.kind === "KeyedLoop") return containsRef(node.body);
+      if (node.kind === "ComponentCall") return containsRef(node.children ?? []) ||
+        (node.slots?.some(slot => containsRef(slot.children)) ?? false);
+      return false;
+    });
+    const domBindings: Array<readonly [string, string]> = [
       ["createElement", aliases.createElement], ["createText", aliases.createText],
       ["setProperty", aliases.setProperty], ["setAttribute", aliases.setAttribute],
       ["bindText", aliases.bindText], ["bindProperty", aliases.bindProperty],
+      ["bindAttribute", aliases.bindAttribute], ["bindClass", aliases.bindClass],
       ["listen", aliases.listen], ["createRegion", aliases.createRegion],
       ["bindConditionalRegion", aliases.bindConditionalRegion],
       ["bindKeyedRegion", aliases.bindKeyedRegion]
-    ]);
+    ];
+    // Keep old compiled consumers ABI-compatible: only ref-using modules
+    // import the new opt-in helper, never unrelated TSX modules.
+    if (containsRef(optimized.nodes)) {
+      domBindings.push(["bindMountedRef", aliases.bindMountedRef]);
+    }
+    if (containsSlot(optimized.nodes)) {
+      domBindings.push(["createOwnedNativeSlot", aliases.createOwnedNativeSlot]);
+      domBindings.push(["mountOwnedSlot", aliases.mountOwnedSlot]);
+    }
+    const dom = runtimeImport("@zaakiyjs/dom/compiler", domBindings);
     const needsKeyed = (nodes: readonly IRNode[]): boolean => nodes.some(node => {
       if (node.kind === "KeyedLoop") return true;
+      if (node.kind === "ComponentCall") return needsKeyed(node.children ?? []) ||
+        (node.slots?.some(slot => needsKeyed(slot.children)) ?? false);
       if (node.kind === "StaticElement") return needsKeyed(node.children);
       if (node.kind === "ConditionalBlock") return needsKeyed(node.whenTrue) || needsKeyed(node.whenFalse);
       return false;
@@ -494,14 +580,25 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
   };
 }
 
-export function typeDiagnostics(request: CompileRequest, analysis: Analysis): CompilerDiagnostic[] {
-  const options: ts.CompilerOptions = {
+export function diagnosticCompilerOptions(): ts.CompilerOptions {
+  return {
     target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
     moduleResolution: ts.ModuleResolutionKind.Bundler,
     // Type-check against the JSX namespace from jsx-runtime; emission still uses preserve + our transformer.
     jsx: ts.JsxEmit.ReactJSX, jsxImportSource: "@zaakiyjs/core",
     strict: true, skipLibCheck: true, noEmit: true, types: []
   };
+}
+
+export function typeDiagnostics(
+  request: CompileRequest, analysis: Analysis, sharedProgram?: ts.Program
+): CompilerDiagnostic[] {
+  const options = diagnosticCompilerOptions();
+  if (sharedProgram) {
+    const file = sharedProgram.getSourceFile(request.fileName);
+    if (!file) throw new Error("Compiler diagnostics session lost the current TSX source");
+    return diagnosticsForProgram(request, analysis, sharedProgram, file);
+  }
   const host = ts.createCompilerHost(options);
   const originalRead = host.readFile.bind(host);
   const originalGet = host.getSourceFile.bind(host);
@@ -512,7 +609,17 @@ export function typeDiagnostics(request: CompileRequest, analysis: Analysis): Co
       ts.createSourceFile(path, request.source, language, true, ts.ScriptKind.TSX) :
       originalGet(path, language, onError, shouldCreate);
   const program = ts.createProgram([request.fileName], options, host);
-  const errors: CompilerDiagnostic[] = ts.getPreEmitDiagnostics(program)
+  return diagnosticsForProgram(request, analysis, program);
+}
+
+function diagnosticsForProgram(
+  request: CompileRequest, analysis: Analysis, program: ts.Program,
+  currentFile?: ts.SourceFile
+): CompilerDiagnostic[] {
+  const targetName = ts.sys.resolvePath(request.fileName);
+  // A project session reports diagnostics for only the current source. The
+  // standalone path retains its original complete-program diagnostic policy.
+  const errors: CompilerDiagnostic[] = ts.getPreEmitDiagnostics(program, currentFile)
     .filter(d => d.file && ts.sys.resolvePath(d.file.fileName) === targetName)
     .map(d => {
       const start = d.start ?? 0;
@@ -544,9 +651,13 @@ export function typeDiagnostics(request: CompileRequest, analysis: Analysis): Co
     return ts.forEachChild(node, child => hasMarkup(child) || undefined) ?? false;
   };
   const visit = (node: ts.Node): void => {
+    const isSlotOutlet = request.componentSlots && ts.isJsxExpression(node) &&
+      node.expression && ts.isPropertyAccessExpression(node.expression) &&
+      ts.isIdentifier(node.expression.expression) &&
+      node.expression.expression.text === "props" && node.expression.name.text === "children";
     if (ts.isJsxExpression(node) && node.expression &&
         (ts.isJsxElement(node.parent) || ts.isJsxFragment(node.parent)) &&
-        !hasMarkup(node.expression)) {
+        !isSlotOutlet && !hasMarkup(node.expression)) {
       const type = checker.getTypeAtLocation(node.expression);
       if (!canRenderText(type)) {
         errors.push({

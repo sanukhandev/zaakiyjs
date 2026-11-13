@@ -1,0 +1,46 @@
+name: H4 Hydration Comparator Lockfile Freeze
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feat/production-hardening-integration']
+    paths:
+      - 'benchmarks/h4-hydration/reference/package.json'
+      - 'benchmarks/h4-hydration/angular/package.json'
+      - '.github/workflows/h4-hydration-locks.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  freeze-locks:
+    if: github.repository == 'sanukhandev/zaakiyjs' && github.ref == 'refs/heads/feat/production-hardening-integration'
+    name: h4 / freeze exact transitive npm reference dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # This branch-only workflow freezes the full npm dependency graphs before\n      # the strict comparator build switches to npm ci.\n      - name: Resolve and pin exact React Vue and Angular transitive graphs
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund --prefix benchmarks/h4-hydration/reference
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund --prefix benchmarks/h4-hydration/angular
+          test -s benchmarks/h4-hydration/reference/package-lock.json
+          test -s benchmarks/h4-hydration/angular/package-lock.json
+      - name: Commit only generated comparator locks to the existing PR branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add benchmarks/h4-hydration/reference/package-lock.json benchmarks/h4-hydration/angular/package-lock.json
+          if git diff --cached --quiet; then
+            echo 'Pinned comparator locks already match package manifests.'
+            exit 0
+          fi
+          git commit -m 'chore(benchmark): pin H4 comparator transitive npm dependencies'
+          git push origin HEAD:feat/production-hardening-integration

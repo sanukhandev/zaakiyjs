@@ -43,7 +43,7 @@ The compiler lowers this supported pattern to owner-scoped native nodes and a te
 
 - The IR schema is versioned; introducing incompatible nodes requires a coordinated ADR and ABI tests.
 - Unknown calls in reactive expressions are conservatively rejected when purity cannot be proven.
-- JSX spreads, arbitrary component children, certain refs/dynamic classes/styles and general hydration are not part of the currently supported compiler slice.
+- JSX spreads, arbitrary component children, component refs, reactive ref replacement, dynamic classes/styles and general hydration remain unsupported. Native element callback refs use an opt-in connected-mount helper on the hardening branch.
 
 ## Public API index
 
@@ -51,7 +51,17 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 
 - `CompatFeature`
 - `CompileRequest`
+- `CompilerSession`
 - `CompileResult`
+- `RegionServerRequest`
+- `RegionServerCompileResult`
+- `RegionHydrationPlanV2`
+- `DataServerCompileResult`
+- `DataServerRequest`
+- `DataHydrationPlanV1`
+- `HydrationNodeV1`
+- `HydrationElementV1`
+- `HydrationSlotV1`
 - `CompilerDiagnostic`
 - `ComponentCall`
 - `ConditionalBlock`
@@ -68,11 +78,19 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `KeyedLoop`
 - `PropertyBinding`
 - `Purity`
+- `NamedSlot`
+- `SlotOutlet`
 - `SourceSpan`
 - `StaticElement`
 - `StaticText`
+- `StaticServerCompileResult`
+- `StaticServerRequest`
 - `StyleToken`
 - `compile`
+- `createCompilerSession`
+- `compileStaticServer`
+- `compileRegionServer`
+- `compileDataServer`
 - `foundationStatus`
 - `parseToIR`
 - `optimizeIR`
@@ -88,6 +106,7 @@ Sections below retain capability explanations and examples from the package's so
 The M0 public interfaces remain unchanged: CompileRequest, CompileResult, GeneratedAsset, CompilerDiagnostic, IRDocument, IRNode, IRExpression, SourceSpan, IR_SCHEMA_VERSION (= 1).
 
 - compile(request): CompileResult — parse, analyze, optimize, lower supported TSX, and produce deterministic JS with an inline-sources source-map asset.
+- createCompilerSession(rootDir): CompilerSession — Node-only per-build incremental TypeScript semantic context. The Vite plugin creates and disposes this instance, preserving full diagnostic checks while reusing TypeScript program state. Use `session.compile(request)`, call `session.invalidate(path)` when imported sources or declarations change, and `session.dispose()` when the build ends. Independent roots must never share a session; standalone `compile()` keeps isolated semantics.
 - parseToIR(request) — inspect the serialized IR v1 plus parse diagnostics.
 - validateIR(document) — reject incompatible IR versions, malformed nested nodes/source spans, duplicate IDs, unknown fields and cyclic references.
 - optimizeIR(document) — pure, version-checked optimization with stable node identities.
@@ -122,7 +141,7 @@ Generated output imports helpers from @zaakiyjs/dom/compiler and owners from @za
 ### Explicit unsupported behavior
 
 - Root-level conditional/keyed regions, component-root templates that capture stale item snapshots (use live zero-arg getters), complex/deconstructed map parameters, and unsupported reactive keyed attributes/props fail closed. Nested keyed loops and multi-root fragment templates are supported within native host parents. Supported conditional/keyed forms use the reviewed additive DOM region ABI (ADR 0004).
-- JSX spreads, top-level fragments, refs, component children, dynamic attributes/classes/styles, **all inline style attributes**, dynamic handler replacement, SVG foreignObject, unsafe HTML sinks and untrusted URL schemes produce focused diagnostics.
+- JSX spreads, top-level fragments, component refs, string refs, reactive ref replacement, component children, unbounded dynamic class expressions, **all inline style attributes**, dynamic URL attributes, dynamic handler replacement, SVG foreignObject and unsafe HTML sinks fail closed. Bounded class variants and reactive non-URL attributes are supported on the hardening branch. Native element callback refs compile to opt-in `bindMountedRef` and do not modify the frozen eager `bindRef` semantics.
 - Reactivity analysis recognizes `.value` reads from aliases and nested props, but cannot prove all indirect reactive dependencies (for example, an unknown function that internally reads a signal). Calls in detected reactive text expressions fail closed without purity proof; destructured snapshot reads do not become magically reactive.
 - Dynamic text child expressions must have primitive TS types; arrays, object views and prebuilt JSX nodes require an explicit child/view semantics contract.
 - No CSS generation, browser compatibility lowering, SSR, hydration, or tree-shaking of unrelated source declarations. The compiler does not claim to be a bundler. Supplying explicit `targetBrowsers` fails with ZC2301 until a tested browser compatibility profile is frozen.
@@ -163,3 +182,125 @@ Keyed component-root templates are supported when each varying item prop is a si
 - [Public exports](https://github.com/sanukhandev/zaakiyjs/blob/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/compiler/src/index.ts)
 - [Package tests](https://github.com/sanukhandev/zaakiyjs/tree/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/compiler/test) (some packages use `tests/`)
 - Update this guide in the same PR that changes public APIs, compiler/DOM behavior, security rules or feature support.
+
+### Connected native JSX refs (integration branch)
+
+A native element accepts a stable typed callback such as `<button ref={node => { /* node is HTMLButtonElement | null */ }} />`. The generated helper waits until the node is connected, delivers the node once per mount, and sends `null` on owner disposal; keyed reorders do not create another attachment. A detached `DocumentFragment` mount is observed until connection or disposal. A string ref, component ref, or reactive replacement of the ref callback is rejected. Previous TSX without refs keeps the original DOM helper import surface. This extension is not a substitute for the still-open component slot, variant or hydration contracts.
+
+### Finite reactive class variants and safe attributes
+
+The compiler supports `class={active.value ? "pill active" : "pill inactive"}` by statically enumerating every branch class token and emitting an exact byte offset for the first source occurrence. The Vite styles bridge verifies each offset against the actual TSX text before compiling CSS. Non-enumerable expressions such as `class={computedName.value}` fail with `ZC2212`; escaped class literals lacking a trustworthy raw-source token position fail with `ZC2213`. Static class literals retain the original manifest contract. Reactive `aria-*`, `data-*`, `title` and other non-URL attributes use the existing owner-scoped `bindAttribute` helper; reactive class variants use `bindClass`. Neither path injects CSS rules or parses HTML. Dynamic URL attributes and all raw inline styles remain rejected until separately validated contracts are approved.
+
+### Literal-only server target
+
+`compileStaticServer(request)` emits an executable `zaakiy.render/1` Node server module from a limited, validated static TSX root. The output has escaped HTML and no browser/compiler imports. Its generated code can be independently SHA-256 attested using `@zaakiyjs/ssr/build` and served through `createByteAttestedNodeServerAdapter`. Dynamic expressions, components, event handlers, SVG, inline styles and untrusted URLs fail closed. This **does not** implement general component SSR or client-side DOM hydration. Details: [ADR 0010](../../adr/0010-static-server-compiler-slice.md).
+
+### Read-only data-bound server rendering (experimental hardening branch)
+
+`compileDataServer({ fileName, routeId, source })` compiles a **restricted** TSX view into a server-only `zaakiy.render/1` module with request-scoped text interpolation. For example:
+
+```tsx
+function Product(props: { customer: { name: string }; order: number }) {
+  return <main><h1>{props.customer.name}</h1><p>{props.order}</p></main>;
+}
+```
+
+The generated renderer maps `props.customer.name` to `context.loaderData.customer.name`. It supports only named own-data property paths (maximum four levels), rejects getter-backed/prototype-bearing values, escapes all text, limits lengths, and never evaluates the source expression or imports a compiler during HTTP requests. Static attributes are checked by the same allowlist as `compileStaticServer`; dynamic attributes, URL values, components, event handlers, loops and reactive signals are unsupported. The output uses `no-store` and is meant to be pinned using `@zaakiyjs/ssr/build` and served through a byte-attested adapter.
+
+This is **server rendering only**, not native DOM hydration or component composition; it does not close SSR issue #59. See [ADR 0012](../../adr/0012-data-bound-ssr.md).
+
+### Opt-in default JSX component children — IR v2
+
+Use `componentSlots: true` in `zaakiyPlugin` or `compile` to opt into a separate IR v2 syntax: `<Panel><button>Open</button></Panel>` passes a lazy, caller-owned native slot; `<section>{props.children}</section>` mounts the slot into a native host exactly once. The callee should type the authoring prop as `JSXChild` from `@zaakiyjs/core/jsx-runtime`. Runtime ownership, cleanup and portal placement use `createOwnedNativeSlot`/`mountOwnedSlot` from `@zaakiyjs/dom/compiler`. Dynamic text interpolation of arbitrary JSX node values remains rejected. This is **not** named slots, arbitrary JSX passed as props or SSR hydration. IR v1 remains the default and refuses component JSX children. See [ADR 0013](../../adr/0013-component-slots-ir2.md).
+
+
+### Restricted data-hydration emission
+
+`compileDataServer({ ...request, hydratable: true })` opt-in emits deterministic root/text-slot markers and a data-only `hydrationPlan` from the same optimized IR used for SSR output. The client can adopt those nodes using `hydrateDataPage`. This mode continues to reject executable JSX, events, component calls and keyed/conditional regions on the server; full TSX hydration needs a separately versioned compiler backend.
+
+### H4 restricted interactive-region SSR target (hardening branch)
+
+`compileRegionServer({ fileName, routeId, source })` emits a deterministic
+`zaakiy.region-hydration/2` plan plus a trusted Node `zaakiy.render/1`
+server module. It supports native HTML roots with compiler-lowered conditional
+branches and one-level keyed `array.map` regions, safe root/item data paths,
+static attributes and text-slot markers. The SSR module escapes text,
+validates own data and keyed identities, and enforces request-local size budgets.
+
+Example (supported compiler subset, not general components):
+
+```tsx
+function Page(props: { active: boolean; rows: { id: string; name: string }[] }) {
+  return <main>
+    {props.active ? <h1>Available</h1> : <p>Unavailable</p>}
+    {props.rows.map(item => <div key={item.id}>{item.name}</div>)}
+  </main>;
+}
+```
+
+After validating exact server-module bytes and delivering a trusted
+`HydrationEnvelopeV1`, a browser can use `hydrateRegionPage` from
+`@zaakiyjs/ssr/client` to validate and adopt the matching existing nodes,
+attach explicit trusted event listeners and owner-scoped text bindings. This
+is a restricted initial snapshot-adoption target: **not** full dynamic component
+hydration. Runtime keyed reconciliation, branch transitions, and pure local component
+composition are now implemented in the restricted v2 path. Named slots,
+compiler JSX-event lowering, parser-normalized HTML elements, complex nested
+regions, and three-engine production/browser certification remain pending. No client-side compiler dependency is introduced. See ADR 0015.
+
+Pure local components may be composed using one native TSX return, a named
+`props` argument, and explicit own-data prop references. Their nested DOM is
+adopted into child owners without invoking server JSX functions. The H4
+browser target uses the existing DOM keyed/conditional scheduler to move or
+replace only affected native ranges; matching attachment makes no first-pass
+DOM replacements. The server and browser share deterministic v2 markers. Tests
+cover matching adoption, keyed reorder, conditional switching, focus, state
+updates and disposal. This is still not general-purpose TSX hydration.
+
+### H4 opt-in JSX handlers and trusted component-source pinning
+
+For the `compileRegionServer` v2 target, a direct handler reference such as
+`<button onClick={props.onSave}>` is lowered to inert event metadata with
+the compiler-assigned native element identity and the path `["onSave"]`.
+The browser `hydrateRegionPage` requires a trusted `resolveEvent(path)`
+callback to supply the actual typed `EventListener`. The server never embeds
+or executes handler code, and the event is disposed with the DOM owner.
+Arbitrary inline callbacks and runtime evaluation of JSX source are rejected.
+
+A build adapter may provide `componentModules` with exact import specifiers,
+workspace-relative source filenames, source bytes, and SHA-256 digests.
+The compiler resolves named static TSX imports against that allowlisted,
+byte-pinned data, validates the imported module separately, and lowers a
+pure single-return exported component to a deterministic region plan.
+No runtime source loading, model invocation, Node import, or browser compiler
+is introduced. Imported modules with arbitrary top-level code are rejected.
+The build adapter remains responsible for resolving module paths and attesting
+the same dependency bytes in the deployed client/server bundle.
+
+Within the supported H4 subset, conditional regions can contain nested
+components and other conditional regions. Keyed row templates permit nested
+conditionals but not ambiguous nested keyed lexical scopes. Full general JSX
+event closures, named slots, and unrestricted component graphs remain deferred.
+
+### H4-E event codegen, lexical keyed scopes and slot lowering
+
+`RegionServerCompileResult.clientEvents` optionally contains a standalone,
+build-generated browser handler module. For allowlisted typed JSX closures
+such as `onClick={(event) => props.onPress(item.id, event)}`, the module
+exports `createRegionEventResolver(props)`. Build tooling bundles this
+artifact with the application; the SSR response contains only a stable
+event descriptor. No browser runtime receives TSX source or evaluates
+serialized JavaScript. The browser supplies a live keyed-item getter to each
+handler, preserving captured row semantics across updates.
+
+The inline-closure allowlist permits only synchronous direct calls to
+trusted `props` action paths with event parameters, literals, safe own-data
+paths and lexical `item` properties. Arbitrary statements, dynamic
+property lookup, global calls, async code and spread arguments are rejected.
+Full JavaScript closure equivalence is not certified.
+
+The v2 plan also distinguishes root-props data from lexical parent-item data
+for nested conditional and keyed collections. Named/default JSX slots opt in
+through `componentSlots: true`; the compiler inlines supplied IR nodes
+at audited `SlotOutlet` sites. Unresolved or duplicate slots fail closed.
+The v1 compiler and DOM ABI remain unchanged.

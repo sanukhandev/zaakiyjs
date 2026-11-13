@@ -3,6 +3,7 @@ import * as stylesModule from "@zaakiyjs/styles";
 import type {
   CompileRequest,
   CompileResult,
+  CompilerSession,
   CompilerDiagnostic,
   GeneratedAsset
 } from "@zaakiyjs/compiler";
@@ -43,18 +44,21 @@ function assertAsset(value: unknown, kind: string): asserts value is GeneratedAs
   }
 }
 
-export async function invokeCompiler(request: CompileRequest): Promise<CompileResult> {
+export async function invokeCompiler(request: CompileRequest, session?: CompilerSession): Promise<CompileResult> {
   if (!hasCompiler()) {
     throw new Error(
       "ZV1001: @zaakiyjs/compiler has no executable public compile() export. " +
       "The M0 package contains only types; merge and verify the real compiler before enabling TSX builds."
     );
   }
-  const value: unknown = await (compilerExports.compile as CompilerEntry)(request);
-  if (!record(value) || value.irVersion !== 1 ||
+  const value: unknown = await (session
+    ? session.compile(request)
+    : (compilerExports.compile as CompilerEntry)(request));
+  const expectedVersion = request.componentSlots === true ? 2 : 1;
+  if (!record(value) || value.irVersion !== expectedVersion ||
       !Array.isArray(value.js) || !Array.isArray(value.css) ||
       !Array.isArray(value.diagnostics)) {
-    throw new Error("ZV1002: @zaakiyjs/compiler returned an invalid IR v1 compilation result");
+    throw new Error("ZV1002: @zaakiyjs/compiler returned an invalid IR " + expectedVersion + " compilation result");
   }
   for (const js of value.js) assertAsset(js, "JavaScript");
   for (const css of value.css) assertAsset(css, "CSS");

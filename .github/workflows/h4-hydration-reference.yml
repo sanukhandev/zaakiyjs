@@ -1,0 +1,245 @@
+name: H4 Hydration Reference Builds
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'benchmarks/h4-hydration/**'
+      - 'packages/compiler/**'
+      - 'packages/ssr/**'
+      - '.github/workflows/h4-hydration-reference.yml'
+  push:
+    branches: ['feat/production-hardening-integration']
+    paths:
+      - 'benchmarks/h4-hydration/**'
+      - 'packages/compiler/**'
+      - 'packages/ssr/**'
+      - '.github/workflows/h4-hydration-reference.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: h4-reference-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-references:
+    name: h4 / React Vue Zaakiy production fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Build frozen ZaakiyJS workspace
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+      - name: Install exact direct React Vue dependencies and retain resolved graph
+        run: |
+          npm ci --prefix benchmarks/h4-hydration/reference --ignore-scripts --no-audit --no-fund
+          mkdir -p benchmark-artifacts/h4-hydration-sites
+          cp benchmarks/h4-hydration/reference/package-lock.json benchmark-artifacts/h4-hydration-sites/reference-generated-lock.json
+      - name: Compile independent React Vue SSR and browser hydration
+        env:
+          H4_SITE: benchmark-artifacts/h4-hydration-sites
+          NODE_ENV: production
+        run: node benchmarks/h4-hydration/reference/build.mjs
+      - name: Compile ZaakiyJS H4 SSR from exact PR head
+        env:
+          H4_SITE: benchmark-artifacts/h4-hydration-sites
+          NODE_ENV: production
+        run: node benchmarks/h4-hydration/build-zaakiy.mjs
+      - name: Verify generated baseline HTML and expose certified gaps
+        run: |
+          python3 -m py_compile benchmarks/h4-hydration/measure.py
+          for framework in react vue zaakiyjs; do
+            for size in 100 1000 10000; do
+              test -s "benchmark-artifacts/h4-hydration-sites/$framework/$size/index.html"
+            done
+          done
+          node -e "const f=require('./benchmark-artifacts/h4-hydration-sites/zaakiyjs-build.json');if(f.rejectedCases.length||f.generatedCases.length!==3)throw Error('H4 compiler SSR scale gate failed: '+JSON.stringify(f))"
+          echo 'React/Vue/ZaakiyJS reference build successful.'
+          echo 'Build-only evidence: full four-framework browser matrix and pinned transitive lock are separate gates.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload immutable reference sources, resolved graph and production artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h4-reference-build-${{ github.sha }}
+          path: benchmark-artifacts/h4-hydration-sites/
+          if-no-files-found: warn
+          retention-days: 14
+
+  compile-angular:
+    name: h4 / Angular AOT SSR hydration reference
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned Angular 21 direct references and record resolved lock
+        run: |
+          npm ci --prefix benchmarks/h4-hydration/angular --no-audit --no-fund
+          mkdir -p benchmark-artifacts/h4-angular
+          cp benchmarks/h4-hydration/angular/package-lock.json benchmark-artifacts/h4-angular/generated-lock.json
+      - name: AOT compile true Angular server and client hydration bundles
+        run: npm run build --prefix benchmarks/h4-hydration/angular -- --base-href /angular/
+      - name: Verify Angular server-pre-rendered HTML for every workload
+        run: |
+          set -e
+          for size in 100 1000 10000; do
+            test -s "benchmarks/h4-hydration/angular/dist/browser/$size/index.html"
+            grep -q "data-key" "benchmarks/h4-hydration/angular/dist/browser/$size/index.html"
+          done
+          cp -R benchmarks/h4-hydration/angular/dist/browser benchmark-artifacts/h4-angular/browser
+      - name: Upload independently built Angular SSR reference
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h4-angular-reference-${{ github.sha }}
+          path: benchmark-artifacts/h4-angular/
+          if-no-files-found: warn
+          retention-days: 14
+
+  measure-browser:
+    name: h4 / ${{ matrix.browser }} production hydration
+    needs: [compile-references, compile-angular]
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: h4-reference-build-${{ github.sha }}
+          path: benchmark-artifacts/h4-hydration-sites
+      - uses: actions/download-artifact@v4
+        with:
+          name: h4-angular-reference-${{ github.sha }}
+          path: benchmark-artifacts/h4-angular
+      - name: Assemble pinned 4x3 server build manifest
+        shell: bash
+        env:
+          H4_SITE: benchmark-artifacts/h4-hydration-sites
+        run: |
+          set -euo pipefail
+          mkdir -p benchmark-artifacts/h4-hydration-sites/angular
+          cp -a benchmark-artifacts/h4-angular/browser/. benchmark-artifacts/h4-hydration-sites/angular/
+          cp benchmark-artifacts/h4-angular/generated-lock.json benchmark-artifacts/h4-hydration-sites/angular-generated-lock.json
+          node benchmarks/h4-hydration/assemble-manifest.mjs
+      - name: Install pinned browser engines
+        run: bash scripts/ci/install-playwright-browsers.sh
+      - name: Fast four-framework hydration correctness smoke
+        run: |
+          python3 benchmarks/h4-hydration/measure.py \
+            --site benchmark-artifacts/h4-hydration-sites \
+            --output benchmark-artifacts/h4-smoke-${{ matrix.browser }}.json \
+            --head "${{ github.sha }}" --engines "${{ matrix.browser }}" --sizes 100 \
+            --warmups 0 --samples 1 --timeout-ms 12000
+      - name: Measure 12 independent framework/size hydration cases
+        run: |
+          python3 benchmarks/h4-hydration/measure.py \
+            --site benchmark-artifacts/h4-hydration-sites \
+            --output benchmark-artifacts/h4-hydration-${{ matrix.browser }}.json \
+            --head "${{ github.sha }}" --engines "${{ matrix.browser }}" \
+            --warmups 10 --samples 50
+      - name: Upload independently auditable raw browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h4-hydration-${{ matrix.browser }}-${{ github.sha }}
+          path: |
+            benchmark-artifacts/h4-hydration-${{ matrix.browser }}.json
+            benchmark-artifacts/h4-smoke-${{ matrix.browser }}.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  measure-aggregate:
+    name: h4 / certify all 36 hydration cases
+    needs: [measure-browser]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: h4-hydration-*-${{ github.sha }}
+          merge-multiple: true
+          path: benchmark-artifacts/h4-partial
+      - name: Enforce full 36-case raw 50-sample evidence
+        run: |
+          python3 benchmarks/h4-hydration/merge-evidence.py \
+            --source benchmark-artifacts/h4-partial \
+            --output benchmark-artifacts/h4-hydration-matrix.json \
+            --head "${{ github.sha }}"
+      - name: Archive the exact-head 36-case certificate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h4-hydration-comparative-matrix-${{ github.sha }}
+          path: benchmark-artifacts/h4-hydration-matrix.json
+          if-no-files-found: warn
+          retention-days: 14
+
+
+  memory-owners:
+    name: h4 / 100-cycle owner cleanup across three browsers
+    needs: [compile-references]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: h4-reference-build-${{ github.sha }}
+          path: benchmark-artifacts/h4-hydration-sites
+      - name: Install exact Chromium Firefox and WebKit
+        run: bash scripts/ci/install-playwright-browsers.sh
+      - name: Certify 100 owner dispose/re-hydrate cycles in each browser
+        run: |
+          python3 benchmarks/h4-hydration/owner-memory.py \
+            --site benchmark-artifacts/h4-hydration-sites \
+            --output benchmark-artifacts/h4-owner-memory.json \
+            --head "${{ github.sha }}" --sizes 100,1000
+      - name: Archive verified owner-retention evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h4-owner-disposal-${{ github.sha }}
+          path: benchmark-artifacts/h4-owner-memory.json
+          if-no-files-found: warn
+          retention-days: 14

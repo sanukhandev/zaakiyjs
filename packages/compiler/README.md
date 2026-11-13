@@ -87,3 +87,43 @@ No npm publication is authorized without per-package approval, scope verificatio
 Within native host parents, the compiler now flattens JSX fragments to native children without introducing a wrapper element, accepts multiple `<Show>` branch roots and fragment fallbacks, and supports nested `<For>` loops with lexical item signal stacks. The existing `IR_SCHEMA_VERSION=1` and DOM region ABI v1 remain intact; `whenTrue`, `whenFalse`, and `body` already encode arrays of child IR nodes. At runtime, the compiler emits a native `DocumentFragment` for multi-root insertion; owners and stable comment anchors are still managed by the existing DOM region API.
 
 Keyed component-root templates are supported when each varying item prop is a simple zero-argument live getter, e.g. `live={() => item}`, and the component uses `computed(() => props.live().field)`. Direct item snapshots, arbitrary getter factories, implicit reactive props and root-level TSX fragments remain rejected. See ADR 0006. No virtual DOM is introduced. Three-browser acceptance is required for this extension.
+
+## Compiler-generated static server output (PR #61)
+
+`compileStaticServer({ fileName, source, routeId })` is an additive, build-time **literal-only** TSX-to-HTML server compiler. It emits an ES module exporting `protocol = "zaakiy.render/1"` and a `render(context)` function returning `no-store` HTML. The compiler does not import browser DOM or ship any TSX/IR interpreter to Node HTTP requests. Static HTML text and values are escaped, and unsafe HTML elements, attributes, URLs, styles, event handlers, dynamic text, reactive state, components and keyed loops are rejected rather than silently degraded.
+
+The emitted `js[0].code` is the exact module source. Encode it to bytes at build time and pass those bytes to `@zaakiyjs/ssr/build`'s `buildVerifiedManifestV1` and `verifyTrustedArtifactBytes`, then activate the byte-attested Node adapter. The compiler does **not** produce hydration markers or claim to reuse server DOM; see [ADR 0010](../../docs/adr/0010-static-server-compiler-slice.md). Full compiler SSR/hydration remains issue #59.
+
+## Request-scoped data SSR — experimental
+
+`compileDataServer({ fileName, source, routeId })` generates a Node server renderer from supported **read-only typed props paths** without interpreting TSX during HTTP requests. Example source:
+
+```tsx
+function Product(props: { customer: { name: string }; order: number }) {
+  return <main class="item"><h1>{props.customer.name}</h1><p>{props.order}</p></main>;
+}
+```
+
+The renderer reads the corresponding paths from `ServerRequestContextV1.loaderData` via own-property descriptors, disallowing accessors and nonplain objects, and escapes primitive values before returning HTML. It uses the established `zaakiy.render/1` protocol with `no-store` caching. The deployment must pin the emitted module bytes through `buildVerifiedManifestV1`, `verifyTrustedArtifactBytes` and the byte-attested SSR Node adapter. Compiled source cannot access arbitrary context fields or invoke JS expressions. This **does not** hydrate browser DOM or support dynamic attributes/components/slots; issue #59 remains open. See [ADR 0012](../../docs/adr/0012-data-bound-ssr.md).
+
+## Experimental component default slots (IR v2)
+
+`compile({ fileName, source, componentSlots: true })` emits IR v2 with `ComponentCall.children` and `SlotOutlet`. Example:
+
+```tsx
+import type { JSXChild } from "@zaakiyjs/core/jsx-runtime";
+
+function Panel(props: { readonly children?: JSXChild }) {
+  return <section>{props.children}</section>;
+}
+
+function App() {
+  return <Panel><button type="button">Open</button></Panel>;
+}
+```
+
+This compiles a lazily mounted, caller-owned native slot factory. Each slot is single-use; the callee's outlet mounts it at a native parent and it disposes with the caller's lexical scope. Default `compile()` continues to emit IR v1 and reject component JSX children. Explicit `children` props conflicting with nested JSX, named slots, arbitrary JSX-in-props and runtime JSX interpretation remain rejected. See [ADR 0013](../../docs/adr/0013-component-slots-ir2.md).
+
+### Restricted named JSX prop slots
+
+`<Panel header={<h2>Title</h2>}>...</Panel>` is supported under `componentSlots: true` when the callee inserts `<Slot name="header" />` imported from Core. The compiler extracts the JSX into a lazy caller-owned native factory. Dynamic names, duplicate names, JSX spreads and arbitrary JSX-in-props are rejected. Named slots share the one-shot lifetime semantics of default children and do not imply hydration.

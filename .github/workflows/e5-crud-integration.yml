@@ -1,0 +1,60 @@
+name: E5 Integrated CRUD Performance
+
+on:
+  pull_request:
+    paths:
+      - 'packages/store/**'
+      - 'packages/router/test/e5-crud-workload.test.ts'
+      - 'benchmarks/microbench-e5-crud.mjs'
+      - 'benchmarks/report-e5-crud.mjs'
+      - '.github/workflows/e5-crud-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  crud:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 21b6197c7d3646d820e0a20b7d6749c9b779d7f4
+          path: .benchmark-before-e5
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Build current implementation and validate contracts
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec vitest run packages/store/test/e5-structural-sharing.test.ts packages/router/test/e5-crud-workload.test.ts
+          pnpm exec eslint benchmarks/microbench-e5-crud.mjs benchmarks/report-e5-crud.mjs
+      - name: Build frozen pre-E5 baseline
+        run: |
+          pnpm --dir .benchmark-before-e5 install --frozen-lockfile
+          pnpm --dir .benchmark-before-e5 build
+      - name: Compare matched CRUD workloads
+        run: |
+          mkdir -p benchmark-artifacts
+          node benchmarks/microbench-e5-crud.mjs .benchmark-before-e5 benchmark-artifacts/e5-before.json
+          node benchmarks/microbench-e5-crud.mjs . benchmark-artifacts/e5-after.json
+          node benchmarks/report-e5-crud.mjs
+          cat benchmark-artifacts/e5-crud-comparison.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive E5 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e5-crud-integration-evidence
+          path: benchmark-artifacts/
+          if-no-files-found: warn

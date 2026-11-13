@@ -95,3 +95,28 @@ export interface TrustedModuleRegistration {
   readonly sourceDigest: string;
   readonly module: TrustedServerRenderModuleV1;
 }
+
+
+/** H0: restricted data-bound client adoption blueprint. Not general TSX hydration. */
+export interface DataHydrationElementV1 {
+  readonly kind: "element";
+  readonly id: string;
+  readonly tag: string;
+  readonly attributes: readonly (readonly [name: string, encodedValue: string])[];
+  readonly children: readonly DataHydrationNodeV1[];
+}
+export interface DataHydrationTextV1 { readonly kind: "text"; readonly value: string }
+export interface DataHydrationSlotV1 {
+  readonly kind: "slot";
+  readonly id: string;
+  readonly path: readonly string[];
+}
+export type DataHydrationNodeV1 =
+  DataHydrationElementV1 | DataHydrationTextV1 | DataHydrationSlotV1;
+export interface DataHydrationPlanV1 {
+  readonly schema: "zaakiy.data-hydration/1";
+  readonly routeId: string;
+  readonly markerId: string;
+  readonly templateDigest: string;
+  readonly root: DataHydrationElementV1;
+}

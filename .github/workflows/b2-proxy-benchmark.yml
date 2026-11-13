@@ -1,0 +1,56 @@
+name: B2 Secure Proxy Routing Benchmark
+
+on:
+  push:
+    branches: [perf/b2-proxy-routing]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 7c5370d4c2e8445696d95f4ed744a993b6f54064
+          path: .benchmark-pr63
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Candidate build, focused unit suite and changed-file lint
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec vitest run packages/proxy/test
+          pnpm exec eslint packages/proxy/src/index.ts packages/proxy/test/routing-index.test.ts benchmarks/microbench-proxy-routing.mjs benchmarks/report-proxy-routing.mjs
+          pnpm typecheck
+      - name: Immutable PR 63 baseline production build
+        run: |
+          pnpm --dir .benchmark-pr63 install --frozen-lockfile
+          pnpm --dir .benchmark-pr63 build
+      - name: Benchmark secure route misses and method mismatches
+        run: |
+          mkdir -p benchmark-artifacts
+          node benchmarks/microbench-proxy-routing.mjs .benchmark-pr63 benchmark-artifacts/proxy-baseline.json
+          node benchmarks/microbench-proxy-routing.mjs . benchmark-artifacts/proxy-candidate.json
+          node benchmarks/report-proxy-routing.mjs
+          cat benchmark-artifacts/proxy-comparison.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload full raw benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b2-proxy-routing-evidence
+          path: benchmark-artifacts/
+          if-no-files-found: warn

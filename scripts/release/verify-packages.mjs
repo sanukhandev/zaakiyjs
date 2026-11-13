@@ -49,7 +49,8 @@ try {
     for (const [entry, exports] of Object.entries(packed.exports ?? {})) {
       if (typeof exports !== "object" || exports === null) fail(name + ": non-object ESM export " + entry);
       const serverOnly = name === "proxy" ||
-        (name === "ssr" && (entry === "./node" || entry === "./build"));
+        (name === "ssr" && (entry === "./node" || entry === "./build")) ||
+        (name === "image" && entry === "./node");
       const exportTargets = serverOnly ? exports.node : exports;
       if (serverOnly) check(exportTargets && !exports.import && !exports.default && !exports.browser,
         name + ": must expose Node-only export " + entry);
@@ -107,7 +108,10 @@ try {
     'import { inspectHydration } from "@zaakiyjs/ssr/client";',
     'import { createNodeServerAdapter } from "@zaakiyjs/ssr/node";',
     'import { prerenderStatic } from "@zaakiyjs/ssr/build";',
+    'import { getImageProps } from "@zaakiyjs/image";',
+    'import { optimizeLocalImages, createSharpProcessor } from "@zaakiyjs/image/node";',
     'if(typeof createProxyRouter !== "function") throw new Error("Node proxy export missing");',
+    'if(typeof getImageProps !== "function" || typeof optimizeLocalImages !== "function" || typeof createSharpProcessor !== "function") throw new Error("Image browser/Node exports invalid");',
     'if(RENDER_PROTOCOL !== "zaakiy.render/1" || typeof inspectHydration !== "function" || typeof createNodeServerAdapter !== "function" || typeof prerenderStatic !== "function") throw new Error("SSR pack exports invalid");',
     'const s = signal(1); s.value++; if(s.value !== 2) throw new Error("Signal contract failed");',
     'if(typeof mount !== "function" || typeof Show !== "function" || typeof For !== "function") throw new Error("DOM/Core entrypoint missing");',

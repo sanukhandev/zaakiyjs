@@ -37,6 +37,31 @@ function rank(a: CompiledRoute, b: CompiledRoute): number {
   }
   return b.parents.length - a.parents.length || a.fullPath.localeCompare(b.fullPath);
 }
+interface PreparedRouteLayer {
+  readonly route: RouteDefinition;
+  readonly pathname: string;
+  readonly newParams: readonly string[];
+}
+// Weakly associate immutable, validated path metadata with each compiled route;
+// no process-global table holds application route definitions alive.
+const preparedLayers = new WeakMap<CompiledRoute, readonly PreparedRouteLayer[]>();
+
+function prepareLayers(entry: CompiledRoute): readonly PreparedRouteLayer[] {
+  const layers: PreparedRouteLayer[] = [];
+  let layerPrefix = "";
+  for (const ancestor of entry.parents) {
+    layerPrefix = normalized(layerPrefix + "/" + ancestor.path);
+    layers.push({
+      route: ancestor,
+      pathname: layerPrefix,
+      newParams: segments(ancestor.path)
+        .filter(part => part.startsWith(":"))
+        .map(part => part.slice(1))
+    });
+  }
+  return layers;
+}
+
 export interface RouteTable {
   readonly routes: readonly CompiledRoute[];
   readonly byId: ReadonlyMap<string, CompiledRoute>;
@@ -60,6 +85,7 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): RouteTab
       const names = tokens.filter(t => t.kind === "param").map(t => t.kind === "param" ? t.name : "");
       if (new Set(names).size !== names.length) throw new RouteConfigurationError("Duplicate route parameter in " + fullPath);
       const entry: CompiledRoute = { route, fullPath, tokens, parents: [...ancestors, route] };
+      preparedLayers.set(entry, prepareLayers(entry));
       const key = signature(entry);
       const previous = seen.get(key);
       // An empty-path index child can legitimately share its layout's URL.
@@ -85,7 +111,9 @@ export function compileRoutes(definitions: readonly RouteDefinition[]): RouteTab
 export function matchRoutes(table: RouteTable, pathname: string): readonly RouteMatch[] {
   const parts = segments(pathname);
   for (const entry of table.routes) {
-    const params: Record<string, string> = {};
+    // Path parameters may legally be named "__proto__"; use a dictionary
+    // without inherited properties so no native object setter is invoked.
+    const params: Record<string, string> = Object.create(null) as Record<string, string>;
     let matched = true;
     let offset = 0;
     for (const token of entry.tokens) {
@@ -100,16 +128,19 @@ export function matchRoutes(table: RouteTable, pathname: string): readonly Route
     }
     if (!matched || offset !== parts.length) continue;
     const result: RouteMatch[] = [];
-    let prefix = "";
-    for (const ancestor of entry.parents) {
-      prefix = normalized(prefix + "/" + ancestor.path);
-      const localParams: Record<string, string> = {};
-      compileTokens(prefix).forEach(token => {
-        if (token.kind === "param" && params[token.name] !== undefined) {
-          localParams[token.name] = params[token.name]!;
-        }
+    const inheritedParams: Record<string, string> = Object.create(null) as Record<string, string>;
+    // Prefixes and local param names were validated and prepared at compile
+    // time. Each matched navigation now allocates only its immutable snapshots.
+    const layers = preparedLayers.get(entry) ?? prepareLayers(entry);
+    for (const layer of layers) {
+      for (const name of layer.newParams) {
+        if (Object.hasOwn(params, name)) inheritedParams[name] = params[name]!;
+      }
+      result.push({
+        route: layer.route,
+        params: Object.freeze({...inheritedParams}),
+        pathname: layer.pathname
       });
-      result.push({ route: ancestor, params: Object.freeze(localParams), pathname: prefix });
     }
     return result;
   }

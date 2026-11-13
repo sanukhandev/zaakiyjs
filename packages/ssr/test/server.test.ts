@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createContext, getOwner, onCleanup, provide as coreProvide } from "@zaakiyjs/core";
-import { createNodeServerAdapter, MemoryRenderCache, createCacheInvalidator } from "../src/node.js";
+import { createByteAttestedNodeServerAdapter, createNodeServerAdapter, MemoryRenderCache, createCacheInvalidator } from "../src/node.js";
+import { buildVerifiedManifestV1 } from "../src/build.js";
 import type { ServerOptions } from "../src/node.js";
 import type { RenderResponseV1, TrustedServerBuildManifestV1, ServerRequestContextV1 } from "../src/protocol.js";
 
@@ -29,6 +30,34 @@ async function get(options: ServerOptions, path = "/products/a", signal = new Ab
   return createNodeServerAdapter(options).handle(new Request("https://shop.example.test" + path), { signal });
 }
 describe("SSR request / trusted-module boundary", () => {
+  it("requires matching real server artifact bytes before starting a byte-attested adapter", async () => {
+    const sourceBytes = new TextEncoder().encode("compiled trusted render module");
+    const verified = buildVerifiedManifestV1([
+      { routeId: "item", moduleId: "built/item", bytes: sourceBytes }
+    ]);
+    const options = fixture(undefined, {
+      manifest: verified,
+      modules: { "built/item": {
+        sourceDigest: verified.routes.item!.sourceDigest,
+        module: {
+          protocol: "zaakiy.render/1",
+          render: () => ({
+            version: 1, status: 200, headers: {}, body: "<main>attested</main>",
+            cache: { scope: "no-store", tags: [] }
+          })
+        }
+      } }
+    });
+    const adapter = createByteAttestedNodeServerAdapter(options, { "built/item": sourceBytes });
+    const response = await adapter.handle(new Request("https://shop.example.test/products/a"),
+      { signal: new AbortController().signal });
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("<main>attested</main>");
+    expect(() => createByteAttestedNodeServerAdapter(options, {
+      "built/item": new TextEncoder().encode("tampered module")
+    })).toThrow(/bytes do not match/);
+    expect(() => createByteAttestedNodeServerAdapter(options, {})).toThrow(/Missing trusted/);
+  });
   it("uses the existing Router matcher and passes dynamic loader data", async () => {
     const response = await get(fixture());
     expect(response.status).toBe(200);
@@ -168,7 +197,8 @@ describe("hybrid cache and revalidation", () => {
       ttlSeconds: 30, tags: ["item:a"] };
     const headersCases: readonly Readonly<Record<string, string>>[] = [
       { "Cache-Control": "private" }, { "Cache-Control": "no-store" },
-      { Vary: "*" }, { "Set-Cookie": "session=secret" }
+      { Vary: "*" }, { Vary: "Accept-Language" }, { Vary: "X-User" },
+      { "Set-Cookie": "session=secret" }
     ];
     for (const headers of headersCases) {
       await cache.getOrRender("blocked", identity, async () => ({
@@ -177,6 +207,53 @@ describe("hybrid cache and revalidation", () => {
       }));
       expect(cache.size).toBe(0);
     }
+  });
+  it("only caches declared HTTP Vary dimensions represented in the cache key", async () => {
+    const cache = new MemoryRenderCache();
+    const identity = { routeId: "item", buildId: digest, scope: "public" as const,
+      ttlSeconds: 30, tags: ["item:a"], vary: ["accept-language"] };
+    let renders = 0;
+    const render = async (): Promise<RenderResponseV1> => ({
+      version: 1, status: 200, headers: { Vary: "Accept-Language" },
+      body: "v" + ++renders, cache: { scope: "public", tags: ["item:a"] }
+    });
+    const en = await cache.getOrRender("lang=en", identity, render);
+    const fr = await cache.getOrRender("lang=fr", identity, render);
+    expect(en.body).toBe("v1");
+    expect(fr.body).toBe("v2");
+    expect((await cache.getOrRender("lang=en", identity, render)).body).toBe("v1");
+    expect(renders).toBe(2);
+    expect(cache.size).toBe(2);
+    await cache.getOrRender("lang=es", identity, async () => ({
+      version: 1, status: 200, headers: { Vary: "Accept-Language, X-User" },
+      body: "unsafe", cache: { scope: "public", tags: ["item:a"] }
+    }));
+    expect(cache.size).toBe(2);
+    expect(() => cache.get("lang=en", { ...identity, vary: ["authorization"] })).toThrow(/Vary/);
+  });
+  it("passes policy-declared Vary dimensions through the server cache adapter", async () => {
+    const cache = new MemoryRenderCache();
+    let renders = 0;
+    const options = fixture(ctx => ({
+      version: 1, status: 200, headers: { Vary: "Accept-Language" },
+      body: (ctx.request.headers["accept-language"] ?? "unknown") + ":" + ++renders,
+      cache: { scope: "public", tags: ["item:a"] }
+    }), {
+      policies: [{ version: 1, routeId: "item", mode: "hybrid",
+        cache: { scope: "public", ttlSeconds: 30,
+          tags: ["item:a"], vary: ["accept-language"] } }],
+      resolvePrincipal: () => ({ scope: "public" }),
+      cache
+    });
+    const server = createNodeServerAdapter(options);
+    const ask = async (language: string) => (await server.handle(new Request(
+      "https://shop.example.test/products/a", {
+        headers: { "accept-language": language }
+      }), { signal: new AbortController().signal })).text();
+    expect(await ask("en")).toBe("en:1");
+    expect(await ask("fr")).toBe("fr:2");
+    expect(await ask("en")).toBe("en:1");
+    expect(renders).toBe(2);
   });
   it("does not persist a regeneration invalidated while its response is in flight", async () => {
     const cache = new MemoryRenderCache();

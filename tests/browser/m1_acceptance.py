@@ -20,6 +20,131 @@ def counter_keyboard(page: Page) -> None:
     expect(page.get_by_role("textbox", name="Row label")).to_have_count(2)
 
 
+def native_label_association(page: Page) -> None:
+    """Compiler emits native for=; the accessible name and label-click focus work."""
+    field = page.get_by_role("textbox", name="Email address")
+    expect(field).to_be_visible()
+    expect(page.locator('label[for="email"]')).to_have_count(1)
+    page.get_by_text("Email address", exact=True).click()
+    assert field.evaluate("(node) => document.activeElement === node"), "Label click did not focus input"
+    page.evaluate("window.__zaakiyAcceptance.dispose()")
+    expect(page.locator('label[for="email"]')).to_have_count(0)
+    expect(page.locator("#email")).to_have_count(0)
+
+
+def finite_reactive_variants(page: Page) -> None:
+    """Reactive classes and ARIA attributes update without replacing their element."""
+    node = page.locator("#variant-state")
+    expect(node).to_have_class("status-pill is-visible")
+    expect(node).to_have_attribute("aria-label", "Visible state")
+    expect(node).to_have_attribute("data-state", "visible")
+    page.evaluate("window.__variantIdentity = document.querySelector('#variant-state')")
+    page.locator("#toggle").click()
+    expect(node).to_have_class("status-pill is-hidden")
+    expect(node).to_have_attribute("aria-label", "Hidden state")
+    expect(node).to_have_attribute("data-state", "hidden")
+    assert page.evaluate("document.querySelector('#variant-state') === window.__variantIdentity")
+    page.locator("#toggle").click()
+    expect(node).to_have_class("status-pill is-visible")
+    assert page.evaluate("document.querySelector('#variant-state') === window.__variantIdentity")
+
+def connected_native_ref_lifecycle(page: Page) -> None:
+    """Refs attach only when connected, never on reorder, then clear on owner disposal."""
+    events = page.evaluate("window.__zaakiyAcceptance.getRefEvents()")
+    assert events == {"root": ["connected"], "conditional": ["connected"]}, events
+    page.locator("#toggle").click()
+    expect(page.locator("#shown")).to_have_count(0)
+    events = page.evaluate("window.__zaakiyAcceptance.getRefEvents()")
+    assert events["conditional"] == ["connected", "cleared"], events
+    page.locator("#toggle").click()
+    expect(page.locator("#shown")).to_be_visible()
+    events = page.evaluate("window.__zaakiyAcceptance.getRefEvents()")
+    assert events["conditional"] == ["connected", "cleared", "connected"], events
+    page.locator("#reorder").click()
+    events = page.evaluate("window.__zaakiyAcceptance.getRefEvents()")
+    assert events["root"] == ["connected"], events
+    assert events["conditional"] == ["connected", "cleared", "connected"], events
+    page.evaluate("window.__zaakiyAcceptance.dispose()")
+    events = page.evaluate("window.__zaakiyAcceptance.getRefEvents()")
+    assert events["root"] == ["connected", "cleared"], events
+    assert events["conditional"] == ["connected", "cleared", "connected", "cleared"], events
+
+
+
+def exit_aware_region(page: Page) -> None:
+    """Exit/reentry retains one native node, then disposes with bounded ownership."""
+    page.evaluate("window.__zaakiyAcceptance.exitStart()")
+    button = page.locator("#exit-demo-button")
+    expect(button).to_be_visible()
+    page.evaluate("window.__exitOriginal = document.getElementById('exit-demo-button')")
+    page.evaluate("window.__zaakiyAcceptance.exitHide()")
+    expect(button).to_have_count(1)
+    page.evaluate("window.__zaakiyAcceptance.exitShow()")
+    assert page.evaluate("document.getElementById('exit-demo-button') === window.__exitOriginal")
+    assert page.evaluate("window.__zaakiyAcceptance.exitAborts()") == [True]
+    page.evaluate("window.__zaakiyAcceptance.exitFinish()")
+    expect(button).to_have_count(1)
+    page.evaluate("window.__zaakiyAcceptance.exitHide()")
+    expect(button).to_have_count(1)
+    page.evaluate("window.__zaakiyAcceptance.exitFinish()")
+    expect(button).to_have_count(0)
+    page.evaluate("window.__zaakiyAcceptance.exitDispose()")
+
+    # Parent disposal aborts a hanging exit immediately, without a stale node.
+    page.evaluate("window.__zaakiyAcceptance.exitStart()")
+    page.evaluate("window.__zaakiyAcceptance.exitHide()")
+    assert page.evaluate("window.__zaakiyAcceptance.exitDispose()") == [True]
+    expect(page.locator("#exit-demo")).to_have_count(0)
+
+
+
+
+def compiled_component_slot_children(page: Page) -> None:
+    """Opt-in IR v2 JSX children compile to an owner-scoped native slot, not a text value."""
+    child = page.get_by_role("button", name="Owned child")
+    expect(child).to_be_visible()
+    expect(page.locator("#compiled-slot-host #compiled-slot-sibling")).to_have_text("Sibling")
+    page.evaluate("window.__compiledSlotIdentity = document.getElementById('compiled-slot-child')")
+    child.focus()
+    child.click()
+    expect(page.locator("#active-clicks")).to_have_text("1")
+    page.locator("#reorder").click()
+    assert page.evaluate("document.getElementById('compiled-slot-child') === window.__compiledSlotIdentity")
+    page.evaluate("window.__zaakiyAcceptance.dispose()")
+    expect(page.locator("#compiled-slot-panel")).to_have_count(0)
+    expect(page.locator("#compiled-slot-child")).to_have_count(0)
+
+
+def compiled_named_jsx_slot(page: Page) -> None:
+    """Named JSX prop uses a native owned slot rather than a runtime JSX tree."""
+    title = page.locator("#named-slot-heading")
+    expect(title).to_have_text("Named heading")
+    action = page.get_by_role("button", name="Named action")
+    expect(action).to_be_visible()
+    page.evaluate("window.__namedSlotIdentity = document.getElementById('named-slot-button')")
+    action.focus()
+    action.click()
+    expect(page.locator("#active-clicks")).to_have_text("1")
+    page.locator("#reorder").click()
+    assert page.evaluate("document.getElementById('named-slot-button') === window.__namedSlotIdentity")
+    page.evaluate("window.__zaakiyAcceptance.dispose()")
+    expect(page.locator("#named-slot-panel")).to_have_count(0)
+    expect(page.locator("#named-slot-button")).to_have_count(0)
+
+
+def native_slot_ownership(page: Page) -> None:
+    """One native slot factory, portal ownership, anchored range and cleanup."""
+    page.evaluate("window.__zaakiyAcceptance.slotStart()")
+    expect(page.locator("#slot-demo #slot-child")).to_have_text("Portal child")
+    expect(page.locator("#slot-demo #slot-unrelated")).to_have_count(1)
+    assert page.evaluate("window.__zaakiyAcceptance.slotCreations()") == 1
+    assert page.evaluate("window.__zaakiyAcceptance.slotEvents()") == ["mounted"]
+    assert page.evaluate("window.__zaakiyAcceptance.slotRemountRejected()")
+    page.evaluate("window.__zaakiyAcceptance.slotDispose()")
+    expect(page.locator("#slot-demo")).to_have_count(0)
+
+
+
 def conditional_ownership(page: Page) -> None:
     page.evaluate("window.__detachedShown = document.querySelector('#shown')")
     page.locator("#shown").click()
@@ -229,6 +354,13 @@ def keyed_component_live_getter(page: Page) -> None:
 
 CASES = (
     ("counter_keyboard", counter_keyboard),
+    ("native_label_association", native_label_association),
+    ("connected_native_ref_lifecycle", connected_native_ref_lifecycle),
+    ("finite_reactive_variants", finite_reactive_variants),
+    ("exit_aware_region", exit_aware_region),
+    ("native_slot_ownership", native_slot_ownership),
+    ("compiled_component_slot_children", compiled_component_slot_children),
+    ("compiled_named_jsx_slot", compiled_named_jsx_slot),
     ("conditional_ownership", conditional_ownership),
     ("precise_mutations", precise_mutations),
     ("reorder_focus", reorder_focus),

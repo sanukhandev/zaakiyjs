@@ -7,8 +7,10 @@ import {
   type ViteDevServer
 } from "vite";
 import type { ExtractedStyleToken, StyleConfig } from "@zaakiyjs/styles";
+import { createCompilerSession, type CompilerSession } from "@zaakiyjs/compiler";
 import type { CompilerDiagnostic } from "@zaakiyjs/compiler";
 import { cssSourceMapComment, portableSourceFile } from "./asset-paths.js";
+import { equalStyleInputs } from "./style-inputs.js";
 import type { ZaakiyAssetManifest, ZaakiyViteOptions, GeneratedAssetRecord } from "./index.js";
 import {
   assertBrowserOutput,
@@ -104,6 +106,8 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
   );
   const modules = new Map<string, CompiledModule>();
   const revisions = new Map<string, number>();
+  // Weak keys avoid retaining old ModuleNodes after Vite graph invalidation.
+  const dependencyCodeHashes = new WeakMap<object, { code: string; hash: string }>();
   let resolved: ResolvedConfig | undefined;
   let server: ViteDevServer | undefined;
   let configPath: string | undefined;
@@ -113,6 +117,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
   let lastStyleKey = "";
   let configRevision = 0;
   let buildMode = false;
+  let compilerSession: CompilerSession | undefined;
 
   function isTsx(id: string): boolean {
     const file = simpleFile(id);
@@ -133,7 +138,12 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         const id = dependency.file ? simpleFile(dependency.file) : dependency.id;
         if (id && !visited.has(dependency.url)) {
           const content = dependency.transformResult?.code ?? dependency.ssrTransformResult?.code ?? "";
-          stamp.push(id + ":" + (revisions.get(id) ?? 0) + ":" + stableHash(content));
+          const previousHash = dependencyCodeHashes.get(dependency);
+          const hash = previousHash?.code === content ? previousHash.hash : stableHash(content);
+          if (!previousHash || previousHash.code !== content) {
+            dependencyCodeHashes.set(dependency, { code: content, hash });
+          }
+          stamp.push(id + ":" + (revisions.get(id) ?? 0) + ":" + hash);
           walk(dependency);
         }
       }
@@ -231,12 +241,18 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
     async configResolved(config) {
       resolved = config;
       buildMode = config.command === "build";
+      compilerSession?.dispose();
+      compilerSession = createCompilerSession(config.root);
       await loadBrand();
     },
 
     configureServer(devServer) {
       server = devServer;
       if (configPath) devServer.watcher.add(configPath);
+      devServer.httpServer?.once("close", () => {
+        compilerSession?.dispose();
+        compilerSession = undefined;
+      });
     },
 
     resolveId(source, importer, opts) {
@@ -285,6 +301,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       const key = JSON.stringify([
         file, source, configRevision,
         styleFingerprint(brand, options.browserTargets ?? []),
+        options.componentSlots === true ? "component-slots-ir2" : "ir1",
         graphStamp(file)
       ]);
       const previous = modules.get(file);
@@ -296,8 +313,9 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         fileName: file,
         source,
         rootDir: resolved?.root,
-        targetBrowsers: options.browserTargets
-      });
+        targetBrowsers: options.browserTargets,
+        componentSlots: options.componentSlots === true
+      }, compilerSession);
       for (const diagnostic of output.diagnostics) {
         const error = diagnosticError(diagnostic, file);
         if (diagnostic.severity === "error") this.error(error);
@@ -339,10 +357,16 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       };
       modules.set(file, record);
       try {
-        if (!buildMode) {
+        if (!buildMode && (!previous || !equalStyleInputs(previous, record))) {
+          const previousCss = css;
+          const previousMap = compiledCssMap;
           await collectCss(false);
-          const styleModule = server?.moduleGraph.getModuleById(INTERNAL_CSS_ID);
-          if (styleModule && server) server.moduleGraph.invalidateModule(styleModule);
+          // Do not invalidate the stylesheet when TSX produced identical CSS
+          // and mapping; this also avoids needless dependent browser updates.
+          if (previousCss !== css || previousMap !== compiledCssMap) {
+            const styleModule = server?.moduleGraph.getModuleById(INTERNAL_CSS_ID);
+            if (styleModule && server) server.moduleGraph.invalidateModule(styleModule);
+          }
         }
       } catch (error) {
         modules.delete(file);
@@ -353,6 +377,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
 
     async handleHotUpdate(ctx) {
       const file = simpleFile(ctx.file);
+      compilerSession?.invalidate(file);
       bump(file);
       if (configPath && file === configPath) {
         await loadBrand();
@@ -362,15 +387,27 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         ctx.server.ws.send({ type: "full-reload", path: "*" });
         return [];
       }
-      if (isTsx(file) || evictDependents(file, ctx.server)) {
+      if (isTsx(file)) {
+        // Preserve the previous CSS contribution until the new TSX transform
+        // replaces it. Source bytes/revision still invalidate the JS cache.
+        // This lets a JavaScript-only edit skip global CSS regeneration, while
+        // a style-token edit regenerates CSS with exact source positions.
+        // Owner-safe stateful HMR is not implemented: reload remains required.
+        ctx.server.ws.send({ type: "full-reload", path: "*" });
+        return [];
+      }
+      if (evictDependents(file, ctx.server)) {
         modules.delete(file);
         lastStyleKey = "";
-        // No owner-compatible HMR ABI exists yet. A full document reload is the
-        // only defensible way to guarantee disposal of all previous owners.
         ctx.server.ws.send({ type: "full-reload", path: "*" });
         return [];
       }
       return undefined;
+    },
+
+    closeBundle() {
+      compilerSession?.dispose();
+      compilerSession = undefined;
     },
 
     async generateBundle(_output, bundle) {

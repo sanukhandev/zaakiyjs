@@ -4,7 +4,7 @@ import { createOwner, disposeOwner, runWithOwner, useContext, requireContext } f
 import type { ContextToken, OwnerScope } from "@zaakiyjs/core";
 import { compileRoutes, matchRoutes } from "@zaakiyjs/router";
 import type { RouteDefinition, NavigationServices, RouteContext } from "@zaakiyjs/router";
-import { verifyTrustedManifest } from "./build.js";
+import { verifyTrustedManifest, verifyTrustedArtifactBytes } from "./build.js";
 import { MemoryRenderCache } from "./cache.js";
 import { validateRenderPolicy } from "./config.js";
 import { htmlDocument, safeLocation } from "./security.js";
@@ -284,7 +284,8 @@ export function createNodeServerAdapter(options: ServerOptions): NodeServerAdapt
             cleanQuery.toString(), cacheScope, part ?? "", vary].join("\0"));
           result = await abortRace(options.cache.getOrRender(key, {
             routeId: leaf.route.id, buildId,
-            scope: cacheScope, partitionKey: part, tags: cachePolicy.tags, ttlSeconds: cachePolicy.ttlSeconds
+            scope: cacheScope, partitionKey: part, tags: cachePolicy.tags, ttlSeconds: cachePolicy.ttlSeconds,
+            ...(cachePolicy.vary ? { vary: cachePolicy.vary } : {})
           }, render), controller.signal);
         } else result = await render();
         streaming = typeof result.body !== "string" && request.method === "GET";
@@ -301,4 +302,19 @@ export function createNodeServerAdapter(options: ServerOptions): NodeServerAdapt
       }
     }
   };
+}
+
+
+/**
+ * Production-oriented opt-in factory: refuses to create an HTTP render adapter
+ * unless the deployment-pinned module bytes match the deterministic build
+ * manifest. Loader-to-bytes binding must still be guaranteed by the host.
+ *
+ * Legacy createNodeServerAdapter remains unchanged for existing integrations.
+ */
+export function createByteAttestedNodeServerAdapter(
+  options: ServerOptions, artifactsByModuleId: Readonly<Record<string, Uint8Array>>
+): NodeServerAdapterV1 {
+  verifyTrustedArtifactBytes(options.manifest, artifactsByModuleId);
+  return createNodeServerAdapter(options);
 }

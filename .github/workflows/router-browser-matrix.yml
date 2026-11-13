@@ -13,10 +13,11 @@ on:
       - "pnpm-lock.yaml"
       - ".github/workflows/router-browser-matrix.yml"
   push:
-    branches: [main]
+    branches: [main, 'perf/**']
     paths:
       - "packages/router/**"
       - ".github/workflows/router-browser-matrix.yml"
+      - "benchmarks/**"
   merge_group:
 
 permissions:

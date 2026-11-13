@@ -1,0 +1,161 @@
+name: Production React Benchmark
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'perf/**']
+  merge_group:
+  workflow_dispatch:
+  schedule:
+    - cron: '37 2 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-react-benchmark-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  production-comparison:
+    name: benchmark / react-vs-frozen-main-vs-pr
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout candidate
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout immutable ZaakiyJS baseline
+        uses: actions/checkout@v4
+        with:
+          ref: f19b9f6a466de7f5b03dd085925c8d9092a87f85
+          path: .benchmark-baseline
+          persist-credentials: false
+      - name: Checkout immutable hardening parent
+        uses: actions/checkout@v4
+        with:
+          ref: 04f453c18b31c7f900d77b037b0548f8888826f1
+          path: .benchmark-hardening
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Frozen installs and production package builds
+        shell: bash
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm --dir .benchmark-baseline install --frozen-lockfile
+          pnpm --dir .benchmark-baseline build
+          pnpm --dir .benchmark-hardening install --frozen-lockfile
+          pnpm --dir .benchmark-hardening build
+      - name: Assemble identical ZaakiyJS fixtures for candidate and baseline
+        shell: bash
+        run: |
+          for repo in . .benchmark-baseline .benchmark-hardening; do
+            (
+              cd "$repo"
+              node packages/cli/dist/bin.js start --project benchmark-app --template minimal --workspace --path apps --package-manager pnpm
+              cp "${GITHUB_WORKSPACE}/benchmarks/fixtures/zaakiy/App.tsx" apps/benchmark-app/src/App.tsx
+              cp "${GITHUB_WORKSPACE}/benchmarks/fixtures/zaakiy/main.tsx" apps/benchmark-app/src/main.tsx
+              cp "${GITHUB_WORKSPACE}/benchmarks/shared.css" apps/benchmark-app/src/style.css
+              pnpm install --no-frozen-lockfile
+              pnpm --dir apps/benchmark-app typecheck
+              pnpm --dir apps/benchmark-app build
+            )
+          done
+      - name: Install isolated pinned React 19.2.4 reference
+        run: npm ci --prefix benchmarks/react-reference --ignore-scripts --no-audit --no-fund
+      - name: Build React production comparator
+        run: pnpm exec vite build --config benchmarks/react-reference/vite.config.mjs
+      - name: Test benchmark gates with deliberately invalid measurements
+        run: node --test benchmarks/regression-gate.test.mjs
+      - name: Cache Playwright 1.64.1 browser executables
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-ubuntu2404-playwright-python-1.64.1
+      - name: Install all three actual browser engines
+        run: bash scripts/ci/install-playwright-browsers.sh
+      - name: Measure semantic parity and production p50/p95 in three browsers
+        shell: bash
+        run: |
+          mkdir -p benchmark-artifacts
+          pnpm --dir apps/benchmark-app exec vite preview --host 127.0.0.1 --port 4191 --strictPort > benchmark-artifacts/candidate-preview.log 2>&1 &
+          p1=$!
+          pnpm --dir .benchmark-baseline/apps/benchmark-app exec vite preview --host 127.0.0.1 --port 4192 --strictPort > benchmark-artifacts/baseline-preview.log 2>&1 &
+          p2=$!
+          pnpm exec vite preview --config benchmarks/react-reference/vite.config.mjs --host 127.0.0.1 --port 4193 --strictPort > benchmark-artifacts/react-preview.log 2>&1 &
+          p3=$!
+          pnpm --dir .benchmark-hardening/apps/benchmark-app exec vite preview --host 127.0.0.1 --port 4194 --strictPort > benchmark-artifacts/hardening-preview.log 2>&1 &
+          p4=$!
+          trap 'kill "$p1" "$p2" "$p3" "$p4" 2>/dev/null || true' EXIT
+          for port in 4191 4192 4193 4194; do
+            ready=0
+            for i in {1..60}; do
+              if curl --fail --silent "http://127.0.0.1:$port/" >/dev/null; then ready=1; break; fi
+              sleep 1
+            done
+            if [ "$ready" -ne 1 ]; then
+              cat benchmark-artifacts/*-preview.log
+              exit 1
+            fi
+          done
+          python3 benchmarks/runner.py --candidate http://127.0.0.1:4191 --baseline http://127.0.0.1:4192 --react http://127.0.0.1:4193 --hardening http://127.0.0.1:4194
+          python3 benchmarks/scale.py --candidate http://127.0.0.1:4191 --hardening http://127.0.0.1:4194 --react http://127.0.0.1:4193 --sizes 100,1000,5000,10000 --samples 5 --warmups 1
+      - name: Measure owner cleanup, compiler output and signal fanout
+        shell: bash
+        run: |
+          node benchmarks/microbench-core.mjs .benchmark-baseline benchmark-artifacts/core-main.json
+          node benchmarks/microbench-core.mjs .benchmark-hardening benchmark-artifacts/core-hardening.json
+          node benchmarks/microbench-core.mjs . benchmark-artifacts/core-candidate.json
+          node benchmarks/microbench-compiler.mjs .benchmark-baseline benchmark-artifacts/compiler-main.json
+          node benchmarks/microbench-compiler.mjs .benchmark-hardening benchmark-artifacts/compiler-hardening.json
+          node benchmarks/microbench-compiler.mjs . benchmark-artifacts/compiler-candidate.json
+          node .benchmark-baseline/packages/signals/tests/reactivity.bench.mjs > benchmark-artifacts/signals-main.json
+          node .benchmark-hardening/packages/signals/tests/reactivity.bench.mjs > benchmark-artifacts/signals-hardening.json
+          node packages/signals/tests/reactivity.bench.mjs > benchmark-artifacts/signals-candidate.json
+      - name: Benchmark large route table matching and nested parameter inheritance
+        shell: bash
+        run: |
+          node benchmarks/microbench-router.mjs .benchmark-baseline benchmark-artifacts/router-main.json
+          node benchmarks/microbench-router.mjs .benchmark-hardening benchmark-artifacts/router-hardening.json
+          node benchmarks/microbench-router.mjs . benchmark-artifacts/router-candidate.json
+      - name: Benchmark Styles compiler and scoped Store actions
+        shell: bash
+        run: |
+          node benchmarks/microbench-styles.mjs .benchmark-baseline benchmark-artifacts/styles-main.json
+          node benchmarks/microbench-styles.mjs .benchmark-hardening benchmark-artifacts/styles-hardening.json
+          node benchmarks/microbench-styles.mjs . benchmark-artifacts/styles-candidate.json
+          node benchmarks/microbench-store.mjs .benchmark-baseline benchmark-artifacts/store-main.json
+          node benchmarks/microbench-store.mjs .benchmark-hardening benchmark-artifacts/store-hardening.json
+          node benchmarks/microbench-store.mjs . benchmark-artifacts/store-candidate.json
+      - name: Report raw, gzip and Brotli production assets
+        run: node benchmarks/report-size.mjs
+      - name: Report all candidate package footprints against frozen historical baselines
+        run: node benchmarks/report-package-sizes.mjs
+      - name: Enforce keyed-reorder and emitted-bundle regression budgets
+        run: node benchmarks/regression-gate.mjs
+      - name: Generate review-ready React versus ZaakiyJS comparison
+        shell: bash
+        run: |
+          node benchmarks/report-comparison.mjs
+          node benchmarks/report-scale.mjs
+          cat benchmark-artifacts/summary.md >> "$GITHUB_STEP_SUMMARY"
+          cat benchmark-artifacts/scale-summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload reproducible benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-react-comparison
+          path: benchmark-artifacts/
+          if-no-files-found: warn

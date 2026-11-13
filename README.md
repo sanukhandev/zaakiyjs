@@ -3,7 +3,7 @@
 
 > **AI-assisted. Compiler-first. Signal-driven. Native DOM.**
 >
-> **Project status: Seven foundation packages are implemented in the source monorepo; not published to npm.** Real generated TSX Counter and the restricted native-element `<Show>`/`<For>` control-flow subset now pass 24 Playwright acceptance cases across Chromium, Firefox and WebKit. Broader TSX grammar, API coverage, browser-version compatibility targets, long-running heap benchmarks and npm release gates remain unproven.
+> **Project status: 23 source packages are present; none is a verified public npm release.** The seven foundation modules and selected application/runtime integrations have automated unit, consumer and real-browser acceptance. Coverage varies by package; compiler-first SSR/hydration, full TSX composition, supported browser-version policy, manual accessibility certification and release authorization remain open. Green CI is not proof that the entire framework is production-certified.
 
 ZaakiyJS is a proposed, independent **TypeScript/TSX frontend framework** inspired by React, Angular and Vue, designed to compile declarative components into precise native DOM updates. It combines a fine-grained reactive runtime, SOLID/MVVM application architecture, brand-driven CSS, integrated networking/async primitives, hybrid SEO rendering and optional **reviewed Gemini optimization**.
 
@@ -265,7 +265,7 @@ The first implementation slice should be **one typed TSX counter** proving signa
 - [Testing and quality gates](docs/development/testing-and-quality.md)
 - [Independent npm release policy](docs/releasing/independent-npm.md)
 
-**Current status:** Seven foundation packages are merged. The generated Counter runs in Chromium and the restricted native-element `<Show>`/`<For>` subset passes **24/24** real Playwright acceptance scenarios in Chromium/Firefox/WebKit (native DOM mutation identity, focus/selection, ownership cleanup, duplicate-key atomicity and text injection safety). Broader browser target-version declarations, arbitrary TSX grammar, SSR/networking ecosystem, memory/performance benchmarks and independent npm publication remain open. See [M1 browser matrix](tests/browser/README.md) and [ADR 0005](docs/adr/0005-tsx-control-flow-intrinsics.md).
+**Current status:** The monorepo contains 23 source packages with varying levels of integration maturity. The [M1 browser matrix](tests/browser/README.md) exercises compiled native DOM behavior in Chromium, Firefox and WebKit, with further acceptance being added on the hardening branch. Several release-critical gates remain open: full TSX composition, compiler-generated SSR/hydration, browser-version declarations, broad accessibility/security review, full performance comparisons, and authorized npm publication. Consult [PR #61](https://github.com/sanukhandev/zaakiyjs/pull/61) for the current hardening evidence and unresolved gates.
 
 ---
 
