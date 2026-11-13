@@ -25,7 +25,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Resolve and pin exact React Vue and Angular transitive graphs
+      # This branch-only workflow freezes the full npm dependency graphs before\n      # the strict comparator build switches to npm ci.\n      - name: Resolve and pin exact React Vue and Angular transitive graphs
         run: |
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund --prefix benchmarks/h4-hydration/reference
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund --prefix benchmarks/h4-hydration/angular
