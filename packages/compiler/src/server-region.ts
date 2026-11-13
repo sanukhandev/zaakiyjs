@@ -354,6 +354,25 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
   };
   try {
     const nodes = convert([root],undefined,0,undefined,[entryName]);
+    if(large){
+      const seen=new Set<string>();
+      const inspectMarkers=(items:readonly RegionNode[]):void=>{
+        for(const node of items){
+          if(node.kind==="data"){
+            const marker=node.id.slice(0,16);
+            if(seen.has(marker)) throw new TypeError("H4 compact data marker collision");
+            seen.add(marker);
+          }else if(node.kind==="element" || node.kind==="component"){
+            inspectMarkers(node.children);
+          }else if(node.kind==="conditional"){
+            inspectMarkers(node.yes);inspectMarkers(node.no);
+          }else if(node.kind==="keyed"){
+            inspectMarkers(node.rows);
+          }
+        }
+      };
+      inspectMarkers(nodes);
+    }
     const templateDigest = hash(JSON.stringify(limits ? {nodes,limits} : nodes));
     const markerId = hash("zaakiy-region-root:" + request.routeId + ":" + templateDigest).slice(0, 32);
     const hydrationPlan: RegionHydrationPlanV2 = {
@@ -365,6 +384,12 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     const code = [
       'export const protocol = "zaakiy.render/1";',
       "export const hydrationPlan = " + JSON.stringify(hydrationPlan) + ";",
+      "const dataMarker=(id,side)=>" + (large
+        ? "'z-d:'+id.slice(0,16)+':'+(side==='start'?'s':'e')"
+        : "'zaakiy-d2:'+id+':'+side") + ";",
+      "const keyedMarker=(id,key,side)=>" + (large
+        ? "'z-k:'+key+':'+(side==='start'?'s':'e')"
+        : "'zaakiy-k2:'+id+':'+key+':'+side") + ";",
       "const escape = value => String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;');",
       "const own = (object, path) => { let value = object; for (const key of path) {",
       " if (!value || typeof value !== 'object' || Array.isArray(value)) return null;",
@@ -379,7 +404,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " if (depth > 64) throw new RangeError('H4 nesting bound'); let result = '';",
       " for (const node of nodes) { if (++budget.count > " + String(limits?.maxNodes??8192) + ") throw new RangeError('H4 output node bound');",
       " if (node.kind === 'literal') result += escape(node.value);",
-      " else if (node.kind === 'data') result += '<!--zaakiy-d2:' + node.id + ':start-->' + text(own(node.source === 'item' ? item : props, node.path)) + '<!--zaakiy-d2:' + node.id + ':end-->';",
+      " else if (node.kind === 'data') result += '<!--' + dataMarker(node.id,'start') + '-->' + text(own(node.source === 'item' ? item : props, node.path)) + '<!--' + dataMarker(node.id,'end') + '-->';",
       " else if (node.kind === 'element') { result += '<' + node.tag + node.attrs.join('') + '>';",
       " if (node.children.length) result += draw(node.children,props,item,budget,depth+1);",
       " if (!" + JSON.stringify([...SSR_VOID_TAGS]) + ".includes(node.tag)) result += '</' + node.tag + '>'; }",
@@ -395,9 +420,9 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " for (const row of rows) { const key = own(row,[node.key]);",
       " if (typeof key !== 'string' && typeof key !== 'number') throw new TypeError('H4 key type');",
       " const name = String(key); if (!/^[A-Za-z0-9_.:]{1,64}$/.test(name) || keys.has(name)) throw new TypeError('H4 duplicate/unsafe key');",
-      " keys.add(name); result += '<!--zaakiy-k2:' + node.id + ':' + name + ':start-->';",
+      " keys.add(name); result += '<!--' + keyedMarker(node.id,name,'start') + '-->';",
       " result += draw(node.rows, props, row, budget, depth+1);",
-      " result += '<!--zaakiy-k2:' + node.id + ':' + name + ':end-->'; }",
+      " result += '<!--' + keyedMarker(node.id,name,'end') + '-->'; }",
       " result += '<!--zaakiy-r2:' + node.id + ':end-->'; }",
       " } return result; };",
       "export function render(context) {",
