@@ -28,7 +28,12 @@ describe("H4 compiler-backed region SSR target", () => {
       loaderData:{rows:Array.from({length:size},(_,i)=>({id:"key"+i,name:"N"+i}))}
     });
     expect(()=>standardModule.render(context(4097))).toThrow();
-    expect(largeModule.render(context(10000)).body).toContain("key9999");
+    const compact=largeModule.render(context(10000)).body as string;
+    expect(compact).toContain("<!--z-k:key9999:s-->");
+    expect(compact).toContain("<!--z-d:");
+    expect(compact).not.toContain("<!--zaakiy-k2:");
+    expect(compact).not.toContain("<!--zaakiy-d2:");
+    expect(standardModule.render(context(2)).body).toContain("<!--zaakiy-k2:");
     expect(()=>largeModule.render(context(10001))).toThrow();
   });
 
