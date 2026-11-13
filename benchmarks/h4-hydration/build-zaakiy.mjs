@@ -94,7 +94,7 @@ await writeFile(client,[
   '        items[size-1]===first[0] && input.value==="visitor draft";},',
   '    dispose(){handle.dispose();},',
   '    verifyDisposed(){const old=actions;button.click();',
-  '      return actions===old && host.querySelectorAll("[data-key]").length===size;}',
+  '      return actions===old && host.querySelectorAll("[data-key]").length===size;},',
   '    async ownerStress(cycles=100){',
   '      if(!Number.isInteger(cycles)||cycles<1||cycles>100)throw Error("Invalid stress budget");',
   '      if(handle){handle.dispose();handle=undefined;}',
