@@ -10,7 +10,7 @@ const root=resolve(process.env.H4_SITE??"benchmark-artifacts/h4-hydration-sites"
 const fixtureDir=resolve("benchmarks/h4-hydration/.generated");
 const source=[
   'function Page(props:{count:number;shown:boolean;rows:{id:string;label:string}[];onCount:(event:MouseEvent)=>void}){',
-  'return <main><input value="server"/><button type="button" onClick={props.onCount}>Count: {props.count}</button>',
+  'return <main><input/><button type="button" onClick={props.onCount}>Count: {props.count}</button>',
   '{props.shown ? <p>Visible</p> : <p>Hidden</p>}',
   '<ul>{props.rows.map(item=><li key={item.id} data-key="row">{item.label}</li>)}</ul></main>;}'
 ].join("\n");
