@@ -539,7 +539,7 @@ export function hydrateRegionPage(
       bindKeyedRegion(owner,{parent:list.start.parentNode!,start:list.start,end:list.end},
         ()=>{
           const rows=list.spec.source==="item" ? own(target.item.value,list.spec.path) : read(list.spec.path);
-          if (!Array.isArray(rows) || rows.length>4096)
+          if (!Array.isArray(rows) || rows.length>limits.maxRows)
             return mismatch("keyed collection changed to unsafe data");
           return rows as readonly unknown[];
         },
