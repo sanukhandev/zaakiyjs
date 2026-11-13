@@ -26,9 +26,12 @@ const js={};
 for(const framework of ["react","vue"]){
   const entry=join(here,framework+"-client.mjs");
   await build({root:here,configFile:false,publicDir:false,logLevel:"warn",
+    define:{"process.env.NODE_ENV":JSON.stringify("production")},
     build:{outDir:root,emptyOutDir:false,minify:"esbuild",
       lib:{entry,formats:["es"],fileName:framework}}});
   const bytes=await readFile(join(root,framework+".js"));
+  if(bytes.includes(Buffer.from("process.env.NODE_ENV")))
+    throw new Error(framework+" browser bundle contains unresolved Node environment references");
   js[framework]={sha256:createHash("sha256").update(bytes).digest("hex"),bytes:bytes.length};
 }
 for(const size of cases){
