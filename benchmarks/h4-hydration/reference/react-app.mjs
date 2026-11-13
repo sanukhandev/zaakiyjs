@@ -16,7 +16,7 @@ export function ReactBenchmarkApp({ size, onReady }) {
     });
   }, []);
   return React.createElement("main", null,
-    React.createElement("input", {defaultValue:"server", "data-draft":"yes"}),
+    React.createElement("input", {"data-draft":"yes"}),
     React.createElement("button", {type:"button", onClick:()=>setCount(v=>v+1), "data-counter":"yes"}, "Count: "+count),
     enabled ? React.createElement("p", { "data-condition":"yes" }, "Visible") : null,
     React.createElement("ul", {"data-list":"yes"},
