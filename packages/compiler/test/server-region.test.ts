@@ -51,7 +51,7 @@ describe("H4 compiler-backed region SSR target", () => {
       loaderData:{rows:Array.from({length:size},(_,i)=>({id:"r"+i,label}))}
     });
     expect(render("🦄",2).body).toContain("🦄");
-    // Each 440-byte text value is valid; together 10k values exceed
+    // Each 880-byte text value is valid; together 10k values exceed
     // 8 MiB of UTF-8 while the UTF-16 string stays below that bound.
     expect(()=>render("🦄".repeat(220),10000)).toThrow(/output too large/);
   });
