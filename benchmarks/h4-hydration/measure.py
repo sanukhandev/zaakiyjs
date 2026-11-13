@@ -17,7 +17,7 @@ import threading
 from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 
 FRAMEWORKS = ("zaakiyjs", "react", "vue", "angular")
 SCALES = (100, 1000, 10000)
@@ -79,13 +79,31 @@ def run(args):
                             for iteration in range(args.samples + args.warmups):
                                 page = browser.new_page(viewport={"width":1280,"height":900})
                                 errors = []
-                                page.on("pageerror", lambda err: errors.append(str(err)))
+                                page.on("pageerror", lambda err: errors.append("pageerror: "+str(err)))
+                                page.on("console", lambda message: (
+                                    errors.append("console: "+message.text) if message.type == "error" else None))
+                                page.on("requestfailed", lambda request: errors.append(
+                                    "requestfailed: "+request.url+" "+str(request.failure)))
+                                page.on("response", lambda response: (
+                                    errors.append("HTTP "+str(response.status)+": "+response.url)
+                                    if response.status >= 400 else None))
                                 url = f"http://127.0.0.1:{serve.server_port}/{framework}/{size}/"
                                 try:
                                     page.goto(url, wait_until="load", timeout=90000)
-                                    page.wait_for_function(
-                                        "window.__h4 && window.__h4.ready===true",
-                                        timeout=args.timeout_ms)
+                                    try:
+                                        page.wait_for_function(
+                                            "window.__h4 && window.__h4.ready===true",
+                                            timeout=args.timeout_ms)
+                                    except PlaywrightTimeout as exc:
+                                        diagnostic = page.evaluate("""() => ({
+                                          location:location.href,
+                                          state:window.__h4??null,
+                                          modules:[...document.scripts].map(s=>s.src),
+                                          rowCount:document.querySelectorAll('[data-key]').length
+                                        })""")
+                                        raise AssertionError(
+                                            f"{framework}/{engine}/{size}: hydration never became ready; "+
+                                            f"page={diagnostic}, browserErrors={errors}") from exc
                                     before = page.evaluate("""() => {
                                         const b = window.__h4;
                                         return {
