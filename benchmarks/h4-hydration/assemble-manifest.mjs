@@ -2,8 +2,8 @@
  * Records exact bundled JS/CSS sizes, compiler identities and resolved npm graphs.
  * The report is INVALID unless all 4 frameworks and 3 list sizes are present.
  */
-import {resolve,join,relative,dirname} from "node:path";
-import {readFile,writeFile,readdir,stat} from "node:fs/promises";
+import {resolve,join,relative} from "node:path";
+import {readFile,writeFile,readdir} from "node:fs/promises";
 import {gzipSync,brotliCompressSync} from "node:zlib";
 import {createHash} from "node:crypto";
 
