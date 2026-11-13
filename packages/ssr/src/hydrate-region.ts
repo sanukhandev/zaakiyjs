@@ -50,6 +50,17 @@ const ATTR = /^ ([a-z][a-z0-9:_-]*)="([^"]*)"$/;
 const EVENT = /^[a-z][a-z0-9:_-]*$/;
 const DENIED = new Set(["__proto__", "constructor", "prototype"]);
 const MAX_NODES = 8192;
+function dataMarker(plan:RegionHydrationPlanV2,id:string,side:"start"|"end"):string{
+  return plan.limits!==undefined
+    ? "z-d:"+id.slice(0,16)+":"+(side==="start"?"s":"e")
+    : "zaakiy-d2:"+id+":"+side;
+}
+function keyedMarker(plan:RegionHydrationPlanV2,id:string,key:string,side:"start"|"end"):string{
+  return plan.limits!==undefined
+    ? "z-k:"+key+":"+(side==="start"?"s":"e")
+    : "zaakiy-k2:"+id+":"+key+":"+side;
+}
+
 function getBudgets(plan:RegionHydrationPlanV2){
   if(plan.limits===undefined) return {maxRows:4096,maxNodes:MAX_NODES};
   const limits=plan.limits;
@@ -228,7 +239,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
           if (!ID.test(spec.id) || !Array.isArray(spec.path) ||
               (spec.source !== "props" && spec.source !== "item") ||
               !cursor || cursor === end || cursor.nodeType !== 8 ||
-              cursor.nodeValue !== "zaakiy-d2:" + spec.id + ":start")
+              cursor.nodeValue !== dataMarker(plan,spec.id,"start"))
             mismatch("dynamic text start");
           cursor=cursor.nextSibling;
           const expected=textOf(spec.source === "props" ? read(spec.path) : own(item,spec.path));
@@ -239,7 +250,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
             cursor=cursor.nextSibling;
           } else if (expected) mismatch("missing data text");
           if (!cursor || cursor === end || cursor.nodeType !== 8 ||
-              cursor.nodeValue !== "zaakiy-d2:" + spec.id + ":end")
+              cursor.nodeValue !== dataMarker(plan,spec.id,"end"))
             mismatch("dynamic text end");
           target.slots.push({spec,text,end:cursor as Comment,item});
           cursor=cursor.nextSibling;
@@ -293,14 +304,14 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
             if (seen.has(key)) mismatch("duplicate keyed identity");
             seen.add(key);
             if (!cursor || cursor === end || cursor.nodeType !== 8 ||
-                cursor.nodeValue !== "zaakiy-k2:" + spec.id + ":" + key + ":start")
+                cursor.nodeValue !== keyedMarker(plan,spec.id,key,"start"))
               mismatch("keyed item start");
             const rowStart=cursor as Comment;
             const child=zone(scopedKey(target.key,key),item);
             const first=cursor.nextSibling;
             cursor=scan(parent,first,end,spec.rows,item,child,depth+1);
             if (!cursor || cursor === end || cursor.nodeType !== 8 ||
-                cursor.nodeValue !== "zaakiy-k2:" + spec.id + ":" + key + ":end")
+                cursor.nodeValue !== keyedMarker(plan,spec.id,key,"end"))
               mismatch("keyed item end");
             if (!first || first.nodeType !== 1) mismatch("row native element");
             rows.push({key,item,start:rowStart,end:cursor as Comment,child,node:first});
@@ -441,10 +452,10 @@ export function hydrateRegionPage(
         if(spec.kind==="literal"){
           fragment.appendChild(doc.createTextNode(spec.value));
         } else if(spec.kind==="data"){
-          fragment.appendChild(doc.createComment("zaakiy-d2:"+spec.id+":start"));
+          fragment.appendChild(doc.createComment(dataMarker(plan,spec.id,"start")));
           const value=textOf(spec.source==="props"?read(spec.path):own(row,spec.path));
           if(value) fragment.appendChild(doc.createTextNode(value));
-          fragment.appendChild(doc.createComment("zaakiy-d2:"+spec.id+":end"));
+          fragment.appendChild(doc.createComment(dataMarker(plan,spec.id,"end")));
         } else if(spec.kind==="element"){
           if(!ID.test(spec.id) || !/^[a-z][a-z0-9-]*$/.test(spec.tag))
             mismatch("invalid native element template");
@@ -474,9 +485,9 @@ export function hydrateRegionPage(
             const rowKeyValue=rowKey(entry,spec.key);
             if(keys.has(rowKeyValue)) mismatch("duplicate nested keyed identity");
             keys.add(rowKeyValue);
-            fragment.appendChild(doc.createComment("zaakiy-k2:"+spec.id+":"+rowKeyValue+":start"));
+            fragment.appendChild(doc.createComment(keyedMarker(plan,spec.id,rowKeyValue,"start")));
             fragment.appendChild(draw(spec.rows,entry,depth+1));
-            fragment.appendChild(doc.createComment("zaakiy-k2:"+spec.id+":"+rowKeyValue+":end"));
+            fragment.appendChild(doc.createComment(keyedMarker(plan,spec.id,rowKeyValue,"end")));
           }
           fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":end"));
         } else mismatch("unrecognized native region node");
@@ -553,8 +564,8 @@ export function hydrateRegionPage(
           }
         })),preserveMarkupOnDispose:true,
         markerForKey:(key,doc)=>({
-          start:doc.createComment("zaakiy-k2:"+list.spec.id+":"+key+":start"),
-          end:doc.createComment("zaakiy-k2:"+list.spec.id+":"+key+":end")
+          start:doc.createComment(keyedMarker(plan,list.spec.id,key,"start")),
+          end:doc.createComment(keyedMarker(plan,list.spec.id,key,"end"))
         })});
     }
   };
