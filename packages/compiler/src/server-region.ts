@@ -430,7 +430,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " if (context.request?.signal?.aborted) throw context.request.signal.reason;",
 
       " const body = '<!--zaakiy-h:' + hydrationPlan.markerId + ':' + hydrationPlan.templateDigest + '-->' + draw(hydrationPlan.nodes,context.loaderData,null,{count:0});",
-      " if (body.length > " + String(limits?.maxHtmlBytes??1048576) + ") throw new RangeError('H4 output too large');",
+      " if (new TextEncoder().encode(body).byteLength > " + String(limits?.maxHtmlBytes??1048576) + ") throw new RangeError('H4 output too large');",
       " return {version:1,status:200,headers:{'content-type':'text/html; charset=utf-8'},body,cache:{scope:'no-store',tags:[]}};",
       "}"
     ].join("\n") + "\n";
