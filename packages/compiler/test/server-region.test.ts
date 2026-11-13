@@ -37,6 +37,19 @@ describe("H4 compiler-backed region SSR target", () => {
     expect(()=>largeModule.render(context(10001))).toThrow();
   });
 
+  it("rejects UTF-8 SSR output exceeding the byte ceiling even when UTF-16 length is lower",async()=>{
+    const source='function Page(props:{text:string}){return <main>{props.text}</main>;}';
+    const compiled=build(source);
+    expect(compiled.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    const server=await import("data:text/javascript;base64,"+
+      Buffer.from(compiled.js[0]!.code).toString("base64"));
+    const render=(text:string)=>server.render({
+      schema:"zaakiy.render/1",route:{id:"products"},
+      request:{signal:{aborted:false}},loaderData:{text}
+    });
+    expect(render("é".repeat(100)).body).toContain("é");
+    expect(()=>render("é".repeat(600000))).toThrow(/output too large/);
+  });
   it("emits deterministic conditional regions and data slot markers", () => {
     const source = "function Page(props: { active: boolean; name: string }) { return <main>{props.active ? <strong>{props.name}</strong> : <em>hidden</em>}</main>; }";
     const result = build(source);
