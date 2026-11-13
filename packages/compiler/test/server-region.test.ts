@@ -15,6 +15,8 @@ describe("H4 compiler-backed region SSR target", () => {
     expect(normal.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
     expect(large.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
     expect(normal.hydrationPlan?.limits).toBeUndefined();
+    expect(normal.hydrationPlan?.markerFormat).toBeUndefined();
+    expect(large.hydrationPlan?.markerFormat).toBe("compact-v1");
     expect(large.hydrationPlan?.limits).toEqual({
       maxRows:10000,maxNodes:50000,maxHtmlBytes:8388608
     });
