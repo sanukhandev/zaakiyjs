@@ -29,6 +29,26 @@ for(const [preset,expected] of [["minimal",11],["standard",13],["enterprise",16]
  scenarios.push(row);
  console.log("cli scaffold",preset,"p50",row.p50_ms_per_plan.toFixed(3),"ms");
 }
+// Direct generator-plan benchmark. This is a CPU-only diagnostic, not a browser startup metric.
+const {generatorPlan}=await import(pathToFileURL(join(root,"packages/cli/dist/index.js")).href);
+const generators=[];
+for(const [kind,name,expected] of [["page","BenchmarkPage", "src/pages/BenchmarkPagePage.tsx"],["layout","BenchmarkLayout", "src/layouts/BenchmarkLayoutLayout.tsx"]]){
+ const samples=[];
+ let digest="";
+ for(let sample=-3;sample<20;sample++){
+  const start=performance.now();
+  for(let iteration=0;iteration<100;iteration++){
+   const files=generatorPlan(kind,name);
+   if(files.length!==1||files[0].path!==expected)throw Error("Invalid "+kind+" generator plan");
+   const next=createHash("sha256").update(files[0].path+"\\0"+files[0].content).digest("hex");
+   if(digest&&digest!==next)throw Error("Non-reproducible "+kind+" generator plan");
+   digest=next;
+  }
+  if(sample>=0)samples.push((performance.now()-start)/100);
+ }
+ generators.push({kind,sha256:digest,warmups:3,samples:20,iterations_per_sample:100,
+  p50_ms_per_plan:pct(samples,.5),p95_ms_per_plan:pct(samples,.95),samples_ms_per_plan:samples});
+}
 await mkdir(resolve(out,".."),{recursive:true});
 await writeFile(out,JSON.stringify({schemaVersion:1,node:process.version,
- method:"Read-only, hash-verified CLI scaffold plans for minimal/standard/enterprise presets with workspace-pinned versions",scenarios},null,2)+"\n");
+ method:"Read-only, hash-verified CLI scaffold and native page/layout generator plans with workspace-pinned versions",scenarios,generators},null,2)+"\n");
