@@ -42,8 +42,11 @@ jobs:
       - name: Generate and compile native pages and layouts in the real app
         shell: bash
         run: |
-          node packages/cli/dist/bin.js g page SalesReports --path apps/smoke-app/src/pages
-          node packages/cli/dist/bin.js g layout Dashboard --path apps/smoke-app/src/layouts
+          (
+            cd apps/smoke-app
+            node ../../packages/cli/dist/bin.js g page SalesReports --path src/pages
+            node ../../packages/cli/dist/bin.js g layout Dashboard --path src/layouts
+          )
           python3 - <<'PY'
           from pathlib import Path
           entry = Path("apps/smoke-app/src/main.tsx")
