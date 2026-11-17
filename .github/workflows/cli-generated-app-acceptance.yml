@@ -39,6 +39,17 @@ jobs:
         run: node packages/cli/dist/bin.js start --project smoke-app --template minimal --workspace --path apps --package-manager pnpm
       - name: Resolve test app workspace dependency graph
         run: pnpm install --no-frozen-lockfile
+      - name: Generate and compile native pages and layouts in the real app
+        shell: bash
+        run: |
+          node packages/cli/dist/bin.js g page SalesReports --path apps/smoke-app/src/pages
+          node packages/cli/dist/bin.js g layout Dashboard --path apps/smoke-app/src/layouts
+          python3 - <<'PY'
+          from pathlib import Path
+          entry = Path("apps/smoke-app/src/main.tsx")
+          original = entry.read_text()
+          entry.write_text('import "./pages/SalesReportsPage";\\nimport "./layouts/DashboardLayout";\\n' + original)
+          PY
       - name: Strict generated TypeScript check
         run: pnpm --dir apps/smoke-app typecheck
       - name: Compile real TSX and generated CSS through Vite
