@@ -211,7 +211,7 @@ export function formatDiagnostic(diagnostic: CompilerDiagnostic, fallback: strin
   };
 }
 
-const forbidden = /^@zaakiyjs\/(?:ai|proxy|compiler|styles|vite-plugin)(?:\/|$)/;
+const forbidden = /^@zaakiyjs\/(?:(?:ai|proxy|compiler|styles|vite-plugin)(?:\/|$)|compat(?:$|\/(?!abort(?:\/|$))))/;
 export function forbiddenBrowserImport(specifier: string): boolean {
   return forbidden.test(specifier);
 }
