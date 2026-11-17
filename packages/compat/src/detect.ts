@@ -121,18 +121,28 @@ export function detectSourceFeatures(input: SourceInput): DetectionResult {
 function nodesOf(node: CompatIRNode): readonly CompatIRNode[] {
   return [
     ...(node.children ?? []), ...(node.whenTrue ?? []), ...(node.whenFalse ?? []),
-    ...(node.body ?? []), ...(node.props ?? [])
+    ...(node.body ?? []), ...(node.props ?? []),
+    ...(node.slots ?? []).flatMap(slot => slot.children)
   ];
 }
 export function detectIRFeatures(document: CompatIRDocument): DetectionResult {
-  if (document.irVersion !== 1) {
+  if (document.irVersion !== 1 && document.irVersion !== 2) {
     return { requirements: [], diagnostics: [{
       code: "ZK2001", severity: "error", message: "Unsupported compiler IR version: " + document.irVersion
     }] };
   }
   const requirements: FeatureRequirement[] = [];
   const diagnostics: CompatibilityDiagnostic[] = [];
+  const seen = new WeakSet<object>();
   function visit(node: CompatIRNode): void {
+    // Consumers can pass object-backed IR; reject recursive/reused graph nodes rather than
+    // looping indefinitely or double-counting a node that should have one owner.
+    if (seen.has(node)) {
+      diagnostics.push({ code: "ZK2004", severity: "error",
+        message: "Compiler IR contains a reused or cyclic node; a tree with unique ownership is required." });
+      return;
+    }
+    seen.add(node);
     if (node.kind === "CompatFeature" && (typeof node.feature !== "string" || !node.feature)) {
       diagnostics.push({ code: "ZK2003", severity: "error",
         message: "Compiler CompatFeature node is missing a feature ID.",
