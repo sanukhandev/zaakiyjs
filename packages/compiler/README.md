@@ -2,6 +2,12 @@
 
 Node/build-time TSX compiler for ZaakiyJS. Uses **TypeScript 5.9.3**, not a custom parser/bundler. This release is a **safe, deliberately incomplete first vertical slice**, not a claim that all v0.1 TSX behavior already works.
 
+## Finite compile-time JSX prop spreads
+
+Inline literal-only plain-object spreads such as `<input {...{id:"search", type:"text", disabled:false}} />` now lower directly to existing IR v1 attribute/property bindings without allocating a browser props object. Native safe keys are deliberately limited to `id`, `title`, `role`, `type`, `name`, `placeholder`, `htmlFor`, `value`, `checked`, `disabled`, `selected`, `hidden`, `tabIndex`, and well-formed `aria-*`/`data-*`. Component prop spreads accept finite primitive literals; no JSX values or event handlers. Conflicts with explicit or other spread keys fail.
+
+Dynamic object variables, getters/computed keys/methods, calls/closures, object and array values, events, URLs, refs, classes, inline styles and unsafe HTML sinks **remain rejected** with `ZC1002`/`ZC2510`–`ZC2513`. The source is never evaluated at compile time. No IR or DOM ABI changes are needed; generated output and source spans remain deterministic. This is not general JavaScript spread support.
+
 ## API
 
 The M0 public interfaces remain unchanged: CompileRequest, CompileResult, GeneratedAsset, CompilerDiagnostic, IRDocument, IRNode, IRExpression, SourceSpan, IR_SCHEMA_VERSION (= 1).
@@ -41,7 +47,7 @@ Generated output imports helpers from @zaakiyjs/dom/compiler and owners from @za
 ## Explicit unsupported behavior
 
 - Root-level conditional/keyed regions, component-root templates that capture stale item snapshots (use live zero-arg getters), complex/deconstructed map parameters, and unsupported reactive keyed attributes/props fail closed. Nested keyed loops and multi-root fragment templates are supported within native host parents. Supported conditional/keyed forms use the reviewed additive DOM region ABI (ADR 0004).
-- JSX spreads, top-level fragments, refs, component children, dynamic attributes/classes/styles, **all inline style attributes**, dynamic handler replacement, SVG foreignObject, unsafe HTML sinks and untrusted URL schemes produce focused diagnostics.
+- Dynamic JSX spreads, unsafe/nonliteral spread props, top-level fragments, unsupported component children, unbounded dynamic classes/styles, **all inline style attributes**, dynamic handler replacement, SVG foreignObject, unsafe HTML sinks and untrusted URL schemes produce focused diagnostics. Finite literal-only static spread props are supported for an explicit safe allowlist.
 - Reactivity analysis recognizes `.value` reads from aliases and nested props, but cannot prove all indirect reactive dependencies (for example, an unknown function that internally reads a signal). Calls in detected reactive text expressions fail closed without purity proof; destructured snapshot reads do not become magically reactive.
 - Dynamic text child expressions must have primitive TS types; arrays, object views and prebuilt JSX nodes require an explicit child/view semantics contract.
 - No CSS generation, browser compatibility lowering, SSR, hydration, or tree-shaking of unrelated source declarations. The compiler does not claim to be a bundler. Supplying explicit `targetBrowsers` fails with ZC2301 until a tested browser compatibility profile is frozen.
@@ -126,4 +132,4 @@ This compiles a lazily mounted, caller-owned native slot factory. Each slot is s
 
 ### Restricted named JSX prop slots
 
-`<Panel header={<h2>Title</h2>}>...</Panel>` is supported under `componentSlots: true` when the callee inserts `<Slot name="header" />` imported from Core. The compiler extracts the JSX into a lazy caller-owned native factory. Dynamic names, duplicate names, JSX spreads and arbitrary JSX-in-props are rejected. Named slots share the one-shot lifetime semantics of default children and do not imply hydration.
+`<Panel header={<h2>Title</h2>}>...</Panel>` is supported under `componentSlots: true` when the callee inserts `<Slot name="header" />` imported from Core. The compiler extracts the JSX into a lazy caller-owned native factory. Dynamic names, duplicate names, JSX-valued spreads and arbitrary JSX-in-props are rejected. Named slots share the one-shot lifetime semantics of default children and do not imply hydration.
