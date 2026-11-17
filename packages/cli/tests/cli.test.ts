@@ -171,9 +171,43 @@ describe("generators", () => {
     expect(await generateFiles({type: "layout", name: "Dashboard", cwd: root, dryRun: false, force: false})).toEqual([]);
     await expect(generateFiles({type: "layout", name: "Dashboard", cwd: root, path: "../outside", dryRun: false, force: false})).rejects.toThrow(CliError);
   });
+  it("generates safe typed Store/Async/HTTP/Proxy adapters with exact package exports", async () => {
+    const examples = [
+      ["store", "Cart", "src/stores/createCartStore.ts", '@zaakiyjs/store', "createCartStore"],
+      ["resource", "Products", "src/resources/createProductsResource.ts", '@zaakiyjs/async', "createProductsResource"],
+      ["task", "SaveProduct", "src/tasks/createSaveProductTask.ts", '@zaakiyjs/async', "createSaveProductTask"],
+      ["interceptor", "Trace", "src/interceptors/createTraceInterceptor.ts", '@zaakiyjs/http', "createTraceInterceptor"],
+      ["proxy", "Gateway", "server/proxies/createGatewayProxy.ts", '@zaakiyjs/proxy', "createGatewayProxy"]
+    ] as const;
+    for (const [type, name, expectedPath, packageName, exportName] of examples) {
+      const plan = generatorPlan(type, name);
+      expect(plan).toHaveLength(1);
+      expect(plan[0]?.path).toBe(expectedPath);
+      expect(plan[0]?.content).toContain(packageName);
+      expect(plan[0]?.content).toContain("export function " + exportName);
+      expect(generatorPlan(type, name)).toEqual(plan);
+      expect(plan[0]?.content).not.toContain("new Function");
+      expect(plan[0]?.content).not.toContain("dangerouslySetInnerHTML");
+    }
+    expect(generatorPlan("resource", "Products")[0]?.content).toContain("signal: AbortSignal");
+    expect(generatorPlan("task", "SaveProduct")[0]?.content).toContain('concurrency: "latest"');
+    expect(generatorPlan("store", "Cart")[0]?.content).toContain("write.update");
+    expect(generatorPlan("proxy", "Gateway")[0]?.content).toContain('route.access !== "authenticated"');
+    expect(generatorPlan("proxy", "Gateway")[0]?.content).toContain("SERVER ONLY");
+    const root = await temp();
+    await writeFile(join(root, "package.json"), JSON.stringify({name: "generator-fixture", dependencies: {"@zaakiyjs/core": "workspace:^"}}));
+    for (const [type, name, expectedPath] of examples) {
+      const output = capture(root);
+      expect(await runCli(["g", type, name], output.io)).toBe(0);
+      expect(output.output().stdout).toContain(expectedPath);
+      expect(await readFile(join(root, expectedPath), "utf8")).toContain("export function ");
+    }
+    const bad = capture(root);
+    expect(await runCli(["g", "proxy", "Gateway", "--path", "../outside"], bad.io)).toBe(1);
+    expect(bad.output().stderr).toContain("UNSAFE_PATH");
+  });
   it("rejects unsupported generators and traversal/Windows names", () => {
-    expect(() => generatorPlan("proxy", "Api")).toThrow("not implemented");
-    expect(() => generatorPlan("resource", "Orders")).toThrow("not implemented");
+    expect(() => generatorPlan("unknown", "Api")).toThrow("Unknown generator");
     expect(() => safeRelativePath("..\\secrets")).toThrow(CliError);
     expect(() => safeRelativePath("C:\\secrets")).toThrow(CliError);
     expect(() => safeRelativePath("src\\CON\\Foo.ts")).toThrow(CliError);
