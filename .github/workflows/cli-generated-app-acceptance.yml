@@ -140,6 +140,57 @@ jobs:
             cat /tmp/zaakiy-browser-dom.txt
             exit 1
           fi
+      - name: Compile and exercise finite literal JSX spread attributes in Chromium
+        shell: bash
+        run: |
+          cat > apps/smoke-app/src/App.tsx <<'TSX'
+          export function App() {
+            return <main>
+              <label {...{htmlFor: "email", title: "Email", "aria-label": "Email address"}}>Email address</label>
+              <input {...{id: "email", type: "email", "data-test": "email", disabled: false}} />
+            </main>;
+          }
+          TSX
+          pnpm --dir apps/smoke-app typecheck
+          pnpm --dir apps/smoke-app build
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path("apps/smoke-app/dist/index.html")
+          source = html.read_text()
+          script = """<script type="module">
+          document.addEventListener("DOMContentLoaded", () => {
+            setTimeout(() => {
+              const label = document.querySelector("label");
+              const input = document.querySelector("input");
+              label?.click();
+              const good = label?.getAttribute("for") === "email" &&
+                label?.getAttribute("aria-label") === "Email address" &&
+                !label?.hasAttribute("htmlFor") &&
+                input?.getAttribute("data-test") === "email" &&
+                !input.disabled && document.activeElement === input;
+              document.body.setAttribute("data-zaakiy-literal-spread", good ? "pass" : "fail");
+            }, 60);
+          });
+          </script>"""
+          assert "</body>" in source
+          html.write_text(source.replace("</body>", script + "</body>"))
+          PY
+          pnpm --dir apps/smoke-app exec vite preview --host 127.0.0.1 --port 4176 > /tmp/zaakiy-literal-spread-preview.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4176/ >/dev/null; then break; fi
+            sleep 1
+          done
+          google-chrome --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu \
+            --virtual-time-budget=3000 --dump-dom http://127.0.0.1:4176/ \
+            > /tmp/zaakiy-literal-spread-browser.txt 2>/tmp/zaakiy-literal-spread-stderr.txt
+          if ! grep -q 'data-zaakiy-literal-spread="pass"' /tmp/zaakiy-literal-spread-browser.txt; then
+            cat /tmp/zaakiy-literal-spread-preview.log
+            cat /tmp/zaakiy-literal-spread-stderr.txt
+            cat /tmp/zaakiy-literal-spread-browser.txt
+            exit 1
+          fi
       - name: Compile and exercise native Show and For in Chromium
         shell: bash
         run: |
