@@ -53,6 +53,14 @@ Vite handles graph and chunk building. This plugin caches transformed files by e
 
 Compiler errors are fatal with original file/line/column; warnings are emitted to Vite. CSS source-map comments reference the generated map relative to the chosen CSS filename, including custom nested `assets/` paths. Invalid style metadata, stylesheet diagnostics, malformed source maps, and missing implementations are errors. Output is inspected for `@zaakiyjs/{ai,proxy,compiler,styles,vite-plugin}` imports, including bundle module identities. This is a defense-in-depth check, not a general data-flow or secret scanner. Never import secret-bearing config into browser application code.
 
+## Opt-in source-scoped strict compatibility gate
+
+`zaakiyPlugin({ compatibility: { mode: "strict", targets: {profile: "modern-2024"} } })` analyzes **compiled TSX source files** during a production Vite build, rejects unsupported detected features, and emits a deterministic `compat-manifest.json` referenced by `zaakiy-assets.json`. This is a source-scoped audit only. It does **not** cover ordinary JS/TS entrypoints, third-party dependencies, runtime-generated code, Styles CSS features, or independently certify every requested browser. The emitted manifest explicitly records these limits.
+
+Any selected downlevel syntax transform or scoped shim aborts the build with `ZV4004` rather than claiming it was applied. Source-analysis errors fail with `ZV4003`; invalid/conflicting target configuration fails with `ZV4001`. Existing `browserTargets` is still forwarded to the compiler and retains its previous unsupported-target diagnostic; configure **one** mechanism, never both. No compatibility runtime or TypeScript parser enters the browser bundle through this plugin.
+
+This capability is intentionally narrower than the final Polyfill Zone target. Full compiler/Vite graph lowering, source-map-preserving transforms, approved ponyfill wiring and browser-target certification are separate gates.
+
 ## Verification
 
 ```sh
