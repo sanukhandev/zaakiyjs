@@ -104,8 +104,8 @@ async function measure(count){
       // production files and the canonical manifest must remain byte-identical.
       const semantic=createHash("sha256");
       for(const item of assets){
-        semantic.update(item.name+"\\0"+(item.name==="zaakiy-assets.json"
-          ?canonicalManifest(item.content):item.content)+"\\0");
+        semantic.update(item.name+"\0"+(item.name==="zaakiy-assets.json"
+          ?canonicalManifest(item.content):item.content)+"\0");
       }
       const semanticChecksum=semantic.digest("hex");
       if(semanticAssetHash&&semanticChecksum!==semanticAssetHash)
