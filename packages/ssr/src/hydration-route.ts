@@ -1,5 +1,8 @@
 /** H5 navigation integration for restricted data-bound page hydration. */
 import { hydrateDataPage } from "./hydrate-data.js";
+import { hydrateRegionPage } from "./hydrate-region.js";
+import type { RegionHydrationPlanV2, RegionHydrationBindingsV2 } from "./hydrate-region.js";
+import type { HydrationMountHandle } from "@zaakiyjs/dom";
 import type { DataHydrationBindings, DataHydrationHandle } from "./hydrate-data.js";
 import type { DataHydrationPlanV1, HydrationEnvelopeV1,
   TrustedServerBuildManifestV1 } from "./protocol.js";
@@ -25,5 +28,29 @@ export function hydrateDataRoute(
   }
   return transaction.commit(() =>
     hydrateDataPage(container, plan, envelope, manifest, transaction.routeId,
+      { ...bindings, signal: transaction.signal }));
+}
+
+/**
+ * H5: adopt compiler-verified interactive v2 regions only at a current Router
+ * navigation commit. Previously mounted events/owners are tied to the exact
+ * transition signal and disposed when the navigation is superseded or aborted.
+ * Never call this before async route guards/loaders and streaming have settled.
+ */
+export function hydrateRegionRoute(
+  container: Element,
+  plan: RegionHydrationPlanV2,
+  envelope: HydrationEnvelopeV1,
+  manifest: TrustedServerBuildManifestV1,
+  transaction: HydrationTransition,
+  bindings: Omit<RegionHydrationBindingsV2, "signal">
+): HydrationMountHandle {
+  if (!transaction || typeof transaction.commit !== "function" ||
+      !transaction.signal || transaction.routeId !== plan?.routeId ||
+      envelope?.routeId !== transaction.routeId) {
+    throw new TypeError("Region hydration transaction route mismatch");
+  }
+  return transaction.commit(() =>
+    hydrateRegionPage(container, plan, envelope, manifest, transaction.routeId,
       { ...bindings, signal: transaction.signal }));
 }
