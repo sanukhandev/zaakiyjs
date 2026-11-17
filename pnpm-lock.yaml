@@ -159,6 +159,9 @@ importers:
 
   packages/motion:
     dependencies:
+      '@zaakiyjs/dom':
+        specifier: workspace:^
+        version: link:../dom
       '@zaakiyjs/core':
         specifier: workspace:^
         version: link:../core
