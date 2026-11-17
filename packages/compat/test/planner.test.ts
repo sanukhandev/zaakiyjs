@@ -160,7 +160,52 @@ describe("syntax/API/IR/CSS detection and planning", () => {
     const r = analyzeCompatibility({ mode: "strict", targets: modern, ir: [ir] });
     expect(r.ok).toBe(false);
     expect(r.manifest.unsupportedFeatures).toEqual(["web.experimental-x"]);
-    expect(analyzeCompatibility({ mode: "auto", targets: modern, ir: [{ ...ir, irVersion: 2 }] }).ok).toBe(false);
+    expect(analyzeCompatibility({ mode: "auto", targets: modern, ir: [{ ...ir, irVersion: 3 }] }).ok).toBe(false);
+  });
+  it("traverses IR v2 component children, named slots and nested keyed/conditional regions", () => {
+    const span = (offset: number) => ({file: "src/app.tsx",
+      start: {line: 1, column: offset + 1, offset}});
+    const ir = {irVersion: 2, sourceFile: "src/app.tsx", nodes: [{
+      kind: "ComponentCall", slots: [{name: "header", children: [{
+        kind: "KeyedLoop", body: [{kind: "CompatFeature", feature: "web.abort-signal-any", span: span(18)}]
+      }]}, {name: "footer", children: [{
+        kind: "ConditionalBlock", whenTrue: [{
+          kind: "CompatFeature", feature: "web.fetch", span: span(78)
+        }], whenFalse: [] as unknown[]
+      }]}],
+      children: [{kind: "CompatFeature", feature: "js.logical-assignment", span: span(105)}]
+    }]};
+    const detected = detectIRFeatures(ir);
+    expect(detected.diagnostics).toEqual([]);
+    expect(detected.requirements.map(item => item.id)).toEqual([
+      "js.logical-assignment", "web.abort-signal-any", "web.fetch"
+    ]);
+    const first = analyzeCompatibility({mode: "strict", targets: {browsers: ["firefox >=100"]}, ir: [ir]});
+    const second = analyzeCompatibility({mode: "strict", targets: {browsers: ["firefox >=100"]}, ir: [ir]});
+    expect(first.ok).toBe(false);
+    expect(first.manifest.unsupportedFeatures).toContain("web.abort-signal-any");
+    expect(first.manifest.detectedFeatures.find(item => item.id === "web.fetch")?.status).toBe("native");
+    expect(first.manifest.hash).toBe(second.manifest.hash);
+    expect(first.manifest.detectedFeatures.find(item => item.id === "web.abort-signal-any")?.requiredBy[0]?.offset).toBe(18);
+  });
+  it("rejects reused/cyclic IR v2 objects without recursion overflow or source-content leakage", () => {
+    const shared: {kind: string; feature: string; children?: unknown[]} = {
+      kind: "CompatFeature", feature: "web.fetch"
+    };
+    const root = {kind: "StaticElement", children: [shared, shared]};
+    const found = detectIRFeatures({irVersion: 2, sourceFile: "secret.tsx", nodes: [root]});
+    expect(found.requirements).toHaveLength(1);
+    expect(found.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({code: "ZK2004", severity: "error"})
+    ]));
+    const loop: {kind: string; children: unknown[]} = {kind: "StaticElement", children: []};
+    loop.children.push(loop);
+    const cyclic = analyzeCompatibility({mode: "strict", targets: modern, ir: [{
+      irVersion: 2, sourceFile: "secret.tsx", nodes: [loop]
+    }]});
+    expect(cyclic.ok).toBe(false);
+    expect(cyclic.manifest.diagnostics.some(item => item.code === "ZK2004")).toBe(true);
+  
   });
   it("consumes CSS evidence from Styles contract and warns for Edge adapter gap", () => {
     const r = analyzeCompatibility({
