@@ -64,7 +64,7 @@ export async function analyzeBundle(projectRoot: string): Promise<BundleReport> 
   }
   if (manifest.assets.length > 5_000) throw new CliError("BUNDLE_TOO_LARGE", "Asset list exceeds size limit");
   const records: BundleAssetMetrics[] = [];
-  const known = new Set<string>();
+  const known = new Map<string, string>();
   let totalSize = 0;
   for (const item of manifest.assets as unknown[]) {
     const asset = asRecord(item);
@@ -72,8 +72,14 @@ export async function analyzeBundle(projectRoot: string): Promise<BundleReport> 
       throw new CliError("BUNDLE_MANIFEST", "Invalid asset descriptor in Zaakiy manifest");
     }
     const fileName = asset.fileName;
-    if (known.has(fileName)) throw new CliError("BUNDLE_MANIFEST", "Duplicate bundle asset: " + fileName);
-    known.add(fileName);
+    const existingKind = known.get(fileName);
+    // The Vite bridge may list the generated CSS both in the bundle and in its explicit output records.
+    // Count identical file/kind entries once; conflicting kinds still make the manifest invalid.
+    if (existingKind !== undefined) {
+      if (existingKind !== asset.kind) throw new CliError("BUNDLE_MANIFEST", "Conflicting bundle asset kinds: " + fileName);
+      continue;
+    }
+    known.set(fileName, asset.kind);
     const path = await assertNoSymlink(dist, fileName);
     const info = await lstat(path);
     if (!info.isFile()) throw new CliError("BUNDLE_PATH", "Asset is not a file: " + fileName);
