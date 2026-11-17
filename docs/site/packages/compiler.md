@@ -43,7 +43,7 @@ The compiler lowers this supported pattern to owner-scoped native nodes and a te
 
 - The IR schema is versioned; introducing incompatible nodes requires a coordinated ADR and ABI tests.
 - Unknown calls in reactive expressions are conservatively rejected when purity cannot be proven.
-- JSX spreads, arbitrary component children, component refs, reactive ref replacement, dynamic classes/styles and general hydration remain unsupported. Native element callback refs use an opt-in connected-mount helper on the hardening branch.
+- Dynamic/nonliteral JSX spreads, unrestricted component children, component refs, reactive ref replacement and general hydration remain unsupported. Finite inline literal-only spreads with safe attributes are implemented; native element callback refs use the connected-mount helper.
 
 ## Public API index
 
@@ -141,7 +141,7 @@ Generated output imports helpers from @zaakiyjs/dom/compiler and owners from @za
 ### Explicit unsupported behavior
 
 - Root-level conditional/keyed regions, component-root templates that capture stale item snapshots (use live zero-arg getters), complex/deconstructed map parameters, and unsupported reactive keyed attributes/props fail closed. Nested keyed loops and multi-root fragment templates are supported within native host parents. Supported conditional/keyed forms use the reviewed additive DOM region ABI (ADR 0004).
-- JSX spreads, top-level fragments, component refs, string refs, reactive ref replacement, component children, unbounded dynamic class expressions, **all inline style attributes**, dynamic URL attributes, dynamic handler replacement, SVG foreignObject and unsafe HTML sinks fail closed. Bounded class variants and reactive non-URL attributes are supported on the hardening branch. Native element callback refs compile to opt-in `bindMountedRef` and do not modify the frozen eager `bindRef` semantics.
+- Dynamic, unsafe or nonliteral JSX spreads, top-level fragments, component refs, string refs, reactive ref replacement, unrestricted component children, unbounded dynamic class expressions, **all inline style attributes**, dynamic URL attributes, dynamic handler replacement, SVG foreignObject and unsafe HTML sinks fail closed. Bounded class variants and reactive non-URL attributes are supported on the hardening branch. Native element callback refs compile to opt-in `bindMountedRef` and do not modify the frozen eager `bindRef` semantics.
 - Reactivity analysis recognizes `.value` reads from aliases and nested props, but cannot prove all indirect reactive dependencies (for example, an unknown function that internally reads a signal). Calls in detected reactive text expressions fail closed without purity proof; destructured snapshot reads do not become magically reactive.
 - Dynamic text child expressions must have primitive TS types; arrays, object views and prebuilt JSX nodes require an explicit child/view semantics contract.
 - No CSS generation, browser compatibility lowering, SSR, hydration, or tree-shaking of unrelated source declarations. The compiler does not claim to be a bundler. Supplying explicit `targetBrowsers` fails with ZC2301 until a tested browser compatibility profile is frozen.
@@ -182,6 +182,10 @@ Keyed component-root templates are supported when each varying item prop is a si
 - [Public exports](https://github.com/sanukhandev/zaakiyjs/blob/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/compiler/src/index.ts)
 - [Package tests](https://github.com/sanukhandev/zaakiyjs/tree/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/compiler/test) (some packages use `tests/`)
 - Update this guide in the same PR that changes public APIs, compiler/DOM behavior, security rules or feature support.
+
+### Finite literal-only JSX spreads
+
+Only inline object literals containing primitive literal assignments are supported (for example `<input {...{id:"email", type:"email", disabled:false}} />`). Native keys are restricted to known safe attributes and `aria-*`/`data-*`. The compiler emits existing IR v1 bindings in source order; it never executes user source during compilation or allocates an equivalent runtime props object. Dynamic object variables, computed/getter keys, calls, nested objects, events, URLs, classes/styles, refs and duplicate keys fail with precise `ZC1002`/`ZC2510`–`ZC2513` diagnostics. Component prop spreads allow only static primitives and no JSX-valued slots. This subset is **not** general spread semantics.
 
 ### Connected native JSX refs (integration branch)
 
