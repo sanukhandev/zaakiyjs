@@ -61,13 +61,19 @@ Every handle resolves `finished` **once** with a status object, including cancel
 
 Reduced-motion defaults to `respect`; `disable` skips and `force` overrides. The `reduce` policy requests a shortened duration instead of skipping for keyframe animations. Active keyframes complete on a preference change; no global patching is performed.
 
+## Native conditional region Motion integration (opt-in)
+
+`bindAnimatedConditionalRegion(owner, region, when, create, { exit, enter?, maxExitMs? })` reuses the public opt-in `@zaakiyjs/dom/compiler` `bindExitAwareConditionalRegion`. It holds the native node/child owner through the outgoing WAAPI animation (up to a bounded timeout), aborts stale exits on re-entry, preserves the same focused node and performs deterministic cleanup on parent disposal. Optional enter animation starts when the child mounts, not while its markup is detached. Reduced-motion is supported without requiring browser-global patches.
+
+This API is an explicit application integration, **not** compiler lowering for JSX control-flow, keyed lists, portals or route transitions. The existing immediate-disposal region remains unchanged.
+
 ## Known integration gaps and release blockers
 
-- Current `@zaakiyjs/dom/compiler` lacks public pre-removal defer/commit hooks. `createPresence` cannot delay compiler region teardown safely; the adapter must be specified and implemented separately without editing private region state.
+- DOM now exposes a bounded opt-in single-Element conditional exit hook, used by `bindAnimatedConditionalRegion`. **Compiler-generated automatic** `Show`/`For`, keyed, fragments and portal presence still require an independently reviewed ABI; the adapter does not change existing v1 semantics.
 - Router has no public DOM-commit transition interception contract. `@zaakiyjs/motion/route` is a transport-neutral helper, **not** an installed Router adapter. Never run before guards, loaders and authorization succeed.
 - `animateKeyedMoves` requires the caller to capture element positions before the compiler's reorder and invoke it after. No private keyed ABI access or automatic hooks.
 - Native WAAPI, View Transitions, CSS individual transforms, IntersectionObserver and Pointer Events need Chromium, Firefox and WebKit compatibility verification. Unsupported WAAPI skips, and View Transitions fall back to committing without animation.
-- Package CI discovery, root lockfile importer and external packed-consumer audit are isolated in stacked PR #41, because this branch may not edit root scripts and lockfiles.
+- The DOM workspace dependency is declared and lockfile-pinned. Final-head packed-consumer and browser acceptance must pass for this integration.
 - Not certified: all 33 prescribed browser scenarios, heap/bundle/frame timing, production CSP/AXE, first-publication scope ownership and npm release.
 
-The package is opt-in and browser-global-free at import; there are no runtime dependencies besides `@zaakiyjs/core`.
+The package is opt-in and browser-global-free at import; runtime dependencies include `@zaakiyjs/core`, `@zaakiyjs/signals` and the existing native `@zaakiyjs/dom` region contract.
