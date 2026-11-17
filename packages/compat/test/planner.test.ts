@@ -207,6 +207,13 @@ describe("syntax/API/IR/CSS detection and planning", () => {
     expect(cyclic.manifest.diagnostics.some(item => item.code === "ZK2004")).toBe(true);
   
   });
+  it("analyzes 12000 nested IR v2 nodes without recursive-stack failure", () => {
+    let node: CompatIRNode = {kind: "CompatFeature", feature: "web.fetch"};
+    for (let i = 0; i < 12_000; i++) node = {kind: "StaticElement", children: [node]};
+    const detected = detectIRFeatures({irVersion: 2, sourceFile: "nested.tsx", nodes: [node]});
+    expect(detected.diagnostics).toEqual([]);
+    expect(detected.requirements).toEqual([expect.objectContaining({id: "web.fetch"})]);
+  });
   it("consumes CSS evidence from Styles contract and warns for Edge adapter gap", () => {
     const r = analyzeCompatibility({
       mode: "strict", targets: { browsers: ["edge >=100", "safari >=15.4"] },
