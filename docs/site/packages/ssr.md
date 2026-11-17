@@ -158,6 +158,13 @@ This opt-in path is intentionally narrow. Build-time `compileDataServer({ ..., h
 
 This subset does **not** support compiler-generated JSX event expressions, arbitrary TSX components, keyed lists, conditional regions or automatic client bundle generation. Normal `compileDataServer` output remains byte-compatible when `hydratable` is disabled.
 
+
+### H5 route-transaction support for compiler-generated interactive regions
+
+`hydrateRegionRoute(container, regionPlan, envelope, trustedManifest, transition, bindings)` is now exported from `@zaakiyjs/ssr/client`. It is the interactive-region counterpart to `hydrateDataRoute`. Call it **only after** authorized Router guards/loaders and streaming complete. It rejects stale or mismatched route transactions before native DOM adoption, runs the entire preflight/attach inside a synchronous `transition.commit`, and binds the resulting native owner/listeners to the transaction's AbortSignal. A superseding navigation disposes the hydrated owner without replacing the existing SSR markup.
+
+This is an opt-in H4/H5 integration for the restricted compiler-generated `zaakiy.region-hydration/2` plan. It does **not** interpret arbitrary JSX, execute server source in the browser, choose a route for the app, or complete general TSX hydration/SSR certification. Browser conformance and ownership/leak evidence remain required.
+
 ### H4 native interactive-region hydration (opt-in, experimental)
 
 The Node-only compiler target `compileRegionServer` emits a deterministic
