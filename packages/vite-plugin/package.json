@@ -32,7 +32,8 @@
   },
   "dependencies": {
     "@zaakiyjs/compiler": "workspace:^",
-    "@zaakiyjs/styles": "workspace:^"
+    "@zaakiyjs/styles": "workspace:^",
+    "@zaakiyjs/compat": "workspace:^"
   },
   "peerDependencies": {
     "vite": "^6.0.0 || ^7.0.0"
