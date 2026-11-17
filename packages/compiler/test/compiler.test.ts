@@ -391,6 +391,65 @@ function originalLineAt(map: { mappings: string }, generatedLine: number, genera
     expect(originalLineAt(map, bindRow, generatedRows[bindRow]?.indexOf("__zBindText(") ?? 0)).toBe(4);
   });
 
+  it("lowers finite literal-only spread attributes without allocating a runtime prop object", () => {
+    const source = 'function App() { return <main>' +
+      '<label {...{ htmlFor: "email", title: "Safe", "data-testid": "field-label", "aria-hidden": false }}>Email</label>' +
+      '<input {...{ id: "email", type: "text", disabled: false, tabIndex: 2 }} />' +
+      '</main>; }';
+    const compiled = compile({fileName, source});
+    expect(compiled.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(compiled.irVersion).toBe(1);
+    expect(compiled.js[0]?.code).not.toContain("data-testid:");
+    const {elements} = execute(source, "App");
+    const label = elements.find(element => element.tag === "label");
+    const input = elements.find(element => element.tag === "input");
+    expect(label?.attributes.for).toBe("email");
+    expect(label?.attributes.title).toBe("Safe");
+    expect(label?.attributes["aria-hidden"]).toBe("false");
+    expect(label?.attributes["data-testid"]).toBe("field-label");
+    expect(input?.attributes.id).toBe("email");
+    expect(input?.attributes.type).toBe("text");
+    expect(input?.properties.disabled).toBe(false);
+    expect(input?.attributes.tabIndex).toBe("2");
+    const again = compile({fileName, source});
+    expect(again.js[0]?.code).toBe(compiled.js[0]?.code);
+  });
+
+  it("supports typed component literal prop spread without changing owner/component instantiation", () => {
+    const source = [
+      'function Card(props:{label:string; active:boolean}) {',
+      ' return <strong title={props.label}>{props.active ? "Active" : "Inactive"}</strong>;',
+      '}',
+      'function App() { return <main><Card {...{ label: "Verified", active: true }}/></main>; }'
+    ].join("\n");
+    const compiled = compile({fileName, source});
+    expect(compiled.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    const {elements} = execute(source, "App");
+    const card = elements.find(item => item.tag === "strong");
+    expect(card?.attributes.title).toBe("Verified");
+    expect(card?.children.map(child => "kind" in child ? child.data : "")).toEqual(["Active"]);
+  });
+
+  it("rejects dynamic or unsafe spread keys, values and duplicates before generating JS", () => {
+    const scenarios: Array<{source: string; diagnostic: string}> = [
+      {source: 'function App(){const props={id:"x"}; return <div {...props}/>;}', diagnostic: "ZC1002"},
+      {source: 'function App(){return <div {...{onClick: () => alert(1)}}/>;}', diagnostic: "ZC2511"},
+      {source: 'function App(){return <a {...{href: "javascript:alert(1)"}}/>;}', diagnostic: "ZC2511"},
+      {source: 'function App(){return <div {...{class: "bg-danger"}}/>;}', diagnostic: "ZC2511"},
+      {source: 'function App(){return <div {...{srcdoc: "<svg>"}}/>;}', diagnostic: "ZC2511"},
+      {source: 'function App(){return <div {...{["id"]: "x"}}/>;}', diagnostic: "ZC2510"},
+      {source: 'function readId(){return "x";} function App(){return <div {...{id: readId()}}/>;}', diagnostic: "ZC2513"},
+      {source: 'function App(){return <div {...{id: "a"}} id="b"/>;}', diagnostic: "ZC2512"},
+      {source: 'function App(){return <div {...{id: "a"}} {...{id: "b"}}/>;}', diagnostic: "ZC2512"},
+      {source: 'function App(){return <div {...{id: {toString(){return "x";}}}}/>;}', diagnostic: "ZC2513"}
+    ];
+    for(const scenario of scenarios) {
+      const result = compile({fileName, source:scenario.source});
+      expect(result.js, scenario.source).toHaveLength(0);
+      expect(result.diagnostics.some(d=>d.code===scenario.diagnostic), scenario.source).toBe(true);
+    }
+  });
+
   it("issues source-positioned diagnostics for unsupported JSX and dangerous sinks", () => {
     const source = "function App() { const props = { id: 'x' }; return <div {...props} />; }";
     const result = compile({ fileName, source });
