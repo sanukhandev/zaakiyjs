@@ -60,7 +60,9 @@ Do **not** widen the intended v0.1 scope silently to "support all JavaScript/Rea
 - [x] Implement `store`, `resource`, `task`, `interceptor`, and server-only `proxy` generator templates with public-package APIs.
 - [x] Add generator unit tests and generated-application compiler/Node-target checks for these five generators.
 - [x] Extend deterministic SHA-256 plan benchmark from page/layout to seven new generator kinds.
-- [ ] Benchmark and final-head CI approval for the expanded generator set; CLI `analyze`, `migrate`, and `seo` commands remain deferred behind their own reviewed contracts.
+- [x] Implement offline `zaakiy analyze bundle [--json]` based on emitted manifest, bounded file access, SHA-256 and gzip/brotli metrics.
+- [x] Add analyzer traversal/manifest tests and generated-app bundle size report in CI.
+- [ ] Benchmark and final-head CI approval for the expanded generator set; CLI `analyze architecture|signals|styles|network`, `migrate`, and `seo` remain deferred behind their own reviewed contracts.
 - [ ] Full state-preserving HMR, compatibility graph transforms and general SSR hydration are not included in this CLI slice.
 
 **Review rule:** Keep PR #61 open/draft. This work must be reviewed in a stacked PR targeting PR #61, not merged directly to `main`. Do not mark G1–G7 complete from this slice.
