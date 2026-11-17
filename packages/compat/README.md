@@ -1,6 +1,6 @@
 # @zaakiyjs/compat
 
-**Status:** initial standalone compatibility analysis and scoped AbortSignal helper. **No automated integration into the Zaakiy compiler/Vite build exists yet.** The current compiler emits ZC2301 for targetBrowsers.
+**Status:** standalone analyzer and scoped AbortSignal helpers, with an initial opt-in Vite emitted-JavaScript integration. Compiler `targetBrowsers` still diagnoses ZC2301; general compiler/IR and CSS feature transforms are not certified.
 
 Polyfill Zone means deterministic *build-time* browser compatibility analysis, approved transforms and explicit scoped helpers. It does **not** use Zone.js, patch Promise/Fetch/timers, or guarantee all browser APIs can be polyfilled.
 
@@ -46,7 +46,7 @@ Mode semantics: off detects but plans nothing and emits an informational no-guar
 
 ## Detection scope
 
-Uses TypeScript 5.9.3 parser for selected JS/TS syntax, selected global Web API references, and explicit imports from @zaakiyjs/compat/abort. Parses IR v1 CompatFeature nodes and nested nodes through the public JSON-like contract. CSS feature evidence must come from an adapter at the Styles boundary: css.selector-has, css.container-query, css.nesting and css.color-mix. The package does not introspect private Styles modules or parse arbitrary CSS text.
+Uses TypeScript 5.9.3 parser for selected JS/TS syntax, selected global Web API references, and explicit imports from @zaakiyjs/compat/abort. Parses IR v1/v2 CompatFeature nodes, including named-slot nested nodes, through the public JSON-like contract. CSS feature evidence must come from an adapter at the Styles boundary: css.selector-has, css.container-query, css.nesting and css.color-mix. The package does not introspect private Styles modules or parse arbitrary CSS text.
 
 Static analysis is *not* a guarantee. Computed property names, shadowed names, code loaded at runtime, third-party dependencies, dynamic imports, browser plugins and CSS not surfaced by the styles adapter need an additional build graph scan. Source locations are stored, source content and credentials are not.
 
@@ -85,10 +85,16 @@ A representative manifest fragment (not a recorded build artifact):
 
 The actual emitted manifest also includes declaredTargets, detectedFeatures, unsupportedFeatures, diagnostics, limitations, estimatedExtraBytes and hash.
 
+## Reviewed first Vite integration slice
+
+In Node/CI, `zaakiyPlugin({ compat: { mode: "strict", targets: {profile:"modern-2024"} } })` now invokes this planner on emitted Vite JS chunks. The approved TypeScript ES2019 syntax transform is applied before Rollup's chunk content hashes, with an explicit `ZV4013` refusal when source maps would become inaccurate. An output `compat-manifest.json` contains resolved browser targets, detected features, selected transforms, warnings, unsupported features and limitations. Application source text and private strings are not embedded in the manifest.
+
+This is **not** general compiler IR lowering, CSS polyfill orchestration, complete dependency/global analysis, or certified real-browser compatibility. The compiler's legacy `targetBrowsers` option remains fail-closed, HMR does not run the build transform, and generated browser code must not import this Node-only analysis package.
+
 ## Compiler/Vite/Styles contract still required
 
 1. Compiler currently diagnoses targetBrowsers as ZC2301. A separate coordinated PR must define when compatibility consumes IR, how emitted JS transform safety and source maps are validated, and how a fatal strict diagnostic suppresses executable assets.
-2. Vite Plugin must orchestrate analysis across the application AND dependency graph, produce the manifest artifact and prevent accidental browser bundling of the root entrypoint. This package **does not** claim targetBrowsers compilation works.
+2. The initial Vite build bridge scans emitted JS chunks and emits a manifest. It still needs source/IR graph and CSS evidence from the compiler/Styles boundary plus target-specific browser certification. This package **does not** claim compiler `targetBrowsers` compilation works.
 3. Styles public BrowserTargets currently accepts Chrome/Firefox/Safari numeric floors, but not Edge or bounded ranges. toStylesTargets returns omittedFamilies instead of falsely treating Edge as Chrome. Strict analysis fails when CSS evidence requires an Edge target that Styles cannot encode. A coordinated integration PR should extend this contract and wire CSS feature evidence and any vetted PostCSS transforms.
 4. The repository M0 verify-workspaces script currently rejects new packages. The lockfile has no packages/compat importer. Updating these shared files is **intentionally outside** this isolated P1-04 scope; frozen workspace CI remains blocked until coordinated integration.
 5. The test/fixtures/browser-abort.html smoke fixture must be served with a built dist directory and executed in real Chromium, Firefox and WebKit as part of an approved browser matrix. **The fixture is not evidence that these browser runs have passed.** No target-specific shim is approved as browser-verified until such runs are collected.
