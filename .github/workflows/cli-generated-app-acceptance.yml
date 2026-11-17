@@ -37,6 +37,18 @@ jobs:
           if-no-files-found: warn
       - name: Scaffold a genuine app in the pnpm workspace
         run: node packages/cli/dist/bin.js start --project smoke-app --template minimal --workspace --path apps --package-manager pnpm
+      - name: Declare referenced optional package dependencies in generated app
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          path = Path("apps/smoke-app/package.json")
+          manifest = json.loads(path.read_text())
+          for pkg in ("store", "async", "http", "proxy"):
+              manifest["dependencies"][f"@zaakiyjs/{pkg}"] = "workspace:^"
+          path.write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
       - name: Resolve test app workspace dependency graph
         run: pnpm install --no-frozen-lockfile
       - name: Generate and compile native pages and layouts in the real app
@@ -46,6 +58,11 @@ jobs:
             cd apps/smoke-app
             node ../../packages/cli/dist/bin.js g page SalesReports --path src/pages
             node ../../packages/cli/dist/bin.js g layout Dashboard --path src/layouts
+            node ../../packages/cli/dist/bin.js g store Cart
+            node ../../packages/cli/dist/bin.js g resource Products
+            node ../../packages/cli/dist/bin.js g task SaveProduct
+            node ../../packages/cli/dist/bin.js g interceptor Trace
+            node ../../packages/cli/dist/bin.js g proxy Gateway
           )
           python3 - <<'PY'
           from pathlib import Path
@@ -55,6 +72,8 @@ jobs:
           PY
       - name: Strict generated TypeScript check
         run: pnpm --dir apps/smoke-app typecheck
+      - name: Verify generated server proxy typecheck with Node target
+        run: pnpm --dir apps/smoke-app exec tsc --noEmit --strict --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --types node server/proxies/createGatewayProxy.ts
       - name: Compile real TSX and generated CSS through Vite
         run: pnpm --dir apps/smoke-app build
       - name: Exercise generated Counter in real headless Chromium
