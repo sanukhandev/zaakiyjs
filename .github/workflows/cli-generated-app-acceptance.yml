@@ -26,6 +26,15 @@ jobs:
         run: pnpm build
       - name: Run complete CLI package tests
         run: pnpm --filter @zaakiyjs/cli test
+      - name: Benchmark new CLI page/layout generators
+        run: node benchmarks/microbench-cli-generators.mjs . benchmark-artifacts/cli-generators.json
+      - name: Upload CLI generator benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-generator-plan-benchmark
+          path: benchmark-artifacts/cli-generators.json
+          if-no-files-found: warn
       - name: Scaffold a genuine app in the pnpm workspace
         run: node packages/cli/dist/bin.js start --project smoke-app --template minimal --workspace --path apps --package-manager pnpm
       - name: Resolve test app workspace dependency graph
