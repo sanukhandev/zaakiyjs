@@ -180,7 +180,7 @@ describe("syntax/API/IR/CSS detection and planning", () => {
     const r = analyzeCompatibility({ mode: "strict", targets: modern, ir: [ir] });
     expect(r.ok).toBe(false);
     expect(r.manifest.unsupportedFeatures).toEqual(["web.experimental-x"]);
-    expect(analyzeCompatibility({ mode: "auto", targets: modern, ir: [{ ...ir, irVersion: 2 }] }).ok).toBe(false);
+    expect(analyzeCompatibility({ mode: "auto", targets: modern, ir: [{ ...ir, irVersion: 3 }] }).ok).toBe(false);
   });
   it("consumes CSS evidence from Styles contract and warns for Edge adapter gap", () => {
     const r = analyzeCompatibility({
