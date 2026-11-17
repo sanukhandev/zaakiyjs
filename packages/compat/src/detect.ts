@@ -134,13 +134,22 @@ export function detectIRFeatures(document: CompatIRDocument): DetectionResult {
   const requirements: FeatureRequirement[] = [];
   const diagnostics: CompatibilityDiagnostic[] = [];
   const seen = new WeakSet<object>();
-  function visit(node: CompatIRNode): void {
-    // Consumers can pass object-backed IR; reject recursive/reused graph nodes rather than
-    // looping indefinitely or double-counting a node that should have one owner.
+  const stack = [...document.nodes].reverse();
+  const MAX_IR_NODES = 100_000;
+  let visited = 0;
+  // Explicit traversal stack: compiler-produced nested loops and slots may be deeper
+  // than the host JS call stack. Bound resource use for untrusted object-backed input.
+  while (stack.length) {
+    if (++visited > MAX_IR_NODES) {
+      diagnostics.push({ code: "ZK2005", severity: "error",
+        message: "Compiler IR exceeds the 100000-node compatibility analysis limit." });
+      break;
+    }
+    const node = stack.pop()!;
     if (seen.has(node)) {
       diagnostics.push({ code: "ZK2004", severity: "error",
         message: "Compiler IR contains a reused or cyclic node; a tree with unique ownership is required." });
-      return;
+      continue;
     }
     seen.add(node);
     if (node.kind === "CompatFeature" && (typeof node.feature !== "string" || !node.feature)) {
@@ -154,9 +163,9 @@ export function detectIRFeatures(document: CompatIRDocument): DetectionResult {
         line: node.span?.start.line, column: node.span?.start.column, offset: node.span?.start.offset
       } });
     }
-    for (const nested of nodesOf(node)) visit(nested);
+    const nested = nodesOf(node);
+    for (let i = nested.length - 1; i >= 0; i--) stack.push(nested[i]!);
   }
-  for (const root of document.nodes) visit(root);
   return { requirements, diagnostics };
 }
 export function detectStylesFeatures(evidence: readonly CssFeatureEvidence[]): DetectionResult {
