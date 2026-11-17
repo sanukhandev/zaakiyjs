@@ -78,6 +78,86 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
     )).toBe(true);
   });
 
+  it("emits a deterministic, source-redacted strict compatibility manifest for native chunks", async () => {
+    const run = async () => {
+      const built = await build({
+        configFile: false, root: plainRoot,
+        plugins: [zaakiyPlugin({ compat: { mode: "strict", targets: { profile: "modern-2024" } } })],
+        logLevel: "silent", build: { write: false, emptyOutDir: false, sourcemap: true }
+      });
+      const output = Array.isArray(built) ? built[0] : built;
+      const assets = (output as RollupOutput).output;
+      const entry = assets.find(item => item.type === "asset" && item.fileName === "compat-manifest.json");
+      expect(entry).toBeDefined();
+      const parsed = JSON.parse(String(entry?.type === "asset" ? entry.source : "")) as {
+        mode: string; resolvedTargets: unknown[]; transforms: unknown[]; hash: string;
+      };
+      expect(parsed.mode).toBe("strict");
+      expect(parsed.resolvedTargets).toHaveLength(4);
+      expect(parsed.transforms).toEqual([]);
+      expect(parsed.hash).toMatch(/^fnv1a64:[0-9a-f]{16}$/);
+      const manifest = assets.find(item => item.type === "asset" && item.fileName === "zaakiy-assets.json");
+      expect(String(manifest?.type === "asset" ? manifest.source : "")).toContain("compat-manifest.json");
+      expect(String(entry?.type === "asset" ? entry.source : "")).not.toContain(plainRoot);
+      return String(entry?.type === "asset" ? entry.source : "");
+    };
+    expect(await run()).toBe(await run());
+  });
+
+  it("fails strict targets for unsupported direct APIs; auto reports them without injecting globals", async () => {
+    const root = mkdtempSync(join(tmpdir(), "zaakiy-compat-unsupported-"));
+    try {
+      cpSync(plainRoot, root, { recursive: true });
+      writeFileSync(join(root, "src", "util.js"),
+        'export const label = AbortSignal.any([new AbortController().signal]).aborted;\n');
+      const options = {
+        configFile: false, root, logLevel: "silent" as const,
+        build: { write: false, emptyOutDir: false }
+      };
+      await expect(build({ ...options,
+        plugins: [zaakiyPlugin({ compat: { mode: "strict", targets: { browsers: ["firefox >=100"] } } })]
+      })).rejects.toThrow(/ZV4011|ZK2302/);
+      const built = await build({ ...options,
+        plugins: [zaakiyPlugin({ compat: { mode: "auto", targets: { browsers: ["firefox >=100"] } } })]
+      });
+      const output = Array.isArray(built) ? built[0] : built;
+      const entry = (output as RollupOutput).output.find(
+        item => item.type === "asset" && item.fileName === "compat-manifest.json");
+      const manifest = JSON.parse(String(entry?.type === "asset" ? entry.source : "")) as {
+        unsupportedFeatures: string[]; shims: unknown[];
+      };
+      expect(manifest.unsupportedFeatures).toContain("web.abort-signal-any");
+      expect(manifest.shims).toEqual([]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("applies only an approved syntax transform before hashing and refuses invalid source maps", async () => {
+    const root = mkdtempSync(join(tmpdir(), "zaakiy-compat-transform-"));
+    try {
+      cpSync(plainRoot, root, { recursive: true });
+      writeFileSync(join(root, "src", "util.js"),
+        'let value = false; value ||= true; export const label = value ? "yes" : "no";\n');
+      const compat = { mode: "strict" as const, targets: { browsers: ["safari >=13.1"] } };
+      const run = async (sourcemap: boolean) => build({
+        configFile: false, root, logLevel: "silent",
+        plugins: [zaakiyPlugin({ compat })],
+        build: { write: false, emptyOutDir: false, minify: false, target: "esnext", sourcemap }
+      });
+      await expect(run(true)).rejects.toThrow("ZV4013");
+      const built = await run(false);
+      const output = Array.isArray(built) ? built[0] : built;
+      const assets = (output as RollupOutput).output;
+      const js = assets.filter(item => item.type === "chunk").map(item => item.code).join("\n");
+      expect(js).toContain("yes");
+      expect(js).not.toContain("||=");
+      const manifest = assets.find(item => item.type === "asset" && item.fileName === "compat-manifest.json");
+      const parsed = JSON.parse(String(manifest?.type === "asset" ? manifest.source : "")) as {
+        transforms: Array<{id: string}>;
+      };
+      expect(parsed.transforms).toEqual([expect.objectContaining({id: "typescript-5.9.3-es2019"})]);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("uses Vite's actual watcher to trigger a full reload for changed TSX, never silent owner reuse", async () => {
     server = await createServer({
       configFile: false,
