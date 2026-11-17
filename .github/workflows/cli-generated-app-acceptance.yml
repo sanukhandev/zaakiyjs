@@ -77,6 +77,30 @@ jobs:
         run: pnpm --dir apps/smoke-app exec tsc --noEmit --strict --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --types node server/proxies/createGatewayProxy.ts
       - name: Compile real TSX and generated CSS through Vite
         run: pnpm --dir apps/smoke-app build
+      - name: Audit emitted JS/CSS sizes without executing bundled code
+        shell: bash
+        run: |
+          mkdir -p benchmark-artifacts
+          (
+            cd apps/smoke-app
+            node ../../packages/cli/dist/bin.js analyze bundle --json > ../../benchmark-artifacts/cli-smoke-bundle.json
+          )
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("benchmark-artifacts/cli-smoke-bundle.json").read_text())
+          assert result["schemaVersion"] == 1
+          assert result["totals"]["js"]["rawBytes"] > 0
+          assert any(item["kind"] == "js" for item in result["files"])
+          assert all(len(item["sha256"]) == 64 for item in result["files"])
+          PY
+      - name: Upload generated-app bundle metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-generated-app-bundle
+          path: benchmark-artifacts/cli-smoke-bundle.json
+          if-no-files-found: warn
       - name: Exercise generated Counter in real headless Chromium
         shell: bash
         run: |
