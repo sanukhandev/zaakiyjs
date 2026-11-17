@@ -48,7 +48,7 @@ jobs:
           from pathlib import Path
           entry = Path("apps/smoke-app/src/main.tsx")
           original = entry.read_text()
-          entry.write_text('import "./pages/SalesReportsPage";\\nimport "./layouts/DashboardLayout";\\n' + original)
+          entry.write_text('import "./pages/SalesReportsPage";\nimport "./layouts/DashboardLayout";\n' + original)
           PY
       - name: Strict generated TypeScript check
         run: pnpm --dir apps/smoke-app typecheck
