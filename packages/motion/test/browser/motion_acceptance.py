@@ -177,6 +177,57 @@ CASES = [
       }
       el.remove(); return true;
     }"""),
+    ("native-conditional-region-exit-reentry", """async () => {
+      const m = window.motionQA, owner = m.createOwner();
+      const host = document.createElement("section"); document.body.append(host);
+      const region = m.createRegion(host), visible = m.signal(true);
+      let mounts = 0, cleanups = 0;
+      m.bindAnimatedConditionalRegion(owner, region, () => visible.value, () => {
+        mounts++;
+        m.onCleanup(() => { cleanups++; });
+        const button = document.createElement("button");
+        button.textContent = "Stay";
+        return button;
+      }, {exit: {keyframes: [{opacity:1},{opacity:0}],duration:90},maxExitMs:2000});
+      m.mountOwner(owner);
+      const button = host.querySelector("button");
+      if(!button) throw new Error("Initial native element was not mounted");
+      button.focus();
+      visible.value = false; m.flushSync();
+      if(host.querySelector("button") !== button || cleanups !== 0) throw new Error("Exit prematurely disposed native node");
+      visible.value = true; m.flushSync();
+      if(host.querySelector("button") !== button || document.activeElement !== button || mounts !== 1)
+        throw new Error("Exit re-entry lost DOM/focus/owner identity");
+      visible.value = false; m.flushSync();
+      const cutoff = performance.now() + 2000;
+      while(host.querySelector("button") && performance.now() < cutoff)
+        await new Promise(resolve => setTimeout(resolve,15));
+      if(host.querySelector("button") || cleanups !== 1)
+        throw new Error("Exit did not clean its native owner within bounded duration");
+      m.disposeOwner(owner); host.remove();
+      return true;
+    }"""),
+    ("native-conditional-region-owner-abort", """async () => {
+      const m = window.motionQA, owner = m.createOwner();
+      const host = document.createElement("div"); document.body.append(host);
+      const region = m.createRegion(host), visible = m.signal(true);
+      let cleanups=0;
+      m.bindAnimatedConditionalRegion(owner,region,()=>visible.value,()=>{
+        m.onCleanup(()=>{cleanups++;});
+        return document.createElement("span");
+      },{exit:{keyframes:[{opacity:1},{opacity:0}],duration:10000},maxExitMs:3000});
+      m.mountOwner(owner);
+      visible.value=false; m.flushSync();
+      if(!host.querySelector("span")) throw new Error("Exit did not retain native span");
+      m.disposeOwner(owner);
+      if(host.querySelector("span") || cleanups!==1)
+        throw new Error("Parent owner disposal did not synchronously release exit");
+      await new Promise(resolve=>setTimeout(resolve,25));
+      if(host.querySelector("span") || cleanups!==1)
+        throw new Error("Stale exit completion mutated disposed DOM");
+      host.remove();
+      return true;
+    }"""),
 ]
 
 async def check_reduced_motion_change(page) -> None:
