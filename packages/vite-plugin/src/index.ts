@@ -1,12 +1,23 @@
 /** Build-time Vite integration. The executable compiler/style engines are separate packages. */
 export const foundationStatus = { package: "@zaakiyjs/vite-plugin", implemented: true } as const;
 
+export interface ZaakiyViteCompatibility {
+  /** Off by default. Build-only; dev server does not claim target certification. */
+  readonly mode: "off" | "auto" | "strict";
+  readonly targets?: {
+    readonly browsers?: readonly string[];
+    readonly profile?: "modern-2024" | "legacy-2020";
+  };
+}
 export interface ZaakiyViteOptions {
   readonly configFile?: string;
   readonly include?: readonly string[];
   readonly exclude?: readonly string[];
   readonly cssVirtualId?: string;
+  /** Legacy compiler target option; still fails closed until separately certified. */
   readonly browserTargets?: readonly string[];
+  /** Explicit opt-in for pinned Compat build target analysis and approved transformations. */
+  readonly compat?: ZaakiyViteCompatibility;
   /** Explicit IR v2 opt-in for compiled default component children slots. */
   readonly componentSlots?: boolean;
   /** Relative file path for the single generated CSS asset, under assets/. */
