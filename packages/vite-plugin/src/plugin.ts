@@ -450,7 +450,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         // Inspect the actual emitted JavaScript too: it contains bundled runtime and
         // dependency syntax absent from the TSX source scan. No source maps are rewritten.
         const bundledJs = Object.values(bundle).filter(
-          (entry): entry is Extract<typeof entry, {type: "chunk"}> => entry.type === "chunk"
+          entry => entry.type === "chunk"
         ).map(entry => {
           if (!/^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.[cm]?js$/.test(entry.fileName)) {
             this.error("ZV4005: Unsafe or unsupported emitted JS chunk filename.");
