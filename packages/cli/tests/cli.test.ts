@@ -145,9 +145,34 @@ describe("generators", () => {
     await generateFiles({...options, force: true});
     expect(await readFile(join(root, files[0] ?? ""), "utf8")).toContain("MyButtonProps");
   });
+  it("generates native-root page and layout files and supports CLI dry-run", async () => {
+    const page = generatorPlan("page", "SalesReports");
+    const layout = generatorPlan("layout", "Dashboard");
+    expect(page).toHaveLength(1);
+    expect(page[0]?.path).toBe("src/pages/SalesReportsPage.tsx");
+    expect(page[0]?.content).toContain("export function SalesReportsPage");
+    expect(page[0]?.content).toContain("<main><h1>{title}</h1></main>");
+    expect(layout).toHaveLength(1);
+    expect(layout[0]?.path).toBe("src/layouts/DashboardLayout.tsx");
+    expect(layout[0]?.content).toContain('id="dashboard-outlet"');
+    for (const output of [page[0]?.content ?? "", layout[0]?.content ?? ""]) {
+      expect(output).not.toMatch(/props\.children|dangerouslySetInnerHTML|innerHTML|<Slot/);
+    }
+    expect(generatorPlan("layout", "Dashboard")).toEqual(layout);
+    const root = await temp();
+    const c = capture(root);
+    expect(await runCli(["g", "page", "SalesReports", "--dry-run"], c.io)).toBe(0);
+    expect(c.output().stdout).toContain("src/pages/SalesReportsPage.tsx");
+    await expect(stat(join(root, "src/pages/SalesReportsPage.tsx"))).rejects.toThrow();
+    expect(await runCli(["generate", "page", "SalesReports"], capture(root).io)).toBe(0);
+    expect(await runCli(["g", "layout", "Dashboard"], capture(root).io)).toBe(0);
+    expect(await readFile(join(root, "src/layouts/DashboardLayout.tsx"), "utf8")).toContain("dashboard-outlet");
+    expect(await generateFiles({type: "layout", name: "Dashboard", cwd: root, dryRun: false, force: false})).toEqual([]);
+    await expect(generateFiles({type: "layout", name: "Dashboard", cwd: root, path: "../outside", dryRun: false, force: false})).rejects.toThrow(CliError);
+  });
   it("rejects unsupported generators and traversal/Windows names", () => {
     expect(() => generatorPlan("proxy", "Api")).toThrow("not implemented");
-    expect(() => generatorPlan("page", "Home")).toThrow("not implemented");
+    expect(() => generatorPlan("resource", "Orders")).toThrow("not implemented");
     expect(() => safeRelativePath("..\\secrets")).toThrow(CliError);
     expect(() => safeRelativePath("C:\\secrets")).toThrow(CliError);
     expect(() => safeRelativePath("src\\CON\\Foo.ts")).toThrow(CliError);
