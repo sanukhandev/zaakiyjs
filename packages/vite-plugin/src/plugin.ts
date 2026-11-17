@@ -8,6 +8,7 @@ import {
 } from "vite";
 import type { ExtractedStyleToken, StyleConfig } from "@zaakiyjs/styles";
 import { createCompilerSession, type CompilerSession } from "@zaakiyjs/compiler";
+import { analyzeCompatibility, serializeManifest } from "@zaakiyjs/compat";
 import type { CompilerDiagnostic } from "@zaakiyjs/compiler";
 import { cssSourceMapComment, portableSourceFile } from "./asset-paths.js";
 import { equalStyleInputs } from "./style-inputs.js";
@@ -241,6 +242,18 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
     async configResolved(config) {
       resolved = config;
       buildMode = config.command === "build";
+      if (options.compatibility && options.browserTargets?.length) {
+        throw new Error("ZV4001: Use compatibility.targets OR legacy browserTargets, not both.");
+      }
+      if (options.compatibility) {
+        // Validate target syntax early; never wait until output emission to fail.
+        try {
+          analyzeCompatibility({mode: options.compatibility.mode, targets: options.compatibility.targets});
+        } catch (error) {
+          throw new Error("ZV4001: Invalid strict compatibility target configuration: " +
+            (error instanceof Error ? error.message : "unknown error"));
+        }
+      }
       compilerSession?.dispose();
       compilerSession = createCompilerSession(config.root);
       await loadBrand();
@@ -425,6 +438,32 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
           source: compiledCssMap
         });
       }
+      // This is a deliberately source-scoped strict gate. Runtime dependencies and CSS
+      // are not yet exhaustively analyzed; the emitted manifest declares that boundary.
+      // Never claim that an approved transform or shim has run when it has not.
+      if (options.compatibility) {
+        const sources = [...modules.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([file, compiled]) => {
+          const relative = portableSourceFile(file, resolved?.root ?? "");
+          if (!relative) this.error("ZV4002: Cannot report source outside the configured Vite project root.");
+          return { fileName: relative, source: compiled.source };
+        });
+        const result = analyzeCompatibility({
+          mode: options.compatibility.mode,
+          targets: options.compatibility.targets,
+          sources
+        });
+        if (!result.ok) {
+          const fatal = result.manifest.diagnostics.filter(item => item.severity === "error");
+          this.error("ZV4003: Strict compatibility analysis failed: " +
+            fatal.slice(0, 5).map(item => item.code + " " + item.message).join("; "));
+        }
+        if (result.manifest.transforms.length || result.manifest.shims.length) {
+          this.error("ZV4004: Compatibility transformations or scoped shims are required but " +
+            "the active Vite compiler pipeline has not certified their application and source maps.");
+        }
+        this.emitFile({ type: "asset", fileName: "compat-manifest.json",
+          source: serializeManifest(result.manifest) });
+      }
       const assets: GeneratedAssetRecord[] = Object.values(bundle)
         .map((entry): GeneratedAssetRecord | null => {
           if (entry.type === "chunk") {
@@ -459,6 +498,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       if (compiledCssMap && resolved?.build.sourcemap) {
         assets.push({ fileName: cssOutputFile + ".map", kind: "map" });
       }
+      if (options.compatibility) assets.push({ fileName: "compat-manifest.json", kind: "manifest" });
       assets.push({ fileName: MANIFEST_FILE, kind: "manifest" });
       // Generated stylesheet records can occur both in Rollup bundle entries and
       // explicit plugin emissions. A manifest must refer to each output file once.
