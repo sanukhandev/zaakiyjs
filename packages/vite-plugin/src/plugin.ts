@@ -483,7 +483,10 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
               // A source fixture nested under packages/vite-plugin/test is app code.
               const packageSource = /(?:^|\/)packages\/(?:compiler|styles|ai|proxy|vite-plugin)\/(?:src|dist)(?:\/|$)/;
               const installedPackage = /(?:^|\/)node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?@zaakiyjs\/(?:compiler|styles|ai|proxy|vite-plugin)(?:\/|$)/;
-              if (packageSource.test(id) || installedPackage.test(id)) {
+              const compatSource = /(?:^|\/)packages\/compat\/(?:src|dist)\/(?!abort\.(?:ts|js|d\.ts)$)/;
+              const compatInstalled = /(?:^|\/)node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?@zaakiyjs\/compat\/(?!dist\/abort\.js$)/;
+              if (packageSource.test(id) || installedPackage.test(id) ||
+                  compatSource.test(id) || compatInstalled.test(id)) {
                 this.error("ZV3002: Build-only package entered browser chunk " + entry.fileName + ": " + mod);
               }
             }
