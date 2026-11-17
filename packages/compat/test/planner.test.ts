@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   analyzeCompatibility, compareVersions, detectIRFeatures, detectSourceFeatures,
   getFeature, listFeatures, parseMode, resolveTargets, serializeManifest, toStylesTargets,
-  transformEmittedJavaScript, validateManifest
+  transformEmittedJavaScript, validateManifest, type CompatIRNode
 } from "../src/index.js";
 
 const modern = { profile: "modern-2024" as const };
@@ -171,7 +171,7 @@ describe("syntax/API/IR/CSS detection and planning", () => {
       }]}, {name: "footer", children: [{
         kind: "ConditionalBlock", whenTrue: [{
           kind: "CompatFeature", feature: "web.fetch", span: span(78)
-        }], whenFalse: [] as unknown[]
+        }], whenFalse: []
       }]}],
       children: [{kind: "CompatFeature", feature: "js.logical-assignment", span: span(105)}]
     }]};
@@ -189,7 +189,7 @@ describe("syntax/API/IR/CSS detection and planning", () => {
     expect(first.manifest.detectedFeatures.find(item => item.id === "web.abort-signal-any")?.requiredBy[0]?.offset).toBe(18);
   });
   it("rejects reused/cyclic IR v2 objects without recursion overflow or source-content leakage", () => {
-    const shared: {kind: string; feature: string; children?: unknown[]} = {
+    const shared = {
       kind: "CompatFeature", feature: "web.fetch"
     };
     const root = {kind: "StaticElement", children: [shared, shared]};
@@ -198,7 +198,7 @@ describe("syntax/API/IR/CSS detection and planning", () => {
     expect(found.diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({code: "ZK2004", severity: "error"})
     ]));
-    const loop: {kind: string; children: unknown[]} = {kind: "StaticElement", children: []};
+    const loop: CompatIRNode & {children: CompatIRNode[]} = {kind: "StaticElement", children: []};
     loop.children.push(loop);
     const cyclic = analyzeCompatibility({mode: "strict", targets: modern, ir: [{
       irVersion: 2, sourceFile: "secret.tsx", nodes: [loop]
