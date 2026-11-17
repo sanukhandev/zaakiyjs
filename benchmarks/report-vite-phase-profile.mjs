@@ -20,7 +20,8 @@ const lines = [
 for (let i = 0; i < 3; i++) {
   const b = frozen.scenarios[i], c = candidate.scenarios[i];
   if (![1,8,24].includes(c.modules) || c.modules !== b.modules ||
-      b.assetSha256 !== c.assetSha256 ||
+      !b.semanticAssetSha256 || !c.semanticAssetSha256 ||
+      b.semanticAssetSha256 !== c.semanticAssetSha256 ||
       b.appJsCssGzipBytes !== c.appJsCssGzipBytes) {
     throw new Error("B8 production assets or benchmark fixtures differ");
   }
@@ -38,8 +39,9 @@ for (let i = 0; i < 3; i++) {
     c.p50_ms.toFixed(1)+" ms | "+c.transformP50_ms.toFixed(1)+" ms | "+
     c.cssGenerationP50_ms.toFixed(1)+" ms |");
 }
-lines.push("", "All output hashes and gzip byte counts match. Phase totals overlap other build work and are *not* additive to wall time.",
-  "The candidate can differ from the frozen reference: report speedups only with matching output hashes and repeated independent evidence. HMR latency is not measured by this production-build fixture.", "");
+lines.push("", "All executable asset contents and canonical manifest semantic hashes match; JS/CSS gzip byte counts match.",
+  "The raw manifest hash may change only where identical duplicate filename/kind records were removed. Both raw asset hashes remain recorded. The canonicalizer rejects conflicting duplicate asset metadata.",
+  "Phase totals overlap other build work and are *not* additive to wall time. HMR latency is not measured by this production-build fixture.", "");
 await mkdir(dir, { recursive: true });
 await writeFile(resolve(dir, "b8-vite-phase-report.md"), lines.join("\n"));
 console.log(lines.join("\n"));
