@@ -160,6 +160,7 @@ describe("generators", () => {
     }
     expect(generatorPlan("layout", "Dashboard")).toEqual(layout);
     const root = await temp();
+    await writeFile(join(root, "package.json"), JSON.stringify({name: "generator-fixture", dependencies: {"@zaakiyjs/core": "workspace:^"}}));
     const c = capture(root);
     expect(await runCli(["g", "page", "SalesReports", "--dry-run"], c.io)).toBe(0);
     expect(c.output().stdout).toContain("src/pages/SalesReportsPage.tsx");
