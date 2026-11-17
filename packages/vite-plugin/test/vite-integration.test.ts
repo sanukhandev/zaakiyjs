@@ -68,6 +68,7 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
     };
     expect(parsed.schemaVersion).toBe(1);
     expect(parsed.assets.map(a => a.fileName)).toContain("assets/theme.css");
+    expect(new Set(parsed.assets.map(a => a.fileName)).size).toBe(parsed.assets.length);
     expect(parsed.assets.filter(a => a.fileName.endsWith(".js")).length).toBeGreaterThanOrEqual(2);
     // HTML entry chunks can have virtual proxy facades. Such IDs must be omitted,
     // rather than inventing an app source path from their generated chunk name.
@@ -234,6 +235,11 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
       expect(css).toBeDefined();
       expect(String(css?.source)).toContain("flex");
       expect(manifest).toBeDefined();
+      const entries = (JSON.parse(String(manifest?.type === "asset" ? manifest.source : "")) as {
+        assets: Array<{fileName: string; kind: string}>
+      }).assets;
+      expect(entries.filter(a => a.fileName === "assets/zaakiy-styles.css")).toHaveLength(1);
+      expect(new Set(entries.map(a => a.fileName)).size).toBe(entries.length);
       expect(js.every(chunk => !/@zaakiyjs\/(?:ai|proxy|compiler|styles|vite-plugin)/.test(chunk.type === "chunk" ? chunk.code : ""))).toBe(true);
   });
 
