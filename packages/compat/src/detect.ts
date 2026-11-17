@@ -121,11 +121,12 @@ export function detectSourceFeatures(input: SourceInput): DetectionResult {
 function nodesOf(node: CompatIRNode): readonly CompatIRNode[] {
   return [
     ...(node.children ?? []), ...(node.whenTrue ?? []), ...(node.whenFalse ?? []),
-    ...(node.body ?? []), ...(node.props ?? [])
+    ...(node.body ?? []), ...(node.props ?? []),
+    ...(node.slots ?? []).flatMap(slot => slot.children)
   ];
 }
 export function detectIRFeatures(document: CompatIRDocument): DetectionResult {
-  if (document.irVersion !== 1) {
+  if (document.irVersion !== 1 && document.irVersion !== 2) {
     return { requirements: [], diagnostics: [{
       code: "ZK2001", severity: "error", message: "Unsupported compiler IR version: " + document.irVersion
     }] };
