@@ -47,6 +47,7 @@ jobs:
           manifest = json.loads(path.read_text())
           for pkg in ("store", "async", "http", "proxy"):
               manifest["dependencies"][f"@zaakiyjs/{pkg}"] = "workspace:^"
+          manifest.setdefault("devDependencies", {})["@types/node"] = "22.15.30"
           path.write_text(json.dumps(manifest, indent=2) + "\n")
           PY
       - name: Resolve test app workspace dependency graph
