@@ -2,12 +2,12 @@
 
 Build-time Vite bridge for the ZaakiyJS native-DOM compiler and atomic-style engine.
 
-**Status: draft integration.** The M0 `@zaakiyjs/compiler`, `@zaakiyjs/styles`, and native-DOM packages are types-only on the branch's baseline. This package exports a working Vite plugin *adapter*, but a successful Zaakiy TSX application build is **not yet possible** and is **not claimed**. Missing executable exports fail loudly, with no JSX/esbuild/Tailwind fallback.
+**Status: implemented for the documented TSX subset; production certification remains open.** Compiler, Styles and direct-DOM integration now run through Vite and have generated-app/browser acceptance tests. General TSX SSR, state-preserving HMR, automatic Polyfill Zone transforms and independent release certification are not complete. Missing or unsupported executable exports fail loudly, with no React JSX or Tailwind fallback.
 
 ## Usage
 
 ```ts
-// vite.config.ts — once compiler, styles and DOM implementations have landed
+// vite.config.ts — opt-in source and emitted-JS compatibility analysis
 import { defineConfig } from "vite";
 import { zaakiyPlugin } from "@zaakiyjs/vite-plugin";
 
@@ -15,7 +15,7 @@ export default defineConfig({
   plugins: [
     zaakiyPlugin({
       configFile: "zaakiy.config.ts",
-      browserTargets: ["chrome >= 120", "firefox >= 120"]
+      compatibility: { mode: "strict", targets: { profile: "modern-2024" } }
     })
   ],
   build: { sourcemap: true }
