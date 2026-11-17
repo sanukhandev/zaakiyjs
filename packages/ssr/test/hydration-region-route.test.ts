@@ -44,7 +44,7 @@ describe("H5 compiler-region route hydration integration", () => {
     button.focus();
     let clicks = 0;
     const bindings = {
-      read: (_path: readonly string[]) => data.value,
+      read: () => data.value,
       events: [{elementId: buttonId, name: "click", handler: (() => { clicks++; }) as EventListener}]
     };
     const stale = coordinator.start(routeId);
