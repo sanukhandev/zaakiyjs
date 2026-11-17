@@ -16,7 +16,12 @@ function percentile(samples,p){
 const scenarios=[];
 for(const spec of [
  {kind:"page",name:"SalesReports",path:"src/pages/SalesReportsPage.tsx"},
- {kind:"layout",name:"Dashboard",path:"src/layouts/DashboardLayout.tsx"}
+ {kind:"layout",name:"Dashboard",path:"src/layouts/DashboardLayout.tsx"},
+ {kind:"store",name:"Cart",path:"src/stores/createCartStore.ts"},
+ {kind:"resource",name:"Products",path:"src/resources/createProductsResource.ts"},
+ {kind:"task",name:"SaveProduct",path:"src/tasks/createSaveProductTask.ts"},
+ {kind:"interceptor",name:"Trace",path:"src/interceptors/createTraceInterceptor.ts"},
+ {kind:"proxy",name:"Gateway",path:"server/proxies/createGatewayProxy.ts"}
 ]){
  const samples=[];
  let fingerprint="";
