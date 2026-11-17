@@ -136,6 +136,27 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
     }
   });
 
+  it("checks emitted ordinary JavaScript chunks beyond TSX source files", async () => {
+    const temp = mkdtempSync(join(dirname(fixtureRoot), ".zaakiy-compat-output-"));
+    cpSync(fixtureRoot, temp, {recursive: true});
+    try {
+      const html = join(temp, "index.html");
+      writeFileSync(html, readFileSync(html, "utf8").replace(
+        "</body>", '<script type="module" src="/src/external-feature.js"></script></body>'
+      ));
+      writeFileSync(join(temp, "src", "external-feature.js"),
+        "globalThis.__zaakiyCompatSmoke = AbortSignal.any([]);\n");
+      await expect(build({
+        configFile: false, root: temp, logLevel: "silent",
+        plugins: [zaakiyPlugin({compatibility: {mode: "strict",
+          targets: {browsers: ["firefox >=100"]}}})],
+        build: {write: false, emptyOutDir: false}
+      })).rejects.toThrow("ZV4003");
+    } finally {
+      rmSync(temp, {recursive: true, force: true});
+    }
+  });
+
   it("rejects conflicting legacy target options and invalid compatibility profiles", async () => {
     await expect(build({
       configFile: false, root: plainRoot, logLevel: "silent",
