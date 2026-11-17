@@ -151,6 +151,26 @@ describe("syntax/API/IR/CSS detection and planning", () => {
     expect(r.ok).toBe(false);
     expect(r.manifest.diagnostics.some(d => d.code === "ZK2102")).toBe(true);
   });
+  it("accepts the frozen compiler IR v2 and traverses named slot features", () => {
+    const ir = { irVersion: 2, sourceFile: "src/dialog.tsx", nodes: [{
+      kind: "ComponentCall", slots: [{
+        name: "footer", children: [{
+          kind: "CompatFeature", feature: "web.abort-signal-any",
+          span: {file: "src/dialog.tsx", start: {line: 4, column: 5, offset: 42}}
+        }]
+      }]
+    }] };
+    expect(detectIRFeatures(ir).requirements).toEqual([expect.objectContaining({
+      id: "web.abort-signal-any",
+      reference: expect.objectContaining({file: "src/dialog.tsx", line: 4})
+    })]);
+    const analysis = analyzeCompatibility({
+      mode: "strict", targets: {browsers: ["firefox >=100"]}, ir: [ir]
+    });
+    expect(analysis.ok).toBe(false);
+    expect(analysis.manifest.unsupportedFeatures).toContain("web.abort-signal-any");
+    expect(detectIRFeatures({...ir, irVersion: 3}).diagnostics[0]?.code).toBe("ZK2001");
+  });
   it("records unknown feature in IR and rejects unsupported IR versions", () => {
     const ir = { irVersion: 1, sourceFile: "file.tsx", nodes: [{
       kind: "StaticElement", children: [{ kind: "CompatFeature", feature: "web.experimental-x",
