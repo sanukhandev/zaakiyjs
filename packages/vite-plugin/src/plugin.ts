@@ -460,9 +460,23 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         assets.push({ fileName: cssOutputFile + ".map", kind: "map" });
       }
       assets.push({ fileName: MANIFEST_FILE, kind: "manifest" });
+      // Generated stylesheet records can occur both in Rollup bundle entries and
+      // explicit plugin emissions. A manifest must refer to each output file once.
+      const uniqueAssets = new Map<string, GeneratedAssetRecord>();
+      for (const asset of assets) {
+        const previous = uniqueAssets.get(asset.fileName);
+        if (previous && (previous.kind !== asset.kind ||
+          (previous.sourceFile !== undefined && asset.sourceFile !== undefined &&
+            previous.sourceFile !== asset.sourceFile))) {
+          this.error("ZV2014: Conflicting asset metadata for " + asset.fileName);
+        }
+        if (!previous || (previous.sourceFile === undefined && asset.sourceFile !== undefined)) {
+          uniqueAssets.set(asset.fileName, asset);
+        }
+      }
       const manifest: ZaakiyAssetManifest = {
         schemaVersion: 1,
-        assets: assets.sort((a, b) => a.fileName.localeCompare(b.fileName))
+        assets: [...uniqueAssets.values()].sort((a, b) => a.fileName.localeCompare(b.fileName))
       };
       this.emitFile({ type: "asset", fileName: MANIFEST_FILE, source: JSON.stringify(manifest, null, 2) + "\n" });
     }
