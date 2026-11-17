@@ -8,8 +8,8 @@ export interface ZaakiyViteOptions {
   readonly exclude?: readonly string[];
   readonly cssVirtualId?: string;
   readonly browserTargets?: readonly string[];
-  /** Opt-in source-scoped strict browser analysis; emits compat-manifest.json.
-   * This is NOT full dependency-graph certification and will reject transforms/shims
+  /** Opt-in TSX-source and final-JS strict browser feature analysis; emits compat-manifest.json.
+   * This is NOT full CSS/dynamic-API certification and will reject transforms/shims
    * until verified source maps and runtime integration are implemented.
    */
   readonly compatibility?: {
