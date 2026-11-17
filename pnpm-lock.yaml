@@ -321,6 +321,9 @@ importers:
 
   packages/vite-plugin:
     dependencies:
+      '@zaakiyjs/compat':
+        specifier: workspace:^
+        version: link:../compat
       '@zaakiyjs/compiler':
         specifier: workspace:^
         version: link:../compiler
