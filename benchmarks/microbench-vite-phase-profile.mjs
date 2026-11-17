@@ -57,9 +57,24 @@ async function generate(count){
   await writeFile(join(folder,"src/main.js"),imports.join("\n")+"\n");
   return folder;
 }
+function canonicalManifest(content) {
+  const parsed=JSON.parse(content);
+  if(parsed.schemaVersion!==1||!Array.isArray(parsed.assets))throw Error("Invalid versioned asset manifest");
+  const unique=new Map();
+  for(const entry of parsed.assets){
+    if(!entry||typeof entry.fileName!=="string"||typeof entry.kind!=="string")
+      throw Error("Malformed asset metadata");
+    const old=unique.get(entry.fileName);
+    if(old!==undefined&&JSON.stringify(old)!==JSON.stringify(entry))
+      throw Error("Conflicting duplicate asset records");
+    unique.set(entry.fileName,entry);
+  }
+  return JSON.stringify({...parsed,
+    assets:[...unique.values()].sort((a,b)=>a.fileName.localeCompare(b.fileName))});
+}
 async function measure(count){
   const project=await generate(count),samples=[],profiles=[];
-  let assetHash="",outputGzipBytes=0;
+  let assetHash="", semanticAssetHash="", outputGzipBytes=0;
   try{
     for(let i=-1;i<4;i++){
       const metrics={transformMs:0,transformCalls:0,cssGenerateMs:0,cssGenerateCalls:0};
@@ -85,6 +100,17 @@ async function measure(count){
       const checksum=hash.digest("hex");
       if(assetHash&&checksum!==assetHash)throw Error("Non-reproducible production build at "+count+" modules");
       assetHash=checksum;
+      // The sole reviewed manifest change is duplicate-record removal; all other
+      // production files and the canonical manifest must remain byte-identical.
+      const semantic=createHash("sha256");
+      for(const item of assets){
+        semantic.update(item.name+"\\0"+(item.name==="zaakiy-assets.json"
+          ?canonicalManifest(item.content):item.content)+"\\0");
+      }
+      const semanticChecksum=semantic.digest("hex");
+      if(semanticAssetHash&&semanticChecksum!==semanticAssetHash)
+        throw Error("Non-reproducible semantic production output at "+count+" modules");
+      semanticAssetHash=semanticChecksum;
       outputGzipBytes=assets.filter(item=>item.name.endsWith(".js")||item.name.endsWith(".css"))
         .reduce((sum,item)=>sum+gzipSync(item.content).length,0);
       if(i>=0){samples.push(elapsed);profiles.push(metrics);}
@@ -92,7 +118,7 @@ async function measure(count){
   }finally{await rm(project,{recursive:true,force:true});}
   const record={modules:count,samples:4,warmups:1,
     p50_ms:percentile(samples,.5),p95_ms:percentile(samples,.95),
-    assetSha256:assetHash,appJsCssGzipBytes:outputGzipBytes,
+    assetSha256:assetHash,semanticAssetSha256:semanticAssetHash,appJsCssGzipBytes:outputGzipBytes,
     samples_ms:samples,
     transformP50_ms:percentile(profiles.map(p=>p.transformMs),.5),
     cssGenerationP50_ms:percentile(profiles.map(p=>p.cssGenerateMs),.5),
