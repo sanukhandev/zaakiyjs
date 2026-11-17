@@ -98,13 +98,13 @@ The executable is named **zaakiy**. Project creation uses **start --project**, n
 
 Project creation never installs dependencies or runs template scripts. Run your package manager's install command explicitly before dev/build/typecheck. Supported tools: Node 20.19+, npm 10+, pnpm 10+, Yarn 4+. Use --workspace only with --package-manager pnpm and an included target path (for example, --path packages in a workspace whose pnpm-workspace.yaml includes packages/*).
 
-generate/g supports component, view, viewmodel, model, feature, service, provider, context. Feature generation uses Model repository interfaces, an owner-scoped signal-based ViewModel with native AbortController cancellation and stale-result protection, a typed TSX View, a service gateway and an owner adapter. The context and provider generators use the real @zaakiyjs/core scoped context API. Stateless components do not need ViewModels.
+generate/g supports component, view, viewmodel, model, feature, service, provider, context, page and layout. The page/layout generators emit one native TSX root each with strict props. Layout includes a named native outlet element to wire manually through an application Router adapter; they do not promise automatic route registration or unrestricted JSX children. Feature generation uses Model repository interfaces, an owner-scoped signal-based ViewModel with native AbortController cancellation and stale-result protection, a typed TSX View, a service gateway and an owner adapter. The context and provider generators use the real @zaakiyjs/core scoped context API. Stateless components do not need ViewModels.
 
 --dry-run shows the file plan, --force explicitly enables replacement, and --path selects a project-relative output directory. Path traversal, symlinks and Windows device names are rejected. Repeating a generator with unchanged content is a no-op; divergent files require --force. Files are staged before creation, failures trigger rollback, and unrecoverable backup restoration preserves recovery artifacts.
 
 dev/build/test delegate to real project scripts, forward subprocess exit codes and handle termination signals. doctor inspects required files, strict TSX configuration, framework package declarations/exports and the Vite plugin configuration. It does not substitute for a production build.
 
-page, layout, store, resource, task, interceptor, proxy, analyze, migrate, seo and ai are unavailable until their owning packages are implemented. They fail without creating files.
+store, resource, task, interceptor, proxy, analyze, migrate, seo and ai are unavailable until their owning packages are implemented. They fail without creating files.
 
 ### Publication requirements
 
