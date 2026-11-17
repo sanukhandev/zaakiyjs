@@ -1,8 +1,8 @@
 import {CliError} from "./args.js";
 import {safeRelativePath, writeGenerated, type PlannedWrite} from "./fs-safe.js";
 
-const supported = ["component", "view", "viewmodel", "model", "feature", "service", "provider", "context"] as const;
-const future = ["page", "layout", "store", "resource", "task", "interceptor", "proxy"] as const;
+const supported = ["component", "view", "viewmodel", "model", "feature", "service", "provider", "context", "page", "layout"] as const;
+const future = ["store", "resource", "task", "interceptor", "proxy"] as const;
 type Generator = typeof supported[number];
 export interface GenerateOptions {
   type: string;
@@ -39,7 +39,8 @@ export function generatorPlan(type: string, name: string, architecture?: string,
   const defaultFolder: Record<Generator, string> = {
     component: "src/components", view: "src/views", viewmodel: "src/viewmodels",
     model: "src/models", feature: "src/features", service: "src/services",
-    provider: "src/providers", context: "src/contexts"
+    provider: "src/providers", context: "src/contexts",
+    page: "src/pages", layout: "src/layouts"
   };
   const folder = outputPath ? safeRelativePath(outputPath) : defaultFolder[type as Generator];
   const at = (relative: string) => folder + "/" + relative;
@@ -106,6 +107,26 @@ export function generatorPlan(type: string, name: string, architecture?: string,
         "export const " + entity + "Context = createContext<" + entity + "ContextValue>(\"" + entity + "\");",
         "export function use" + entity + "Context(owner: OwnerScope): " + entity + "ContextValue {",
         "  return requireContext(owner, " + entity + "Context);",
+        "}",
+        ""
+      ].join("\n"))];
+    case "page":
+      return [file(at(entity + "Page.tsx"), [
+        "// Register this compiled native page through an explicit Router page adapter.",
+        "// This View does not create a second DOM application owner.",
+        "export interface " + entity + "PageProps {readonly title: string}",
+        "export function " + entity + "Page({title}: " + entity + "PageProps) {",
+        "  return <main><h1>{title}</h1></main>;",
+        "}",
+        ""
+      ].join("\n"))];
+    case "layout":
+      return [file(at(entity + "Layout.tsx"), [
+        "// A native root/layout shell. Wire its main element as the Router adapter outlet.",
+        "// JSX children/slots are deliberately not implied by this generator.",
+        "export interface " + entity + "LayoutProps {readonly title: string}",
+        "export function " + entity + "Layout({title}: " + entity + "LayoutProps) {",
+        "  return <div><header><h1>{title}</h1></header><main id=\"" + n.kebab + "-outlet\"></main></div>;",
         "}",
         ""
       ].join("\n"))];
