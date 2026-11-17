@@ -3,6 +3,7 @@ import {readFile, stat} from "node:fs/promises";
 import {resolve, join, posix} from "node:path";
 import {CliError, parseArgs, assertOptions, flagOption, valueOption} from "./args.js";
 import {diagnoseProject} from "./doctor.js";
+import {analyzeBundle} from "./analyze.js";
 import {generateFiles, supportedGenerators} from "./generators.js";
 import {safeRelativePath, validateProjectName} from "./fs-safe.js";
 import {assertFrameworkReady, getInstalledVersions, parsePreset, scaffoldProject, type Versions} from "./scaffold.js";
@@ -24,9 +25,10 @@ const help = [
   "  zaakiy g <type> <name>",
   "  zaakiy dev | build | test",
   "  zaakiy doctor [--json]",
+  "  zaakiy analyze bundle [--cwd project] [--json]",
   "Options: --dry-run, --force, --path, --package-manager npm|pnpm|yarn, --workspace",
   "Generators: " + supportedGenerators().join(", "),
-  "Deferred commands: analyze, migrate, seo, ai",
+  "Deferred: analyze architecture|signals|styles|network, migrate, seo, ai",
   "Use --help for help and --version for the installed CLI version."
 ].join("\n") + "\n";
 
@@ -179,7 +181,27 @@ export async function runCli(argv: readonly string[], io?: Partial<CliIO>): Prom
       else out(issues.length ? issues.map(item => item.severity.toUpperCase() + " " + item.code + ": " + item.message).join("\n") + "\n" : "No project diagnostics found.\n");
       return issues.some(item => item.severity === "error") ? 1 : 0;
     }
-    if (["analyze", "migrate", "seo", "ai"].includes(args.command)) throw new CliError("COMMAND_UNAVAILABLE", args.command + " is planned but not implemented; no work was performed.");
+    if (args.command === "analyze") {
+      assertOptions(args, ["cwd", "json"], 1);
+      if (args.positionals[0] !== "bundle") {
+        throw new CliError("ANALYZE_UNAVAILABLE", "Supported analyzer: analyze bundle. Other analyzers remain deferred.");
+      }
+      const target = valueOption(args.options, "cwd");
+      const cwd = target ? resolve(root, safeRelativePath(target)) : root;
+      await ensureProjectDirectory(cwd);
+      const result = await analyzeBundle(cwd);
+      if (flagOption(args.options, "json")) out(JSON.stringify(result, null, 2) + "\n");
+      else {
+        const fmt = (kind: "js" | "css") => {
+          const sum = result.totals[kind];
+          return kind.toUpperCase() + ": raw " + sum.rawBytes + " B, gzip " + sum.gzipBytes +
+            " B, brotli " + sum.brotliBytes + " B";
+        };
+        out("Zaakiy build bundle (" + result.files.length + " files)\n" + fmt("js") + "\n" + fmt("css") + "\n");
+      }
+      return 0;
+    }
+    if (["migrate", "seo", "ai"].includes(args.command)) throw new CliError("COMMAND_UNAVAILABLE", args.command + " is planned but not implemented; no work was performed.");
     throw new CliError("UNKNOWN_COMMAND", "Unknown command " + args.command + ". Run zaakiy --help.");
   } catch (error) {
     if (error instanceof CliError) {
