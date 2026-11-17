@@ -7,6 +7,7 @@ import {
   type ViteDevServer
 } from "vite";
 import type { ExtractedStyleToken, StyleConfig } from "@zaakiyjs/styles";
+import { analyzeCompatibility, serializeManifest, transformEmittedJavaScript } from "@zaakiyjs/compat";
 import { createCompilerSession, type CompilerSession } from "@zaakiyjs/compiler";
 import type { CompilerDiagnostic } from "@zaakiyjs/compiler";
 import { cssSourceMapComment, portableSourceFile } from "./asset-paths.js";
@@ -25,6 +26,7 @@ import {
 const PUBLIC_CSS_ID = "virtual:zaakiy-styles.css";
 const INTERNAL_CSS_ID = "\u0000virtual:zaakiy-styles.css";
 const MANIFEST_FILE = "zaakiy-assets.json";
+const COMPAT_MANIFEST_FILE = "compat-manifest.json";
 
 interface CompiledModule {
   readonly source: string;
@@ -93,6 +95,9 @@ function diagnosticError(d: CompilerDiagnostic, fallback: string): Error & {
  * implementations are fatal, and no React/TypeScript JSX fallback is used.
  */
 export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
+  if (options.compat && options.browserTargets?.length) {
+    throw new Error("ZV4010: Use compat.targets for an approved build profile; legacy browserTargets remains fail-closed.");
+  }
   if (options.cssVirtualId !== undefined && options.cssVirtualId !== PUBLIC_CSS_ID) {
     throw new Error("ZV0001: CSS virtual ID is frozen as " + PUBLIC_CSS_ID);
   }
@@ -105,6 +110,8 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
     options.exclude?.length ? [...options.exclude] : undefined
   );
   const modules = new Map<string, CompiledModule>();
+  // Preserve untransformed emitted JS per chunk for the versioned compatibility audit.
+  const preCompatChunks = new Map<string, string>();
   const revisions = new Map<string, number>();
   // Weak keys avoid retaining old ModuleNodes after Vite graph invalidation.
   const dependencyCodeHashes = new WeakMap<object, { code: string; hash: string }>();
@@ -243,6 +250,11 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       buildMode = config.command === "build";
       compilerSession?.dispose();
       compilerSession = createCompilerSession(config.root);
+      preCompatChunks.clear();
+      if (options.compat) {
+        // Validate the declared mode/targets once, before reading project code.
+        analyzeCompatibility({ mode: options.compat.mode, targets: options.compat.targets });
+      }
       await loadBrand();
     },
 
@@ -405,9 +417,49 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       return undefined;
     },
 
+    /**
+     * Apply only the Compat registry's approved syntax transform to emitted JS,
+     * before Rollup hashes output filenames. No blanket polyfills or browser AI.
+     * When source maps are requested, refuse a transform until exact map
+     * composition is implemented rather than returning an inaccurate map.
+     */
+    renderChunk(code, chunk) {
+      if (!buildMode || !options.compat) return null;
+      const compat = options.compat;
+      // This is an emitted ESM chunk, never raw TSX or untrusted model code.
+      preCompatChunks.set(chunk.fileName, code);
+      const checked = analyzeCompatibility({
+        mode: compat.mode, targets: compat.targets,
+        sources: [{ fileName: chunk.fileName, source: code }]
+      });
+      for (const issue of checked.manifest.diagnostics) {
+        const message = issue.code + ": " + issue.message;
+        if (issue.severity === "error") this.error("ZV4011: " + message);
+        if (issue.severity === "warning") this.warn("ZV4012: " + message);
+      }
+      if (!checked.ok) this.error("ZV4011: Compatibility certification rejected " + chunk.fileName);
+      if (checked.manifest.transforms.length === 0) return null;
+      if (resolved?.build.sourcemap) {
+        this.error("ZV4013: Compatibility downlevel transforms with source maps are not certified; disable sourcemaps or select a native target.");
+      }
+      try {
+        const lowered = transformEmittedJavaScript({
+          fileName: chunk.fileName,
+          code,
+          manifest: checked.manifest
+        });
+        assertBrowserOutput(lowered, chunk.fileName);
+        return { code: lowered, map: null };
+      } catch (error) {
+        this.error("ZV4014: Approved compatibility transform failed for " +
+          chunk.fileName + ": " + String(error));
+      }
+    },
+
     closeBundle() {
       compilerSession?.dispose();
       compilerSession = undefined;
+      preCompatChunks.clear();
     },
 
     async generateBundle(_output, bundle) {
@@ -458,6 +510,23 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       assets.push({ fileName: cssOutputFile, kind: "css" });
       if (compiledCssMap && resolved?.build.sourcemap) {
         assets.push({ fileName: cssOutputFile + ".map", kind: "map" });
+      }
+      if (options.compat) {
+        const codeSources = [...preCompatChunks.entries()]
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([fileName, source]) => ({ fileName, source }));
+        const checked = analyzeCompatibility({
+          mode: options.compat.mode,
+          targets: options.compat.targets,
+          sources: codeSources
+        });
+        if (!checked.ok) this.error("ZV4011: Final compatibility manifest contains unsupported or invalid features");
+        this.emitFile({
+          type: "asset",
+          fileName: COMPAT_MANIFEST_FILE,
+          source: serializeManifest(checked.manifest)
+        });
+        assets.push({ fileName: COMPAT_MANIFEST_FILE, kind: "manifest" });
       }
       assets.push({ fileName: MANIFEST_FILE, kind: "manifest" });
       // Generated stylesheet records can occur both in Rollup bundle entries and
