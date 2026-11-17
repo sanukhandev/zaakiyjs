@@ -43,7 +43,7 @@ disposeOwner(owner);
 
 ## Usage and correctness guidelines
 
-- The caller owns DOM removal; presence exit is not yet automatically integrated with compiler region teardown.
+- For standalone presence the caller still owns DOM removal. The opt-in `bindAnimatedConditionalRegion` integrates WAAPI with DOM's existing exit-aware single-Element conditional hook; compiler-generated automatic `Show`/`For`, keyed and portal exits remain unavailable.
 - Reduced-motion preferences must be respected; manual overrides should be an explicit app decision.
 - Router transition helpers are not an installed routing hook, and browser support needs real target verification.
 
@@ -51,6 +51,7 @@ disposeOwner(owner);
 
 Exported symbols detected in the package root `src/index.ts`. Platform-specific subpaths and structural contracts are explained in the detailed guide and package manifest.
 
+- `AnimatedConditionalRegionOptions`
 - `AnimationHandle`
 - `AnimationReducedMotionPolicy`
 - `ElementAnimationOptions`
@@ -79,6 +80,7 @@ Exported symbols detected in the package root `src/index.ts`. Platform-specific 
 - `StandalonePresenceOptions`
 - `StandalonePresenceState`
 - `ViewportOptions`
+- `bindAnimatedConditionalRegion`
 - `animateElement`
 - `animateKeyedMoves`
 - `animateLayout`
@@ -90,6 +92,12 @@ Exported symbols detected in the package root `src/index.ts`. Platform-specific 
 - `createStandalonePresence`
 - `observeScrollProgress`
 - `observeViewport`
+
+### Native conditional Motion adapter (opt-in)
+
+`bindAnimatedConditionalRegion(owner, region, when, create, {exit, enter?, maxExitMs?})` composes the existing `@zaakiyjs/dom/compiler` exit-aware conditional region API and native WAAPI `animateElement`. On exit, it retains the owned native Element only until the animation completes or the bounded timeout elapses. Re-entry aborts the stale exit and reuses the focused node; parent owner disposal aborts pending work and detaches listeners. The adapter respects reduced-motion preferences.
+
+This is **not** automatic JSX `<Show>`/`<For>`, keyed, portal or Router exit lowering. Existing v1 compiler/DOM semantics are unchanged.
 
 ## Detailed feature guide
 
