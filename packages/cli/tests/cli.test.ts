@@ -242,6 +242,15 @@ describe("built-bundle analyzer", () => {
     expect(result.files.map(item => item.fileName)).toEqual(["assets/app.css", "assets/app.js", "zaakiy-assets.json"]);
     expect(result.files.every(item => /^[a-f0-9]{64}$/.test(item.sha256))).toBe(true);
     expect(await runCli(["analyze", "bundle", "--json"], capture(root).io)).toBe(0);
+    await writeFile(path, JSON.stringify({schemaVersion: 1, assets: [...assets, {fileName: "assets/app.js", kind: "js"}]}));
+    const duplicate = capture(root);
+    expect(await runCli(["analyze", "bundle", "--json"], duplicate.io)).toBe(0);
+    expect((JSON.parse(duplicate.output().stdout) as {files: unknown[]}).files).toHaveLength(3);
+    await writeFile(path, JSON.stringify({schemaVersion: 1, assets: [...assets, {fileName: "assets/app.js", kind: "css"}]}));
+    const conflict = capture(root);
+    expect(await runCli(["analyze", "bundle"], conflict.io)).toBe(1);
+    expect(conflict.output().stderr).toContain("Conflicting bundle asset kinds");
+    await writeFile(path, JSON.stringify({schemaVersion: 1, assets}));
     const bad = capture(root);
     expect(await runCli(["analyze", "architecture"], bad.io)).toBe(1);
     expect(bad.output().stderr).toContain("ANALYZE_UNAVAILABLE");
