@@ -1,13 +1,17 @@
 # @zaakiyjs/ssr — P3 v1 foundation
 
-**Status: implementation candidate, not production SSR/hydration.** This package implements the server response/request infrastructure and the frozen `zaakiy.render/1` protocol. The existing `@zaakiyjs/compiler` cannot emit trusted server-rendering modules and `@zaakiyjs/dom` cannot adopt hydrated markup. Consequently **reactive TSX SSR, full hydration, incremental component streaming and true ISR are blocked** until coordinated Compiler/Vite/DOM integration; none is simulated by an alternate JSX interpreter. Independent npm publication is not approved.
+**Status: implemented restricted SSR/hydration subsets; general production certification pending.** This package implements the server request/response infrastructure and frozen `zaakiy.render/1` protocol. The Compiler supports reviewed static, data-bound, and opt-in H4 interactive region server output; the DOM can adopt matching native nodes with strict plan/build/route preflight. **Arbitrary TSX runtime SSR, unrestricted hydration, general component streaming and full Router/Vite integration remain uncertified.** Independent npm publication is not approved.
+
+### H5 route-commit bridge
+
+`hydrateRegionRoute(container, plan, envelope, manifest, transaction, bindings)` uses the existing current-only hydration transaction coordinator to attach compiler-verified v2 native regions. A superseded or externally aborted navigation cannot commit; abort disposes attached listeners and effects without deleting server-rendered markup. Authorized Router guards/loaders and streaming must settle **before** this synchronous commit. This does not enable arbitrary JSX hydration or state-preserving HMR.
 
 ## Public entries
 
 - `@zaakiyjs/ssr`: browser-safe schema IDs and TypeScript protocol declarations.
 - `@zaakiyjs/ssr/node`: `createNodeServerAdapter`, `MemoryRenderCache`, `createCacheInvalidator`, `verifyTrustedManifest`, head/hydration serializers.
 - `@zaakiyjs/ssr/build`: bounded `prerenderStatic`, strict manifest verification.
-- `@zaakiyjs/ssr/client`: `inspectHydration` performs read-only browser markup/manifest checks; **does not attach listeners or claim hydration**.
+- `@zaakiyjs/ssr/client`: `inspectHydration` performs read-only checks; `hydrateDataPage`/`hydrateRegionPage` and H5 `hydrateDataRoute`/`hydrateRegionRoute` opt into verified native adoption and owner-scoped listener teardown for restricted compiler plans.
 
 The Node bridge consumes deployment-controlled modules under `TrustedServerBuildManifestV1`. The `sourceDigest` is matched against the pinned registration metadata; verifying that it matches the **actual compiled module byte contents** must happen in the build pipeline (not yet available). Never populate the registry from an HTTP request, arbitrary dynamic import path, TSX expression source, or unverified source code. A handcrafted test module proves only infrastructure behavior, not compiler support.
 
