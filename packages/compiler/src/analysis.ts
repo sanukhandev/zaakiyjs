@@ -443,9 +443,76 @@ export function analyze(request: CompileRequest): Analysis {
     const props: PropertyBinding[] = [];
     const namedSlots: Array<{ name: string; children: IRNode[] }> = [];
     const attributes: IRNode[] = [];
+    // Inline object spreads are accepted only for finite, literal, side-effect-free
+    // values. Never attempt to evaluate a variable, accessor, computed key or call.
+    const explicitNames = new Set(opening.attributes.properties
+      .filter(ts.isJsxAttribute).map(attribute => attribute.name.getText(source)));
+    const spreadNames = new Set<string>();
     for (const attr of opening.attributes.properties) {
       if (ts.isJsxSpreadAttribute(attr)) {
-        report("ZC1002", "JSX spread attributes are not supported until evaluation-order semantics are frozen.", attr);
+        const spread = attr.expression;
+        if (!ts.isObjectLiteralExpression(spread)) {
+          report("ZC1002",
+            "Only inline plain-object literal JSX spreads are supported; dynamic spreads have no safe evaluation-order contract.",
+            attr);
+          continue;
+        }
+        for (const item of spread.properties) {
+          if (!ts.isPropertyAssignment(item) ||
+              (!ts.isIdentifier(item.name) && !ts.isStringLiteral(item.name))) {
+            report("ZC2510", "JSX spread supports only direct static property assignments with identifier/string keys.", item);
+            continue;
+          }
+          const name = item.name.text;
+          const native = new Set(["id", "title", "role", "type", "name", "placeholder", "htmlFor",
+            "value", "checked", "disabled", "selected", "hidden", "tabIndex"]);
+          if (!/^[A-Za-z][A-Za-z0-9:_-]{0,79}$/.test(name) ||
+              name === "key" || name === "ref" || /^on/i.test(name) ||
+              name === "class" || name === "style" || name === "children" ||
+              name === "dangerouslySetInnerHTML" || name === "innerHTML" ||
+              name === "outerHTML" || name === "srcdoc" ||
+              (!isComponent && !native.has(name) && !/^(?:aria|data)-[a-z][a-z0-9_.:-]*$/.test(name))) {
+            report("ZC2511", "Unsafe or unsupported JSX spread prop: " + name, item);
+            continue;
+          }
+          if (explicitNames.has(name) || spreadNames.has(name) ||
+              namedSlots.some(slot => slot.name === name)) {
+            report("ZC2512", "Ambiguous duplicate JSX prop in static spread: " + name, item);
+            continue;
+          }
+          spreadNames.add(name);
+          const value = item.initializer;
+          let literal: string | null = null;
+          if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) {
+            literal = JSON.stringify(value.text);
+          } else if (ts.isNumericLiteral(value)) {
+            const num = Number(value.text);
+            if (Number.isFinite(num)) literal = String(num);
+          } else if (value.kind === ts.SyntaxKind.TrueKeyword) {
+            literal = "true";
+          } else if (value.kind === ts.SyntaxKind.FalseKeyword) {
+            literal = "false";
+          }
+          if (literal === null) {
+            report("ZC2513", "JSX spread prop values must be finite string, number or boolean literals.", value);
+            continue;
+          }
+          const span = spanOf(source, item);
+          const target: PropertyBinding["target"] = isComponent ||
+              ["value", "checked", "disabled", "selected"].includes(name)
+              ? "property" : "attribute";
+          const binding: PropertyBinding = {
+            kind: "PropertyBinding", id: idOf("PropertyBinding", span), span,
+            name: !isComponent && name === "htmlFor" ? "for" : name,
+            target,
+            expression: {
+              source: literal, span: spanOf(source, value),
+              purity: "pure", reactive: false
+            }
+          };
+          if (isComponent) props.push(binding);
+          else attributes.push(binding);
+        }
         continue;
       }
       const name = attr.name.getText(source);
