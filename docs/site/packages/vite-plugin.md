@@ -41,7 +41,7 @@ export default defineConfig({
 
 - TSX HMR currently uses full reload where component-instance-preserving HMR is not implemented.
 - Build outputs include styles and asset metadata; browser applications must not import compiler/CLI/AI/server-only modules.
-- **Do not set nonempty `browserTargets` for a TSX application yet.** The Compiler rejects explicit target browsers with fatal `ZC2301` until Compat integration is complete; the runnable configuration deliberately omits this option.
+- **Do not set nonempty legacy `browserTargets` for a TSX application.** The Compiler still rejects it with `ZC2301`. Use the explicit opt-in `compat: {mode: "strict", targets: {profile: "modern-2024"}}` for selected emitted-JS build analysis; it does not certify all browser APIs, CSS or runtime behavior.
 
 ## Public API index
 
@@ -51,6 +51,7 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `VirtualCssContract`
 - `VitePluginFactory`
 - `ZaakiyAssetManifest`
+- `ZaakiyViteCompatibility`
 - `ZaakiyViteOptions`
 - `foundationStatus`
 - `zaakiyPlugin`
@@ -84,7 +85,8 @@ The public `zaakiyPlugin()` factory is exported from the package root and a comp
 
 - `configFile`: optional path to a trusted `StyleConfig` default export. The default is an empty `brand` rather than executing arbitrary project config during a build. Configuration is loaded by Vite in Node, never embedded into client JS. On change, development fully reloads.
 - `include` / `exclude`: standard Vite/Rollup filter patterns; only `.tsx` and `.mtsx` files are eligible by default. Ordinary JS/TS is delegated to Vite.
-- `browserTargets`: currently **not usable with TSX**. A nonempty value is forwarded to the Compiler, which emits fatal `ZC2301` and fails dev/build. Leave it unset until a separately tested Compat/Compiler/Vite integration lands; the option's presence is not evidence of compatibility support.
+- `browserTargets`: legacy Compiler option, still fatal `ZC2301` on TSX; not a supported browser feature profile.
+- `compat`: build-only `{mode:"off"|"auto"|"strict", targets:{profile|browsers}}`. It analyzes emitted JS, applies the pinned approved syntax transformer before hashing, emits `compat-manifest.json`, and rejects unsupported detected features in strict mode. CSS/runtime/third-party conformance is not implied. Transforms requiring source-map recomposition fail closed with `ZV4013`.
 - `cssFileName`: optional safe CSS asset path under `assets/`, default `assets/zaakiy-styles.css`. Directory traversal and URL-like values are rejected.
 - `cssVirtualId`: frozen to `virtual:zaakiy-styles.css`; other values fail rather than creating incompatible public imports.
 
