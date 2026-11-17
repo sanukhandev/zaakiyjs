@@ -1,8 +1,8 @@
 import {CliError} from "./args.js";
 import {safeRelativePath, writeGenerated, type PlannedWrite} from "./fs-safe.js";
 
-const supported = ["component", "view", "viewmodel", "model", "feature", "service", "provider", "context", "page", "layout"] as const;
-const future = ["store", "resource", "task", "interceptor", "proxy"] as const;
+const supported = ["component", "view", "viewmodel", "model", "feature", "service", "provider", "context", "page", "layout", "store", "resource", "task", "interceptor", "proxy"] as const;
+const future = [] as const;
 type Generator = typeof supported[number];
 export interface GenerateOptions {
   type: string;
@@ -40,7 +40,9 @@ export function generatorPlan(type: string, name: string, architecture?: string,
     component: "src/components", view: "src/views", viewmodel: "src/viewmodels",
     model: "src/models", feature: "src/features", service: "src/services",
     provider: "src/providers", context: "src/contexts",
-    page: "src/pages", layout: "src/layouts"
+    page: "src/pages", layout: "src/layouts",
+    store: "src/stores", resource: "src/resources", task: "src/tasks",
+    interceptor: "src/interceptors", proxy: "server/proxies"
   };
   const folder = outputPath ? safeRelativePath(outputPath) : defaultFolder[type as Generator];
   const at = (relative: string) => folder + "/" + relative;
@@ -127,6 +129,86 @@ export function generatorPlan(type: string, name: string, architecture?: string,
         "export interface " + entity + "LayoutProps {readonly title: string}",
         "export function " + entity + "Layout({title}: " + entity + "LayoutProps) {",
         "  return <div><header><h1>{title}</h1></header><main id=\"" + n.kebab + "-outlet\"></main></div>;",
+        "}",
+        ""
+      ].join("\n"))];
+    case "store":
+      return [file(at("create" + entity + "Store.ts"), [
+        'import {createStore} from "@zaakiyjs/store";',
+        "// Call inside a live owner. Do not create an application-global singleton.",
+        "export interface " + entity + "State { readonly count: number }",
+        "export function create" + entity + "Store() {",
+        "  return createStore({",
+        "    state: {count: 0} satisfies " + entity + "State,",
+        "    actions: write => ({",
+        "      increment() {write.update(\"count\", count => count + 1);},",
+        "      resetCount() {write.set(\"count\", 0);}",
+        "    })",
+        "  });",
+        "}",
+        ""
+      ].join("\n"))];
+    case "resource":
+      return [file(at("create" + entity + "Resource.ts"), [
+        'import {createResource} from "@zaakiyjs/async";',
+        "export interface " + entity + "Record {readonly id: string; readonly label: string}",
+        "export interface " + entity + "Repository {",
+        "  list(signal: AbortSignal): Promise<readonly " + entity + "Record[]>;",
+        "}",
+        "// Construct inside an owner; a Resource is lazy until refresh() is called.",
+        "export function create" + entity + "Resource(repository: " + entity + "Repository) {",
+        "  return createResource<readonly " + entity + "Record[]>({",
+        "    load: ({signal}) => repository.list(signal)",
+        "  });",
+        "}",
+        ""
+      ].join("\n"))];
+    case "task":
+      return [file(at("create" + entity + "Task.ts"), [
+        'import {createTask} from "@zaakiyjs/async";',
+        "export interface " + entity + "Input {readonly id: string}",
+        "export interface " + entity + "Result {readonly success: boolean}",
+        "export interface " + entity + "Gateway {",
+        "  execute(input: " + entity + "Input, signal: AbortSignal): Promise<" + entity + "Result>;",
+        "}",
+        "// No automatic retry for mutations; server-side idempotency is the host's responsibility.",
+        "export function create" + entity + "Task(gateway: " + entity + "Gateway) {",
+        "  return createTask<" + entity + "Input, " + entity + "Result>({",
+        "    concurrency: \"latest\",",
+        "    execute: ({input, signal}) => gateway.execute(input, signal)",
+        "  });",
+        "}",
+        ""
+      ].join("\n"))];
+    case "interceptor":
+      return [file(at("create" + entity + "Interceptor.ts"), [
+        'import type {HttpRequestContext, RequestInterceptor} from "@zaakiyjs/http";',
+        "// Register on a scoped HTTP client. The client validates URLs/credentials after hooks.",
+        "// Never log or serialize request headers that might contain secrets.",
+        "export function create" + entity + "Interceptor(",
+        "  customize: (request: HttpRequestContext) => void",
+        "): RequestInterceptor {",
+        "  return request => {",
+        "    customize(request);",
+        "    return request;",
+        "  };",
+        "}",
+        ""
+      ].join("\n"))];
+    case "proxy":
+      return [file(at("create" + entity + "Proxy.ts"), [
+        'import {createProxyRouter, type ProxyConfig, type ProxyRouter} from "@zaakiyjs/proxy";',
+        "// SERVER ONLY. Never import this module from browser/TSX application code.",
+        "// Named upstreams and credentials must come from trusted server-side configuration.",
+        "export type " + entity + "ProxyConfig = Omit<ProxyConfig, \"authenticate\"> & {",
+        "  readonly authenticate: NonNullable<ProxyConfig[\"authenticate\"]>;",
+        "};",
+        "export function create" + entity + "Proxy(config: " + entity + "ProxyConfig): ProxyRouter {",
+        "  // Generated gateway requires authenticated routes; expose public routes only by review.",
+        "  if (config.routes.some(route => route.access !== \"authenticated\")) {",
+        "    throw new TypeError(\"Unauthenticated routes require explicit server-side review\");",
+        "  }",
+        "  return createProxyRouter(config);",
         "}",
         ""
       ].join("\n"))];
