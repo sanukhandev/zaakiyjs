@@ -26,7 +26,7 @@ const help = [
   "  zaakiy doctor [--json]",
   "Options: --dry-run, --force, --path, --package-manager npm|pnpm|yarn, --workspace",
   "Generators: " + supportedGenerators().join(", "),
-  "Deferred: page, layout, store, resource, task, interceptor, proxy, analyze, migrate, seo, ai",
+  "Deferred commands: analyze, migrate, seo, ai",
   "Use --help for help and --version for the installed CLI version."
 ].join("\n") + "\n";
 
