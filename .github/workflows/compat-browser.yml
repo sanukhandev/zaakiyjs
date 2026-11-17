@@ -41,6 +41,15 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build compatibility package
         run: pnpm --filter @zaakiyjs/compat build
+      - name: Benchmark bounded IR v2 analyzer and manifest determinism
+        run: node benchmarks/microbench-compat-ir-v2.mjs . benchmark-artifacts/compat-ir-v2.json
+      - name: Upload IR v2 performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compat-ir-v2-profiling
+          path: benchmark-artifacts/compat-ir-v2.json
+          if-no-files-found: warn
       - name: Validate exports, package contents and build-only boundary
         shell: bash
         run: |
