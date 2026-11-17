@@ -4,6 +4,12 @@ import type {
   SourceSpan, Purity, PropertyBinding, StaticElement
 } from "./index.js";
 
+/** Only allow finite native attributes where no URL policy, CSS extraction or event wiring is needed. */
+const FINITE_SPREAD_NATIVE_ATTRIBUTES = new Set([
+  "id", "title", "role", "type", "name", "placeholder", "htmlFor",
+  "value", "checked", "disabled", "selected", "hidden", "tabIndex"
+]);
+
 export interface Analysis {
   readonly sourceFile: ts.SourceFile;
   readonly document: IRDocument;
@@ -464,14 +470,13 @@ export function analyze(request: CompileRequest): Analysis {
             continue;
           }
           const name = item.name.text;
-          const native = new Set(["id", "title", "role", "type", "name", "placeholder", "htmlFor",
-            "value", "checked", "disabled", "selected", "hidden", "tabIndex"]);
           if (!/^[A-Za-z][A-Za-z0-9:_-]{0,79}$/.test(name) ||
               name === "key" || name === "ref" || /^on/i.test(name) ||
               name === "class" || name === "style" || name === "children" ||
               name === "dangerouslySetInnerHTML" || name === "innerHTML" ||
               name === "outerHTML" || name === "srcdoc" ||
-              (!isComponent && !native.has(name) && !/^(?:aria|data)-[a-z][a-z0-9_.:-]*$/.test(name))) {
+              (!isComponent && !FINITE_SPREAD_NATIVE_ATTRIBUTES.has(name) &&
+                !/^(?:aria|data)-[a-z][a-z0-9_.:-]*$/.test(name))) {
             report("ZC2511", "Unsafe or unsupported JSX spread prop: " + name, item);
             continue;
           }
