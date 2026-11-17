@@ -442,15 +442,25 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       // are not yet exhaustively analyzed; the emitted manifest declares that boundary.
       // Never claim that an approved transform or shim has run when it has not.
       if (options.compatibility) {
-        const sources = [...modules.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([file, compiled]) => {
+        const sourceFiles = [...modules.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([file, compiled]) => {
           const relative = portableSourceFile(file, resolved?.root ?? "");
           if (!relative) this.error("ZV4002: Cannot report source outside the configured Vite project root.");
           return { fileName: relative, source: compiled.source };
         });
+        // Inspect the actual emitted JavaScript too: it contains bundled runtime and
+        // dependency syntax absent from the TSX source scan. No source maps are rewritten.
+        const bundledJs = Object.values(bundle).filter(
+          (entry): entry is Extract<typeof entry, {type: "chunk"}> => entry.type === "chunk"
+        ).map(entry => {
+          if (!/^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.[cm]?js$/.test(entry.fileName)) {
+            this.error("ZV4005: Unsafe or unsupported emitted JS chunk filename.");
+          }
+          return { fileName: entry.fileName, source: entry.code };
+        }).sort((a, b) => a.fileName.localeCompare(b.fileName));
         const result = analyzeCompatibility({
           mode: options.compatibility.mode,
           targets: options.compatibility.targets,
-          sources
+          sources: [...sourceFiles, ...bundledJs]
         });
         if (!result.ok) {
           const fatal = result.manifest.diagnostics.filter(item => item.severity === "error");
