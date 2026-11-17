@@ -26,11 +26,26 @@ A static TSX component imports `virtual:zaakiy-styles.css` automatically from th
 
 The public `zaakiyPlugin()` factory is exported from the package root. A compatibility `./plugin` subpath remains available. `foundationStatus.implemented` refers to this executable Vite adapter, **not** proof that upstream compiler, styles and DOM integration is complete.
 
+## Opt-in build-time compatibility (selected JavaScript features)
+
+```ts
+zaakiyPlugin({
+  compat: { mode: "strict", targets: { browsers: ["chrome >=124", "firefox >=124", "safari >=17.4"] } }
+})
+```
+
+With `compat`, Vite inspects emitted JavaScript chunks, uses the pinned `@zaakiyjs/compat` registry, applies only its reviewed TypeScript ES2019 syntax transform **before bundle hashing**, and emits `compat-manifest.json`. `strict` rejects unsupported detected features; `auto` records warnings and unresolved features instead of promising compatibility. There are **no mandatory or global polyfills**. Scoped AbortSignal helpers require explicit application imports. The build/IR target audit is deterministic and stores no source contents or secrets.
+
+**Scope limits:** This is a build-time emitted-JavaScript compatibility slice. Dynamic dependencies and runtime APIs that static analysis cannot prove, CSS features without semantic evidence from Styles, and all untested browser versions remain uncertified. A downlevel transform with `build.sourcemap: true` currently fails with `ZV4013` rather than generating incorrect maps. Targets are validated through `compat.targets`; the deprecated `browserTargets` compiler option intentionally still fails closed with `ZC2301`. Do not combine `compat` and `browserTargets`.
+
+The HMR dev server does not perform compatibility transforms, and this does not implement state-preserving HMR or compiler-native SSR. Browser certification must run the specified minimum browser versions, not merely the latest Chromium/Firefox/WebKit engines.
+
 ## Public configuration
 
 - `configFile`: optional path to a trusted `StyleConfig` default export. The default is an empty `brand` rather than executing arbitrary project config during a build. Configuration is loaded by Vite in Node, never embedded into client JS. On change, development fully reloads.
 - `include` / `exclude`: standard Vite/Rollup filter patterns; only `.tsx` and `.mtsx` files are eligible by default. Ordinary JS/TS is delegated to Vite.
-- `browserTargets`: forwarded to the native TSX compiler and included in the compilation cache key.
+- `browserTargets`: legacy compiler option; unsupported targets are rejected (ZC2301). Prefer the explicit `compat` option for approved emitted-JavaScript build analysis.
+- `compat`: opt-in version-pinned `mode` (`off`/`auto`/`strict`) and browser profile/target list; emits a compatibility manifest with feature-level decisions. Does not claim unsupported API/CSS compatibility.
 - `cssFileName`: optional safe CSS asset path under `assets/`, default `assets/zaakiy-styles.css`. Directory traversal and URL-like values are rejected.
 - `cssVirtualId`: frozen to `virtual:zaakiy-styles.css`; other values fail rather than creating incompatible public imports.
 
