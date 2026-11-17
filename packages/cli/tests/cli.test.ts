@@ -214,6 +214,44 @@ describe("generators", () => {
     expect(safeRelativePath("src\\components\\Button.tsx")).toBe("src/components/Button.tsx");
   });
 });
+describe("built-bundle analyzer", () => {
+  it("reports deterministic JS/CSS bytes from the real Zaakiy manifest", async () => {
+    const root = await temp();
+    await mkdir(join(root, "dist", "assets"), {recursive: true});
+    await writeFile(join(root, "package.json"), JSON.stringify({
+      name: "bundle-fixture", dependencies: {"@zaakiyjs/core": "workspace:^"}
+    }));
+    await writeFile(join(root, "dist", "assets", "app.js"), 'export const count = 1;');
+    await writeFile(join(root, "dist", "assets", "app.css"), 'main { display: block; }');
+    const path = join(root, "dist", "zaakiy-assets.json");
+    const assets = [
+      {fileName: "assets/app.js", kind: "js"},
+      {fileName: "assets/app.css", kind: "css"},
+      {fileName: "zaakiy-assets.json", kind: "manifest"}
+    ];
+    await writeFile(path, JSON.stringify({schemaVersion: 1, assets}));
+    const capture1 = capture(root);
+    expect(await runCli(["analyze", "bundle", "--json"], capture1.io)).toBe(0);
+    const result = JSON.parse(capture1.output().stdout) as {
+      schemaVersion: number; totals: {js: {rawBytes: number; gzipBytes: number}; css: {rawBytes: number}};
+      files: Array<{fileName: string; sha256: string}>
+    };
+    expect(result.schemaVersion).toBe(1);
+    expect(result.totals.js.rawBytes).toBe('export const count = 1;'.length);
+    expect(result.totals.css.rawBytes).toBe('main { display: block; }'.length);
+    expect(result.files.map(item => item.fileName)).toEqual(["assets/app.css", "assets/app.js", "zaakiy-assets.json"]);
+    expect(result.files.every(item => /^[a-f0-9]{64}$/.test(item.sha256))).toBe(true);
+    expect(await runCli(["analyze", "bundle", "--json"], capture(root).io)).toBe(0);
+    const bad = capture(root);
+    expect(await runCli(["analyze", "architecture"], bad.io)).toBe(1);
+    expect(bad.output().stderr).toContain("ANALYZE_UNAVAILABLE");
+    assets[0] = {fileName: "../outside.js", kind: "js"};
+    await writeFile(path, JSON.stringify({schemaVersion: 1, assets}));
+    const insecure = capture(root);
+    expect(await runCli(["analyze", "bundle"], insecure.io)).toBe(1);
+    expect(insecure.output().stderr).toContain("UNSAFE_PATH");
+  });
+});
 describe("doctor and process delegation", () => {
   it("diagnoses absent project files and invalid exports", async () => {
     const root = await temp();
