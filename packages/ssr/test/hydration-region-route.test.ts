@@ -73,6 +73,31 @@ describe("H5 compiler-region route hydration integration", () => {
     coordinator.dispose();
     container.remove();
   });
+  it("repeatedly adopts and aborts 100 navigations without duplicate event handlers or DOM replacement", () => {
+    const coordinator = createHydrationTransitionCoordinator();
+    const {container, button} = fixture();
+    const baseline = container.innerHTML;
+    let calls = 0;
+    for (let cycle = 0; cycle < 100; cycle++) {
+      const transaction = coordinator.start(routeId);
+      const handle = hydrateRegionRoute(container, plan, envelope, manifest, transaction, {
+        read: () => "Save",
+        events: [{elementId: buttonId, name: "click", handler: () => { calls++; }}]
+      });
+      expect(handle.root).toBe(button);
+      expect(container.innerHTML).toBe(baseline);
+      button.click();
+      expect(calls).toBe(cycle + 1);
+      transaction.abort();
+      button.click();
+      expect(calls).toBe(cycle + 1);
+      handle.dispose();
+    }
+    expect(container.querySelector("button")).toBe(button);
+    expect(container.innerHTML).toBe(baseline);
+    coordinator.dispose();
+    container.remove();
+  });
   it("rejects route and envelope disagreement without adopting or mutating DOM", () => {
     const coordinator = createHydrationTransitionCoordinator();
     const {container, button} = fixture();
