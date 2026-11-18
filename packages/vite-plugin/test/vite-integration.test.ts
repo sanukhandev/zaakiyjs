@@ -175,6 +175,34 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
     })).rejects.toThrow("ZV4001");
   });
 
+  it("builds opt-in IR v2 style object and still rejects it with default IR v1", async () => {
+    const temp = mkdtempSync(join(dirname(fixtureRoot), ".zaakiy-style-ir2-"));
+    cpSync(fixtureRoot, temp, {recursive:true});
+    const file = join(temp, "src", "main.tsx");
+    try {
+      const original = readFileSync(file,"utf8");
+      writeFileSync(file, original.replace(
+        '<button class="flex gap-4"',
+        '<button style={{color: clicks.value ? "red" : "blue"}} class="flex gap-4"'
+      ));
+      await expect(build({
+        configFile: false, root: temp, logLevel:"silent", plugins:[zaakiyPlugin()],
+        build:{write:false,emptyOutDir:false}
+      })).rejects.toThrow();
+      const result = await build({
+        configFile: false, root: temp, logLevel:"silent",
+        plugins:[zaakiyPlugin({styleBindings:true})],
+        build:{write:false,emptyOutDir:false}
+      });
+      const output=Array.isArray(result)?result[0]:result;
+      expect((output as RollupOutput).output.some(item=>item.type==="chunk")).toBe(true);
+      const assets=(output as RollupOutput).output;
+      expect(assets.find(item=>item.type==="asset"&&item.fileName==="zaakiy-assets.json")).toBeDefined();
+    } finally {
+      rmSync(temp,{recursive:true,force:true});
+    }
+  });
+
   it("uses Vite's actual watcher to trigger a full reload for changed TSX, never silent owner reuse", async () => {
     server = await createServer({
       configFile: false,
