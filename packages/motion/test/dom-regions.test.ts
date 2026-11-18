@@ -7,6 +7,12 @@ import { bindMotionConditionalRegion } from "../src/dom-regions.js";
 
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();document.body.replaceChildren();});
 
+async function flushExitSettlements() {
+  // WAAPI -> Motion handle -> bridge finally -> DOM region settle are distinct
+  // promise turns. Drain those deterministically without wall-clock sleeping.
+  for (let i=0;i<10;i++) await Promise.resolve();
+}
+
 function fixture() {
   const owner=createOwner();
   const host=document.createElement("section");
@@ -41,9 +47,7 @@ describe("opt-in Motion native conditional DOM adapter",()=>{
       expect(f.host.querySelector("button")).toBe(button);
       expect(animate).toHaveBeenCalledOnce();
       resolve();
-      await Promise.resolve();
-      await Promise.resolve();
-      await Promise.resolve();
+      await flushExitSettlements();
       expect(f.host.querySelector("button")).toBeNull();
       expect(cancel).toHaveBeenCalled();
       binding.dispose();
@@ -74,7 +78,7 @@ describe("opt-in Motion native conditional DOM adapter",()=>{
       expect(f.creations).toBe(1);
       expect(cancel).toHaveBeenCalledOnce();
       resolve();
-      await Promise.resolve();await Promise.resolve();await Promise.resolve();
+      await flushExitSettlements();
       expect(f.host.querySelector("button")).toBe(button);
       binding.dispose();
       disposeOwner(f.owner);
