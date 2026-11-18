@@ -54,7 +54,7 @@ export async function invokeCompiler(request: CompileRequest, session?: Compiler
   const value: unknown = await (session
     ? session.compile(request)
     : (compilerExports.compile as CompilerEntry)(request));
-  const expectedVersion = request.componentSlots === true ? 2 : 1;
+  const expectedVersion = request.componentSlots === true || request.styleBindings === true ? 2 : 1;
   if (!record(value) || value.irVersion !== expectedVersion ||
       !Array.isArray(value.js) || !Array.isArray(value.css) ||
       !Array.isArray(value.diagnostics)) {
