@@ -10,6 +10,9 @@ describe("opt-in IR v2 native style property lowering", () => {
     const baseline = compile({fileName, source});
     expect(baseline.js).toHaveLength(0);
     expect(baseline.diagnostics.some(item => item.code === "ZC2204")).toBe(true);
+    const slotsOnly = compile({fileName, source, componentSlots: true});
+    expect(slotsOnly.js).toHaveLength(0);
+    expect(slotsOnly.diagnostics.some(item => item.code === "ZC2204")).toBe(true);
     const unaffected = compile({fileName, source: "function App(){return <div />;}"});
     expect(unaffected.irVersion).toBe(1);
     expect(unaffected.js[0]?.code).not.toContain("bindStyle");
