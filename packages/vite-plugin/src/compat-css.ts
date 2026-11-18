@@ -76,10 +76,10 @@ export function detectEmittedCssFeatures(css: string, fileName: string): readonl
       add("css.nesting", offset);
     }
     if (node.type === "rule") {
-      if (/:has\s*\(/i.test(node.selector)) add("css.selector-has", offset);
+      if (/:has\s*\(/i.test(outsideQuotes(node.selector))) add("css.selector-has", offset);
       if (node.parent?.type === "rule") add("css.nesting", offset);
     }
-    if (node.type === "decl" && /color-mix\s*\(/i.test(node.value)) {
+    if (node.type === "decl" && /color-mix\s*\(/i.test(outsideQuotes(node.value))) {
       add("css.color-mix", offset);
     }
   });
