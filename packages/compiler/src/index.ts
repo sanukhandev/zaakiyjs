@@ -25,7 +25,7 @@ export type DiagnosticSeverity = "error" | "warning" | "info";
 export interface CompilerDiagnostic { readonly code: string; readonly severity: DiagnosticSeverity; readonly message: string; readonly span?: SourceSpan }
 export interface GeneratedAsset { readonly fileName: string; readonly code: string; readonly map?: string }
 export interface CompileResult { readonly irVersion: IRVersion; readonly js: readonly GeneratedAsset[]; readonly css: readonly GeneratedAsset[]; readonly diagnostics: readonly CompilerDiagnostic[]; readonly manifest?: Readonly<Record<string, unknown>> }
-export interface CompileRequest { readonly fileName: string; readonly source: string; readonly rootDir?: string; readonly targetBrowsers?: readonly string[]; readonly componentSlots?: boolean }
+export interface CompileRequest { readonly fileName: string; readonly source: string; readonly rootDir?: string; readonly targetBrowsers?: readonly string[]; readonly componentSlots?: boolean; /** Opt in to safe per-property inline style lowering (IR v2). */ readonly styleBindings?: boolean }
 
 
 import { analyze } from "./analysis.js";
