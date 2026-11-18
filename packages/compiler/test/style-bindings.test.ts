@@ -74,7 +74,9 @@ describe("opt-in IR v2 native style property lowering", () => {
   it("rejects unsafe untrusted IR v1/v2 style bindings", () => {
     const source = 'function App(){return <div style={{color: "red"}} />;}';
     const parsed = parseToIR({fileName, source, styleBindings: true}).document;
-    expect(validateIR({...parsed, irVersion: 1}).some(item => item.code === "ZC3004")).toBe(true);
+    // IR v1 retains its structural validator and fails at the version-aware lowering gate.
+    expect(validateIR({...parsed, irVersion: 1})).toEqual([]);
+    expect(compile({fileName, source}).diagnostics.some(item => item.code === "ZC2204")).toBe(true);
     const copied = structuredClone(parsed);
     const root = copied.nodes.find(node => node.kind === "StaticElement");
     expect(root?.kind).toBe("StaticElement");
