@@ -321,6 +321,9 @@ importers:
 
   packages/vite-plugin:
     dependencies:
+      postcss:
+        specifier: 8.5.32
+        version: 8.5.32
       '@zaakiyjs/compat':
         specifier: workspace:^
         version: link:../compat
