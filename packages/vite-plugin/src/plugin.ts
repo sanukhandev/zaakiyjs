@@ -315,6 +315,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         file, source, configRevision,
         styleFingerprint(brand, options.browserTargets ?? []),
         options.componentSlots === true ? "component-slots-ir2" : "ir1",
+        options.styleBindings === true ? "style-bindings-ir2" : "no-style-bindings",
         graphStamp(file)
       ]);
       const previous = modules.get(file);
