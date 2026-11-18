@@ -144,8 +144,9 @@ export function loweringDiagnostics(document: IRDocument, styleBindingsEnabled =
           error("ZC2211", "Native JSX ref callback must remain stable for the owner lifetime.", node.span);
         }
         // IR v1 remains frozen. IR v2 uses the vetted per-property DOM style ABI.
-        if (node.target === "style" && document.irVersion !== 2) {
-          error("ZC2204", "Inline styles require opt-in compiler IR v2.", node.span);
+        if (node.target === "style" && (document.irVersion !== 2 ||
+            !styleBindingsEnabled || node.name === "style")) {
+          error("ZC2204", "Inline styles require explicit safe per-property IR v2 lowering.", node.span);
         }
         break;
       case "EventBinding":
