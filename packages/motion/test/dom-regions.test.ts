@@ -50,7 +50,7 @@ describe("opt-in Motion native conditional DOM adapter",()=>{
       disposeOwner(f.owner);
     }finally{
       if(descriptor)Object.defineProperty(Element.prototype,"animate",descriptor);
-      else delete (Element.prototype as Element & {animate?: Element["animate"]}).animate;
+      else Reflect.deleteProperty(Element.prototype,"animate");
     }
   });
 
@@ -80,7 +80,7 @@ describe("opt-in Motion native conditional DOM adapter",()=>{
       disposeOwner(f.owner);
     }finally{
       if(descriptor)Object.defineProperty(Element.prototype,"animate",descriptor);
-      else delete (Element.prototype as Element & {animate?: Element["animate"]}).animate;
+      else Reflect.deleteProperty(Element.prototype,"animate");
     }
   });
 
