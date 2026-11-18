@@ -87,3 +87,8 @@ After merging Signals, Core, DOM and Compiler, the Vite bridge requires the real
 ### Named JSX slots
 
 `zaakiyPlugin({ componentSlots: true })` also enables static JSX-valued named props paired with a compiler intrinsic `<Slot name="header" />`. The slot key is validated as a static identifier and each factory is caller-owned. This is not a general runtime JSX object tree, dynamic JSX expression lowering or SSR hydration.
+
+
+## Opt-in IR v2 inline CSS properties
+
+`zaakiyPlugin({styleBindings: true})` forwards safe per-property object-style JSX lowering to Compiler and includes the option in Vite's module fingerprint. It can be used independently of `componentSlots: true`; either option selects IR v2. Default IR v1 behavior, no untrusted `style=\"...\"` attribute sink, and all existing asset manifests are preserved. See [ADR 0014](../../docs/adr/0014-inline-style-ir2.md).
