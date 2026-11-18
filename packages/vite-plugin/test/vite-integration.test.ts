@@ -157,6 +157,41 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
     }
   });
 
+  it("blocks unsupported CSS container queries in an otherwise-compatible Vite JavaScript entry", async () => {
+    const root=mkdtempSync(join(dirname(plainRoot), ".zaakiy-css-compat-"));
+    cpSync(plainRoot,root,{recursive:true});
+    try {
+      const entry=join(root,"src","index.js");
+      writeFileSync(entry, 'import "./features.css";\n'+readFileSync(entry,"utf8"));
+      writeFileSync(join(root,"src","features.css"),
+        '@container (min-width: 32rem) { .grid { display: grid; } }\n');
+      await expect(build({
+        configFile:false,root,logLevel:"silent",
+        plugins:[zaakiyPlugin({compatibility:{
+          mode:"strict",targets:{browsers:["firefox >=100"]}
+        }})],
+        build:{write:false,emptyOutDir:false}
+      })).rejects.toThrow("ZV4003");
+      const result=await build({
+        configFile:false,root,logLevel:"silent",
+        plugins:[zaakiyPlugin({compatibility:{
+          mode:"strict",targets:{browsers:["firefox >=124","safari >=17.4"]}
+        }})],
+        build:{write:false,emptyOutDir:false}
+      });
+      const output=Array.isArray(result)?result[0]:result;
+      const manifest=(output as RollupOutput).output.find(
+        x=>x.type==="asset"&&x.fileName==="compat-manifest.json"
+      );
+      const parsed=JSON.parse(String(manifest?.type==="asset"?manifest.source:"")) as {
+        detectedFeatures:Array<{id:string;status:string}>;
+      };
+      expect(parsed.detectedFeatures).toEqual(expect.arrayContaining([
+        expect.objectContaining({id:"css.container-query",status:"native"})
+      ]));
+    }finally{rmSync(root,{recursive:true,force:true});}
+  });
+
   it("rejects conflicting legacy target options and invalid compatibility profiles", async () => {
     await expect(build({
       configFile: false, root: plainRoot, logLevel: "silent",
