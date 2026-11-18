@@ -12,6 +12,7 @@ import { analyzeCompatibility, serializeManifest } from "@zaakiyjs/compat";
 import type { CompilerDiagnostic } from "@zaakiyjs/compiler";
 import { cssSourceMapComment, portableSourceFile } from "./asset-paths.js";
 import { equalStyleInputs } from "./style-inputs.js";
+import { detectEmittedCssFeatures } from "./compat-css.js";
 import type { ZaakiyAssetManifest, ZaakiyViteOptions, GeneratedAssetRecord } from "./index.js";
 import {
   assertBrowserOutput,
@@ -459,10 +460,24 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
           }
           return { fileName: entry.fileName, source: entry.code };
         }).sort((a, b) => a.fileName.localeCompare(b.fileName));
+        const cssEntries = Object.values(bundle)
+          .filter(entry => entry.type === "asset" && entry.fileName.endsWith(".css"))
+          .map(entry => ({
+            fileName: entry.fileName,
+            content: typeof entry.source === "string" ? entry.source :
+              new TextDecoder().decode(entry.source)
+          }));
+        // Zaakiy's stylesheet is emitted by this hook, after the Rollup bundle
+        // entries are enumerated, so it must be analyzed separately.
+        cssEntries.push({fileName: cssOutputFile, content: css});
+        const cssFeatures = cssEntries
+          .sort((a,b) => a.fileName.localeCompare(b.fileName))
+          .flatMap(entry => detectEmittedCssFeatures(entry.content, entry.fileName));
         const result = analyzeCompatibility({
           mode: options.compatibility.mode,
           targets: options.compatibility.targets,
-          sources: [...sourceFiles, ...bundledJs]
+          sources: [...sourceFiles, ...bundledJs],
+          cssFeatures
         });
         if (!result.ok) {
           const fatal = result.manifest.diagnostics.filter(item => item.severity === "error");
