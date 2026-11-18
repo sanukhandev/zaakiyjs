@@ -109,7 +109,7 @@ export function validateIR(value: unknown): readonly CompilerDiagnostic[] {
         if (node.target === "style" && value.irVersion === 2 && (
             !string(node.name) || node.name.length > 64 ||
             !/^(?:--[a-z][a-z0-9_-]*|-?[a-z][a-z0-9-]*)$/.test(node.name) ||
-            ["behavior", "-moz-binding", "constructor", "prototype", "style"].includes(node.name))) {
+            ["behavior", "-moz-binding", "constructor", "prototype"].includes(node.name))) {
           fail(path + " requires a safe IR v2 CSS property name.");
         }
         break;
