@@ -162,6 +162,9 @@ importers:
       '@zaakiyjs/core':
         specifier: workspace:^
         version: link:../core
+      '@zaakiyjs/dom':
+        specifier: workspace:^
+        version: link:../dom
       '@zaakiyjs/signals':
         specifier: workspace:^
         version: link:../signals
