@@ -106,7 +106,7 @@ export function validateIR(value: unknown): readonly CompilerDiagnostic[] {
         if (!string(node.name) ||
             !["property", "attribute", "class", "style"].includes(String(node.target)) ||
             !expression(node.expression)) fail(path + " has an invalid property binding.");
-        if (node.target === "style" && (value.irVersion !== 2 ||
+        if (node.target === "style" && value.irVersion === 2 && (
             !string(node.name) || node.name.length > 64 ||
             !/^(?:--[a-z][a-z0-9_-]*|-?[a-z][a-z0-9-]*)$/.test(node.name) ||
             ["behavior", "-moz-binding"].includes(node.name))) {
