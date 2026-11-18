@@ -119,7 +119,7 @@ function allocateRuntimeAliases(source: ts.SourceFile): {
 }
 
 
-export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] {
+export function loweringDiagnostics(document: IRDocument, styleBindingsEnabled = false): CompilerDiagnostic[] {
   const errors: CompilerDiagnostic[] = [];
   const error = (code: string, message: string, span: SourceSpan): void => {
     errors.push({ code, severity: "error", message, span });
