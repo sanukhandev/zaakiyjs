@@ -61,6 +61,12 @@ Any selected downlevel syntax transform or scoped shim aborts the build with `ZV
 
 This capability is intentionally narrower than the final Polyfill Zone target. Full compiler/Vite graph lowering, source-map-preserving transforms, approved ponyfill wiring and browser-target certification are separate gates.
 
+### Strict CSS evidence
+
+The same opt-in strict gate analyzes emitted CSS assets and the Zaakiy-generated stylesheet using a bounded pinned PostCSS parser. It detects CSS `:has()`, `@container` queries, nested rules/`@nest`, and `color-mix()` as semantic evidence passed to Compat's version-pinned planner. Quotes and comments are not mistaken for active CSS. Unsupported CSS features fail `ZV4003`, malformed CSS fails `ZV4011`, and excessive or unsafe CSS inputs fail `ZV4010`. No CSS polyfill or rewrite is implied. Unsupported Edge CSS target adaptation still fails closed in strict mode when evidence is present.
+
+External stylesheets loaded over HTTP or inserted at runtime are outside this check; there is no live-browser conformance guarantee from compatibility metadata alone.
+
 ## Verification
 
 ```sh
