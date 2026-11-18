@@ -127,3 +127,8 @@ This compiles a lazily mounted, caller-owned native slot factory. Each slot is s
 ### Restricted named JSX prop slots
 
 `<Panel header={<h2>Title</h2>}>...</Panel>` is supported under `componentSlots: true` when the callee inserts `<Slot name="header" />` imported from Core. The compiler extracts the JSX into a lazy caller-owned native factory. Dynamic names, duplicate names, JSX spreads and arbitrary JSX-in-props are rejected. Named slots share the one-shot lifetime semantics of default children and do not imply hydration.
+
+
+## Opt-in typed inline styles (IR v2)
+
+`compile({ fileName, source, styleBindings: true })` enables `style={{color: color.value, opacity: visible.value ? "1" : null}}` for a native element. Each statically named property is compiled into the existing `setStyle`/`bindStyle` DOM functions; changing one signal mutates only its CSS property. Default IR v1 still refuses all inline `style` JSX, including string attributes. The compiler accepts only a literal object with explicit, unique, safe CSS property names (camelCase normalized to kebab-case) and explicit string/null values. It refuses spreads, computed names, nested values, function calls, dangerous URL/expressions and implicit numeric CSS units. The DOM sink performs independent runtime value validation. See [ADR 0014](../../docs/adr/0014-inline-style-ir2.md).
