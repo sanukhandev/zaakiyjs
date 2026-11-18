@@ -328,7 +328,8 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         source,
         rootDir: resolved?.root,
         targetBrowsers: options.browserTargets,
-        componentSlots: options.componentSlots === true
+        componentSlots: options.componentSlots === true,
+        styleBindings: options.styleBindings === true
       }, compilerSession);
       for (const diagnostic of output.diagnostics) {
         const error = diagnosticError(diagnostic, file);
