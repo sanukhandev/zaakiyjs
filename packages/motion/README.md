@@ -71,3 +71,19 @@ Reduced-motion defaults to `respect`; `disable` skips and `force` overrides. The
 - Not certified: all 33 prescribed browser scenarios, heap/bundle/frame timing, production CSP/AXE, first-publication scope ownership and npm release.
 
 The package is opt-in and browser-global-free at import; there are no runtime dependencies besides `@zaakiyjs/core`.
+
+
+## Optional conditional DOM motion adapter
+
+Import `bindMotionConditionalRegion` from `@zaakiyjs/motion/dom`. It accepts the existing DOM compiler region, current owner, reactive boolean, element factory, and an explicit native Web Animations API `exit` configuration. Removed content remains attached and owned until animation completion or bounded timeout, with reentry canceling the previous exit. An aborted/disposed parent cancels the animation and cleans listeners synchronously. Reduced-motion settings are passed to the existing Motion animation controller.
+
+The adapter validates the maximum owner lifetime before installing effects and always propagates the region cancellation signal; caller-provided animation options cannot override it. It does not make Motion mandatory, change the DOM ABI, or automatically insert transitions into `<Show>`, keyed lists, portals or Router. That compiler integration still requires an ADR and separate certification.
+
+```ts
+import { bindMotionConditionalRegion } from "@zaakiyjs/motion/dom";
+const handle = bindMotionConditionalRegion(owner, region, () => visible.value, createPanel, {
+  exit: {keyframes: [{opacity: 1}, {opacity: 0}], duration: 180},
+  maxExitMs: 500
+});
+// Dispose the owner on unmount; the region handles animation cancellation.
+```
