@@ -460,13 +460,14 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
           }
           return { fileName: entry.fileName, source: entry.code };
         }).sort((a, b) => a.fileName.localeCompare(b.fileName));
-        const cssEntries = Object.values(bundle)
-          .filter(entry => entry.type === "asset" && entry.fileName.endsWith(".css"))
-          .map(entry => ({
+        const cssEntries = Object.values(bundle).flatMap(entry => {
+          if (entry.type !== "asset" || !entry.fileName.endsWith(".css")) return [];
+          return [{
             fileName: entry.fileName,
             content: typeof entry.source === "string" ? entry.source :
               new TextDecoder().decode(entry.source)
-          }));
+          }];
+        });
         // Zaakiy's stylesheet is emitted by this hook, after the Rollup bundle
         // entries are enumerated, so it must be analyzed separately.
         cssEntries.push({fileName: cssOutputFile, content: css});
