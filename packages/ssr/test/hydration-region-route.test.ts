@@ -4,6 +4,7 @@ import { flushSync, signal } from "@zaakiyjs/signals";
 import { createHydrationTransitionCoordinator } from "../src/hydration-transitions.js";
 import { hydrateRegionRoute, hydrateRegionRouteWithState } from "../src/hydration-route.js";
 import { serializeHydrationState } from "../src/hydration-state.js";
+import type { JsonHydrationValue } from "../src/hydration-state.js";
 import type { RegionHydrationPlanV2 } from "../src/hydrate-region.js";
 import type { HydrationEnvelopeV1, TrustedServerBuildManifestV1 } from "../src/protocol.js";
 
@@ -65,7 +66,7 @@ describe("H5 region hydration route transaction integration",()=>{
     const current=manager.start(routeId);
     let initialized=0,cleaned=0;
     let name=signal("not-initialized");
-    const initialize=(value:ReturnType<typeof JSON.parse>)=>{
+    const initialize=(value:JsonHydrationValue)=>{
       initialized++;
       if(!value||typeof value!=="object"||Array.isArray(value)||
         typeof (value as Record<string,unknown>).name!=="string")throw Error("invalid public state");
