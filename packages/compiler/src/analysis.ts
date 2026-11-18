@@ -263,7 +263,8 @@ export function analyze(request: CompileRequest): Analysis {
       }
       const literal = ts.isStringLiteralLike(prop.initializer) ? prop.initializer.text : null;
       if (literal !== null &&
-          /(?:url\s*\(|expression\s*\(|@import|[{}]|[\u0000-\u001f\u007f])/i.test(literal)) {
+          (/(?:url\s*\(|expression\s*\(|@import|[{}])/i.test(literal) ||
+           [...literal].some(char => char.charCodeAt(0) <= 31 || char.charCodeAt(0) === 127))) {
         report("ZC2612", "Unsafe CSS string value.", prop.initializer);
         continue;
       }
