@@ -18,6 +18,8 @@ export interface ZaakiyViteOptions {
   };
   /** Explicit IR v2 opt-in for compiled default component children slots. */
   readonly componentSlots?: boolean;
+  /** Opt-in typed, per-property inline style bindings (Compiler IR v2). */
+  readonly styleBindings?: boolean;
   /** Relative file path for the single generated CSS asset, under assets/. */
   readonly cssFileName?: string;
 }
