@@ -5,6 +5,38 @@ const MAX_CSS_CHARS = 1_048_576;
 const MAX_CSS_NODES = 100_000;
 const KNOWN_FEATURES = new Set(["css.selector-has", "css.container-query", "css.nesting", "css.color-mix"]);
 
+/** Mask quoted CSS strings (including escaped quotes) before function scanning. */
+function outsideQuotes(input: string): string {
+  let quote: string | null = null;
+  let escaped = false;
+  let result = "";
+  for (const char of input) {
+    if (escaped) {
+      result += quote ? " " : char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      result += " ";
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      if (char === quote) quote = null;
+      result += " ";
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      result += " ";
+      continue;
+    }
+    result += char;
+  }
+  return result;
+}
+
+
 /**
  * Build-only semantic CSS evidence for the existing Compat planner.
  * Parse CSS syntax rather than searching comments, quoted declarations or
