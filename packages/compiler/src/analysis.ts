@@ -244,7 +244,7 @@ export function analyze(request: CompileRequest): Analysis {
       const name = raw.startsWith("--") ? raw :
         raw.replace(/[A-Z]/g, char => "-" + char.toLowerCase());
       if (name.length > 64 || !/^(?:--[a-z][a-z0-9_-]*|-?[a-z][a-z0-9-]*)$/.test(name) ||
-          ["-moz-binding", "behavior"].includes(name) || names.has(name)) {
+          ["-moz-binding", "behavior", "constructor", "prototype", "style"].includes(name) || names.has(name)) {
         report("ZC2611", "Invalid, duplicate or forbidden CSS property name.", prop.name);
         continue;
       }
