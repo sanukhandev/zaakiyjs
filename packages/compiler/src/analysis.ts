@@ -223,6 +223,57 @@ export function analyze(request: CompileRequest): Analysis {
     return { kind: "PropertyBinding", id: idOf("PropertyBinding", span), span, name: domName, target, expression: value };
   };
 
+  // IR v2 opt-in only: convert an inspectable object into *independent* style
+  // property bindings. We never pass raw style text/objects to the DOM sink.
+  const objectStyleBindings = (attr: ts.JsxAttribute): PropertyBinding[] => {
+    const initializer = attr.initializer;
+    if (!initializer || !ts.isJsxExpression(initializer) || !initializer.expression ||
+        !ts.isObjectLiteralExpression(initializer.expression)) {
+      report("ZC2610", "Inline styles require a literal object of explicit CSS properties.", attr);
+      return [];
+    }
+    const output: PropertyBinding[] = [];
+    const names = new Set<string>();
+    for (const prop of initializer.expression.properties) {
+      if (!ts.isPropertyAssignment(prop) ||
+          !(ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name))) {
+        report("ZC2611", "Inline styles do not support spreads, computed names or accessors.", prop);
+        continue;
+      }
+      const raw = prop.name.text;
+      const name = raw.startsWith("--") ? raw :
+        raw.replace(/[A-Z]/g, char => "-" + char.toLowerCase());
+      if (name.length > 64 || !/^(?:--[a-z][a-z0-9_-]*|-?[a-z][a-z0-9-]*)$/.test(name) ||
+          ["-moz-binding", "behavior"].includes(name) || names.has(name)) {
+        report("ZC2611", "Invalid, duplicate or forbidden CSS property name.", prop.name);
+        continue;
+      }
+      names.add(name);
+      if (containsJsx(prop.initializer) || containsCall(prop.initializer) ||
+          ts.isObjectLiteralExpression(prop.initializer) ||
+          ts.isArrayLiteralExpression(prop.initializer)) {
+        report("ZC2612", "Inline style values cannot contain JSX, calls or nested objects.", prop.initializer);
+        continue;
+      }
+      if (ts.isNumericLiteral(prop.initializer) ||
+          prop.initializer.kind === ts.SyntaxKind.TrueKeyword ||
+          prop.initializer.kind === ts.SyntaxKind.FalseKeyword) {
+        report("ZC2613", "Inline styles require explicit CSS string values, not implicit numeric units.", prop.initializer);
+        continue;
+      }
+      const literal = ts.isStringLiteralLike(prop.initializer) ? prop.initializer.text : null;
+      if (literal !== null &&
+          /(?:url\s*\(|expression\s*\(|@import|[{}]|[\u0000-\u001f\u007f])/i.test(literal)) {
+        report("ZC2612", "Unsafe CSS string value.", prop.initializer);
+        continue;
+      }
+      const span = spanOf(source, prop);
+      output.push({ kind: "PropertyBinding", id: idOf("StyleProperty:" + name, span),
+        span, name, target: "style", expression: expression(prop.initializer) });
+    }
+    return output;
+  };
+
   const childrenOf = (children: ts.NodeArray<ts.JsxChild>, namespace: StaticElement["namespace"]): IRNode[] => {
     const nodes: IRNode[] = [];
     for (const child of children) {
@@ -449,6 +500,10 @@ export function analyze(request: CompileRequest): Analysis {
         continue;
       }
       const name = attr.name.getText(source);
+      if (!isComponent && name === "style" && request.styleBindings === true) {
+        attributes.push(...objectStyleBindings(attr));
+        continue;
+      }
       // Key is consumed as a stable compiler loop identity; never emit to DOM.
       if (inKeyedLoop && name === "key") continue;
       if (request.componentSlots && isComponent && attr.initializer &&
