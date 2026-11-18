@@ -97,7 +97,7 @@ function compileWithDiagnostics(
     : [];
   const diagnostics = [
     ...parsed.diagnostics,
-    ...loweringDiagnostics(ir),
+    ...loweringDiagnostics(ir, request.styleBindings === true),
     ...getDiagnostics(request, parsed),
     ...compatibilityDiagnostics
   ];
