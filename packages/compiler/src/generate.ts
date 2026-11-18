@@ -59,6 +59,8 @@ interface AbiAliases {
   readonly bindProperty: string;
   readonly bindAttribute: string;
   readonly bindClass: string;
+  readonly setStyle: string;
+  readonly bindStyle: string;
   readonly bindMountedRef: string;
   readonly createOwnedNativeSlot: string;
   readonly mountOwnedSlot: string;
@@ -98,6 +100,8 @@ function allocateRuntimeAliases(source: ts.SourceFile): {
       bindProperty: free("__zBindProperty"),
       bindAttribute: free("__zBindAttribute"),
       bindClass: free("__zBindClass"),
+      setStyle: free("__zSetStyle"),
+      bindStyle: free("__zBindStyle"),
       bindMountedRef: free("__zBindMountedRef"),
       createOwnedNativeSlot: free("__zCreateOwnedNativeSlot"),
       mountOwnedSlot: free("__zMountOwnedSlot"),
@@ -139,10 +143,9 @@ export function loweringDiagnostics(document: IRDocument): CompilerDiagnostic[] 
         if (node.name === "ref" && node.expression.reactive) {
           error("ZC2211", "Native JSX ref callback must remain stable for the owner lifetime.", node.span);
         }
-        // Class and attribute updates use the existing vetted DOM bindings.
-        // Inline style remains unsupported pending a safe per-property contract.
-        if (node.target === "style") {
-          error("ZC2204", "Inline style JSX requires a safe per-property style ABI; DOM v1 rejects style attributes.", node.span);
+        // IR v1 remains frozen. IR v2 uses the vetted per-property DOM style ABI.
+        if (node.target === "style" && document.irVersion !== 2) {
+          error("ZC2204", "Inline styles require opt-in compiler IR v2.", node.span);
         }
         break;
       case "EventBinding":
@@ -229,6 +232,17 @@ class Builder {
   private attribute(el: string, node: PropertyBinding): void {
     const resolved = this.resolveExpression(node.expression.source, node.expression.reactive);
     const expr = "(" + resolved.source + ")";
+    if (node.target === "style") {
+      if (resolved.reactive) {
+        this.push(this.abi.bindStyle + "(" + this.owner + ", " + el + ", " +
+          jsLiteral(node.name) + ", () => " + expr + ");", node.expression.span);
+      } else {
+        const value = this.variable("style_value");
+        this.push("const " + value + " = " + expr + ";");
+        this.push(this.abi.setStyle + "(" + el + ", " + jsLiteral(node.name) + ", " + value + ");", node.span);
+      }
+      return;
+    }
     if (node.name === "ref") {
       const reference = this.variable("ref");
       this.push("const " + reference + " = " + expr + ";", node.expression.span);
@@ -519,6 +533,18 @@ export function emitJavaScript(request: CompileRequest, analysis: Analysis,
       ["bindConditionalRegion", aliases.bindConditionalRegion],
       ["bindKeyedRegion", aliases.bindKeyedRegion]
     ];
+    const containsStyle = (nodes: readonly IRNode[]): boolean => nodes.some(node => {
+      if (node.kind === "PropertyBinding" && node.target === "style") return true;
+      if (node.kind === "StaticElement") return containsStyle(node.children);
+      if (node.kind === "ConditionalBlock") return containsStyle(node.whenTrue) || containsStyle(node.whenFalse);
+      if (node.kind === "KeyedLoop") return containsStyle(node.body);
+      if (node.kind === "ComponentCall") return containsStyle(node.children ?? []) ||
+        (node.slots?.some(slot => containsStyle(slot.children)) ?? false);
+      return false;
+    });
+    if (containsStyle(optimized.nodes)) {
+      domBindings.push(["setStyle", aliases.setStyle], ["bindStyle", aliases.bindStyle]);
+    }
     // Keep old compiled consumers ABI-compatible: only ref-using modules
     // import the new opt-in helper, never unrelated TSX modules.
     if (containsRef(optimized.nodes)) {
