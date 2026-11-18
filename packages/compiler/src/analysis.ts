@@ -574,6 +574,6 @@ export function analyze(request: CompileRequest): Analysis {
     sourceFile: source,
     roots,
     diagnostics,
-    document: { irVersion: request.componentSlots ? 2 : 1, sourceFile: fileName, nodes: [...roots.values()] }
+    document: { irVersion: request.componentSlots || request.styleBindings ? 2 : 1, sourceFile: fileName, nodes: [...roots.values()] }
   };
 }
