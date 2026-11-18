@@ -105,7 +105,7 @@ describe("opt-in Motion native conditional DOM adapter",()=>{
     });
     expect(f.host.querySelector("button")).not.toBeNull();
     f.shown.value=false;flushSync();
-    await Promise.resolve();await Promise.resolve();await Promise.resolve();
+    await flushExitSettlements();
     expect(f.host.querySelector("button")).toBeNull();
     binding.dispose();
     disposeOwner(f.owner);
