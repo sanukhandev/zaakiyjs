@@ -12,7 +12,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { pathToFileURL } from "node:url";
 
-type CompileFunction = (input: { fileName: string; source: string }) => {
+type CompileFunction = (input: { fileName: string; source: string; styleBindings?: boolean }) => {
   diagnostics: readonly { severity: string; message: string }[];
   js: readonly { code: string }[];
 };
@@ -24,6 +24,54 @@ const packageRoot = basename(cwd) === "dom" && basename(dirname(cwd)) === "packa
 afterEach(() => document.body.replaceChildren());
 
 describe("generated TypeScript/TSX DOM integration", () => {
+  it.skipIf(typeof compile !== "function")(
+    "compiles opt-in IR v2 styles to focused native CSS writes and releases the owner",
+    async () => {
+      const folder = mkdtempSync(join(packageRoot, "test", ".generated-styles-"));
+      try {
+        const fileName = join(folder, "styled.tsx");
+        const source = [
+          'import { signal } from "@zaakiyjs/signals";',
+          "export function Styled() {",
+          '  const color = signal("red");',
+          '  return <main style={{color: color.value, backgroundColor: "blue"}}>',
+          '    <button type="button" onClick={() => color.value = "green"}>Toggle</button>',
+          "  </main>;",
+          "}"
+        ].join("\n");
+        const compiled = compile!({fileName, source, styleBindings: true});
+        expect(compiled.diagnostics.filter(item => item.severity === "error")).toEqual([]);
+        expect(compiled.js).toHaveLength(1);
+        const js = compiled.js[0]?.code ?? "";
+        expect(js).toContain("bindStyle");
+        expect(js).toContain("setStyle");
+        const generated = join(folder, "styled.mjs");
+        writeFileSync(generated, js);
+        const module = await import(pathToFileURL(generated).href) as {
+          Styled: () => Node;
+        };
+        const host = document.createElement("div");
+        document.body.append(host);
+        const app = mount(() => module.Styled(), host);
+        const main = host.querySelector("main");
+        const button = host.querySelector("button");
+        expect(main?.style.getPropertyValue("color")).toBe("red");
+        expect(main?.style.getPropertyValue("background-color")).toBe("blue");
+        const text = button?.firstChild;
+        button?.click();
+        flushSync();
+        expect(host.querySelector("main")).toBe(main);
+        expect(main?.style.getPropertyValue("color")).toBe("green");
+        expect(main?.style.getPropertyValue("background-color")).toBe("blue");
+        expect(button?.firstChild).toBe(text);
+        app.dispose();
+        expect(host.childNodes).toHaveLength(0);
+      } finally {
+        rmSync(folder, {recursive: true, force: true});
+      }
+    }
+  );
+
   it.skipIf(typeof compile !== "function")(
     "compiles an executable Counter and mutates only its bound text",
     async () => {
