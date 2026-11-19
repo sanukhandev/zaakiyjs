@@ -4,7 +4,6 @@ import {resolve, join, posix} from "node:path";
 import {CliError, parseArgs, assertOptions, flagOption, valueOption} from "./args.js";
 import {diagnoseProject} from "./doctor.js";
 import {analyzeBundle} from "./analyze.js";
-import {auditSeoFile} from "./seo-audit.js";
 import {generateFiles, supportedGenerators} from "./generators.js";
 import {safeRelativePath, validateProjectName} from "./fs-safe.js";
 import {assertFrameworkReady, getInstalledVersions, parsePreset, scaffoldProject, type Versions} from "./scaffold.js";
@@ -209,6 +208,9 @@ export async function runCli(argv: readonly string[], io?: Partial<CliIO>): Prom
         throw new CliError("SEO_UNAVAILABLE", "Supported command: seo audit <file.json>. Other SEO commands remain deferred.");
       }
       await ensureProjectDirectory(root);
+      // Load the SEO adapter only for this command. The packed CLI must be able
+      // to print --help/--version before optional runtime dependencies are installed.
+      const {auditSeoFile} = await import("./seo-audit.js");
       const report = await auditSeoFile(root, args.positionals[1]);
       if (flagOption(args.options, "json")) {
         out(JSON.stringify(report, null, 2) + "\n");
