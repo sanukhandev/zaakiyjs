@@ -19,8 +19,8 @@ export interface JavaScriptTransformResult {
  * Never evaluate input code or execute model-generated passes.
  */
 export function transformEmittedJavaScriptWithMap(request: JavaScriptTransformRequest): JavaScriptTransformResult {
-  if (!/\\.([cm]?js)$/.test(request.fileName) ||
-      request.fileName.startsWith("/") || request.fileName.includes("\\\\") ||
+  if (!/\.([cm]?js)$/.test(request.fileName) ||
+      request.fileName.startsWith("/") || request.fileName.includes("\\") ||
       request.fileName.split("/").some(segment => segment === ".." || segment === ".")) {
     throw new TypeError("Compatibility transforms require a safe relative emitted JavaScript filename.");
   }
@@ -52,7 +52,7 @@ export function transformEmittedJavaScriptWithMap(request: JavaScriptTransformRe
   });
   const errors = result.diagnostics?.filter(issue => issue.category === ts.DiagnosticCategory.Error) ?? [];
   if (errors.length) throw new TypeError("Approved compatibility transform rejected input: " +
-    ts.flattenDiagnosticMessageText(errors[0]!.messageText, "\\n"));
+    ts.flattenDiagnosticMessageText(errors[0]!.messageText, "\n"));
   if (!result.sourceMapText) throw new TypeError("Approved compatibility transform omitted its source map.");
   const map: unknown = JSON.parse(result.sourceMapText);
   if (!map || typeof map !== "object" || Array.isArray(map)) throw new TypeError("Invalid generated source map.");
@@ -64,7 +64,7 @@ export function transformEmittedJavaScriptWithMap(request: JavaScriptTransformRe
   }
   // Vite/Rollup owns the final sourceMappingURL and chains this map to the
   // already-produced compiler TSX source maps. Do not emit an obsolete comment.
-  const code = result.outputText.replace(/\\n?\\/\\/# sourceMappingURL=[^\\n]*\\s*$/, "");
+  const code = result.outputText.replace(/\n?\/\/# sourceMappingURL=[^\n]*\s*$/, "");
   return { code, map: result.sourceMapText };
 }
 
