@@ -43,7 +43,7 @@ The compiler lowers this supported pattern to owner-scoped native nodes and a te
 
 - The IR schema is versioned; introducing incompatible nodes requires a coordinated ADR and ABI tests.
 - Unknown calls in reactive expressions are conservatively rejected when purity cannot be proven.
-- JSX spreads, arbitrary component children, component refs, reactive ref replacement, dynamic classes/styles and general hydration remain unsupported. Native element callback refs use an opt-in connected-mount helper on the hardening branch.
+- Dynamic/unsafe JSX spreads, arbitrary component children, component refs, reactive ref replacement, dynamic classes/styles and general hydration remain unsupported. Native element callback refs use an opt-in connected-mount helper on the hardening branch.
 
 ## Public API index
 
@@ -182,6 +182,12 @@ Keyed component-root templates are supported when each varying item prop is a si
 - [Public exports](https://github.com/sanukhandev/zaakiyjs/blob/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/compiler/src/index.ts)
 - [Package tests](https://github.com/sanukhandev/zaakiyjs/tree/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/compiler/test) (some packages use `tests/`)
 - Update this guide in the same PR that changes public APIs, compiler/DOM behavior, security rules or feature support.
+
+### Finite literal JSX spread attributes
+
+The compiler supports a strictly bounded inline object-literal subset such as `<input {...{id:"email", type:"email", disabled:false}} />`. Statically known primitive attributes compile directly into native IR v1 bindings without allocating a runtime spread object. Explicit/native attribute duplicates are rejected. Dynamic variables, computed keys, calls, event handlers, URLs, classes/styles, raw HTML and unsafe sinks remain rejected with `ZC1002` / `ZC2510`–`ZC2513`.
+
+This is not unrestricted JavaScript spread semantics. Browser correctness, source maps and disposal remain subject to the existing compiler and DOM acceptance gates.
 
 ### Connected native JSX refs (integration branch)
 
