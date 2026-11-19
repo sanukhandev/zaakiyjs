@@ -47,6 +47,15 @@ with sync_playwright() as runtime:
         browser.close()
 PY
 }
+# Ubuntu 24.04 hosted runners can omit WebKit's libevent SONAME while
+# chromium/firefox still launch. Install this known native prerequisite first,
+# avoiding a broad apt install-deps invocation that can stall on slow mirrors.
+# Fail closed: fallback below still probes every real browser and reports errors.
+if [ -f "$HOME/.cache/ms-playwright/webkit-2370/minibrowser-wpe/bin/MiniBrowser" ] && \
+   ldd "$HOME/.cache/ms-playwright/webkit-2370/minibrowser-wpe/bin/MiniBrowser" 2>/dev/null | grep -q 'libevent-2.1.so.7 => not found'; then
+  echo "WebKit requires libevent-2.1.so.7 on Ubuntu 24.04; installing pinned OS library" >&2
+  timeout --signal=TERM --kill-after=10s 120s sudo apt-get install -y --no-install-recommends libevent-2.1-7t64
+fi
 for engine in chromium firefox webkit; do
   if probe "$engine"; then
     continue
