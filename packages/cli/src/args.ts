@@ -3,7 +3,7 @@ export interface ParsedArgs {
   positionals: string[];
   options: Record<string, string | boolean>;
 }
-const valueFlags = new Set(["project", "template", "architecture", "path", "package-manager", "cwd"]);
+const valueFlags = new Set(["project", "template", "architecture", "path", "target", "package-manager", "cwd"]);
 const booleanFlags = new Set(["dry-run", "force", "workspace", "json", "help", "version"]);
 export class CliError extends Error {
   constructor(public readonly code: string, message: string, public readonly exitCode = 1) {
