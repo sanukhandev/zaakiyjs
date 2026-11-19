@@ -64,7 +64,7 @@ describe("H4 compiler -> SSR module -> browser adopted reactive DOM",()=>{
       read:path=>state.value[path[0] as keyof typeof state.value]
     })).toThrow(/mismatch/i);
     container.remove();
-  });
+  }, 30_000); // 4,097-row jsdom hydration workload; performance is gated separately by CI benchmarks.
 
   it("hydrates nested keyed lists with duplicate child keys across distinct parent owners",async()=>{
     const nestedSource=[
