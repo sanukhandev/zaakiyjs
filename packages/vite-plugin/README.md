@@ -77,6 +77,25 @@ zaakiyPlugin({
 
 This does not add unapproved global polyfills, CSS feature rewrites, or general browser API emulation. The default strict mode continues to reject a needed transform if the opt-in is absent. Actual browser conformance and source-map spot checks remain release gates.
 
+## Compatibility mode selection (off / auto / strict)
+
+The Vite integration now exposes the existing `@zaakiyjs/compat` policy modes:
+
+- **off:** explicitly turns off build-time compatibility analysis/rewrites. A disabled, versioned `compat-manifest.json` is emitted to avoid falsely claiming browser support. General compiler and browser-graph security checks remain active. `syntaxTransforms` is rejected in this mode.
+- **auto:** selects only the pinned, approved TypeScript ES2019 syntax lowering when demanded by declared browser targets, chains a version-3 source map, and rechecks emitted JavaScript. Unsupported web APIs or required unapproved shims **fail the build**, rather than shipping an incompatible asset.
+- **strict:** retains the existing conservative behavior. A needed syntax transform requires explicit `syntaxTransforms: "approved-es2019"`; all unresolved requirements fail.
+
+```ts
+zaakiyPlugin({
+  compatibility: {
+    mode: "auto",
+    targets: {browsers: ["safari >=13.1"]}
+  }
+})
+```
+
+This covers only the currently approved JavaScript syntax subset. It does **not** install global polyfills or certify dynamic APIs, external scripts, arbitrary CSS compatibility or the real-browser target matrix. Read and retain the manifest limitations; publish only after independent browser verification.
+
 ## Verification
 
 ```sh
