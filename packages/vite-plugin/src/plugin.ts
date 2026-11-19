@@ -8,7 +8,7 @@ import {
 } from "vite";
 import type { ExtractedStyleToken, StyleConfig } from "@zaakiyjs/styles";
 import { createCompilerSession, type CompilerSession } from "@zaakiyjs/compiler";
-import { analyzeCompatibility, serializeManifest } from "@zaakiyjs/compat";
+import { analyzeCompatibility, serializeManifest, transformEmittedJavaScriptWithMap } from "@zaakiyjs/compat";
 import type { CompilerDiagnostic } from "@zaakiyjs/compiler";
 import { cssSourceMapComment, portableSourceFile } from "./asset-paths.js";
 import { equalStyleInputs } from "./style-inputs.js";
@@ -423,6 +423,32 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       compilerSession = undefined;
     },
 
+    renderChunk(code, chunk) {
+      if (!buildMode || options.compatibility?.syntaxTransforms !== "approved-es2019") return null;
+      const targets = options.compatibility.targets;
+      const input = analyzeCompatibility({
+        mode: "strict", targets, sources: [{fileName: chunk.fileName, source: code}]
+      });
+      if (!input.ok) {
+        this.error("ZV4003: Strict compatibility rejected the final JS chunk " + chunk.fileName);
+      }
+      if (input.manifest.shims.length) {
+        this.error("ZV4004: A required shim cannot be introduced implicitly into the browser runtime.");
+      }
+      if (!input.manifest.transforms.length) return null;
+      const result = transformEmittedJavaScriptWithMap({
+        fileName: chunk.fileName, code, manifest: input.manifest
+      });
+      if (!result.map) this.error("ZV4006: Approved transform omitted its composable source map.");
+      const checked = analyzeCompatibility({
+        mode: "strict", targets, sources: [{fileName: chunk.fileName, source: result.code}]
+      });
+      if (!checked.ok || checked.manifest.transforms.length || checked.manifest.shims.length) {
+        this.error("ZV4006: Emitted JavaScript still requires unsupported compatibility work.");
+      }
+      return result;
+    },
+
     async generateBundle(_output, bundle) {
       if (!buildMode) return;
       await collectCss(true);
@@ -467,9 +493,23 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
           this.error("ZV4003: Strict compatibility analysis failed: " +
             fatal.slice(0, 5).map(item => item.code + " " + item.message).join("; "));
         }
-        if (result.manifest.transforms.length || result.manifest.shims.length) {
+        const hasApprovedTransform = options.compatibility.syntaxTransforms === "approved-es2019";
+        if (result.manifest.shims.length || (result.manifest.transforms.length && !hasApprovedTransform)) {
           this.error("ZV4004: Compatibility transformations or scoped shims are required but " +
             "the active Vite compiler pipeline has not certified their application and source maps.");
+        }
+        if (hasApprovedTransform) {
+          // All final chunks must be compatible after renderChunk, regardless of
+          // whether Rollup/esbuild or the approved TypeScript pass did the lowering.
+          const emitted = analyzeCompatibility({
+            mode: "strict", targets: options.compatibility.targets, sources: bundledJs
+          });
+          if (!emitted.ok || emitted.manifest.transforms.length || emitted.manifest.shims.length) {
+            this.error("ZV4006: Final emitted JavaScript is not compatible with the declared targets.");
+          }
+          if (result.manifest.transforms.some(item => item.id !== "typescript-5.9.3-es2019")) {
+            this.error("ZV4006: An unapproved syntax transform was requested.");
+          }
         }
         this.emitFile({ type: "asset", fileName: "compat-manifest.json",
           source: serializeManifest(result.manifest) });
