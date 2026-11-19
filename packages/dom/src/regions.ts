@@ -17,8 +17,20 @@ export function createRegion(parent: Node, before: Node | null = null): DomRegio
   const doc = parent.ownerDocument ?? (parent as Document);
   const start = doc.createComment("zaakiy-region:start");
   const end = doc.createComment("zaakiy-region:end");
+  // A thrown second insertion (including externally instrumented hosts) must
+  // not leave an unpaired anchor that later owner disposal could mistake for
+  // a valid region. Keep the original exception unless rollback also fails.
   parent.insertBefore(start, before);
-  parent.insertBefore(end, before);
+  try {
+    parent.insertBefore(end, before);
+  } catch (error) {
+    try {
+      if (start.parentNode === parent) parent.removeChild(start);
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError], "DOM region anchor rollback failed");
+    }
+    throw error;
+  }
   return { parent, start, end };
 }
 
