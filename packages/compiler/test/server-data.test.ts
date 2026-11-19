@@ -54,6 +54,17 @@ describe("read-only loaderData TSX server target", () => {
     }
   });
 
+  it("rejects textarea hydration until HTML raw-text markers are supported", () => {
+    const tsx = 'function Page(props:{text:string}){return <main><textarea>{props.text}</textarea></main>;}';
+    const hydratable = compileDataServer({fileName, routeId:"product", source:tsx, hydratable:true});
+    expect(hydratable.js).toHaveLength(0);
+    expect(hydratable.diagnostics.some(item => item.severity === "error")).toBe(true);
+    // Nonhydrated data SSR must remain supported for the same ordinary HTML.
+    const staticData = compileDataServer({fileName, routeId:"product", source:tsx});
+    expect(staticData.diagnostics.filter(item => item.severity === "error")).toEqual([]);
+    expect(staticData.js).toHaveLength(1);
+  });
+
   it("rejects malformed routes and huge generated input", () => {
     expect(compileDataServer({ fileName, routeId: "../private", source }).js).toHaveLength(0);
     expect(compileDataServer({ fileName, routeId: "product", source: source + " ".repeat(256 * 1024) }).js).toHaveLength(0);
