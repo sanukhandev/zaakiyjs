@@ -20,6 +20,9 @@ jobs:
   production-comparison:
     name: benchmark / react-vs-frozen-main-vs-pr
     runs-on: ubuntu-24.04
+    # Pinned Playwright image includes WebKit's native libraries; no apt mirror dependency.
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.64.1-noble
     timeout-minutes: 60
     steps:
       - name: Checkout candidate
