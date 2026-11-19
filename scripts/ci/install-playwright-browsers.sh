@@ -29,29 +29,33 @@ if [ "$downloaded" -ne 1 ]; then
   exit 1
 fi
 
-# Validate actual browser processes, not just downloaded executable paths.
+# Validate each real browser process. Only install OS libraries for an engine
+# that demonstrably cannot launch on the pinned runner image.
 probe() {
-  python3 - <<'PY'
+  local engine="$1"
+  PLAYWRIGHT_ENGINE="$engine" timeout --signal=TERM --kill-after=5s 35s python3 - <<'PY'
+import os
 from playwright.sync_api import sync_playwright
-with sync_playwright() as browser_runtime:
-    for name in ("chromium", "firefox", "webkit"):
-        browser = getattr(browser_runtime, name).launch(headless=True)
+name = os.environ["PLAYWRIGHT_ENGINE"]
+with sync_playwright() as runtime:
+    browser = getattr(runtime, name).launch(headless=True)
+    try:
         page = browser.new_page()
         assert page.evaluate("() => 2 + 2") == 4, name
-        browser.close()
         print("PASS: native " + name + " launched and executed JavaScript")
+    finally:
+        browser.close()
 PY
 }
-if probe; then
-  echo "PASS: All three pinned Playwright browsers launched without OS dependency installation"
-  exit 0
-fi
-
-echo "Browser launch failed; installing missing OS dependencies with the pinned Playwright installer" >&2
-timeout --signal=TERM --kill-after=10s 900s python3 -m playwright install-deps chromium firefox webkit
-if probe; then
-  echo "PASS: All three pinned Playwright browsers launched after OS dependency installation"
-  exit 0
-fi
-echo "ERROR: Native browsers could not be launched, so certification is blocked" >&2
-exit 1
+for engine in chromium firefox webkit; do
+  if probe "$engine"; then
+    continue
+  fi
+  echo "Native $engine needs OS dependencies; installing only its pinned requirements" >&2
+  timeout --signal=TERM --kill-after=10s 850s python3 -m playwright install-deps "$engine"
+  if ! probe "$engine"; then
+    echo "ERROR: Native $engine cannot launch; certification blocked" >&2
+    exit 1
+  fi
+done
+echo "PASS: Chromium, Firefox and WebKit all launched and executed JavaScript"
