@@ -43,7 +43,7 @@ disposeOwner(owner);
 
 ## Usage and correctness guidelines
 
-- The caller owns DOM removal; presence exit is not yet automatically integrated with compiler region teardown.
+- Compiler conditional regions can opt into `bindExitAwareConditionalRegion` with `createConditionalExitAnimation`; automatic keyed/portal exit hooks remain pending. The DOM owner still controls physical removal.
 - Reduced-motion preferences must be respected; manual overrides should be an explicit app decision.
 - Router transition helpers are not an installed routing hook, and browser support needs real target verification.
 
@@ -53,6 +53,7 @@ Exported symbols detected in the package root `src/index.ts`. Platform-specific 
 
 - `AnimationHandle`
 - `AnimationReducedMotionPolicy`
+- `ConditionalExitAnimationOptions`
 - `ElementAnimationOptions`
 - `GestureController`
 - `GestureEvent`
@@ -84,6 +85,7 @@ Exported symbols detected in the package root `src/index.ts`. Platform-specific 
 - `animateLayout`
 - `animateOwned`
 - `captureLayout`
+- `createConditionalExitAnimation`
 - `createGestures`
 - `createPresence`
 - `createSpring`
@@ -152,7 +154,7 @@ Reduced-motion defaults to `respect`; `disable` skips and `force` overrides. The
 
 ### Known integration gaps and release blockers
 
-- Current `@zaakiyjs/dom/compiler` lacks public pre-removal defer/commit hooks. `createPresence` cannot delay compiler region teardown safely; the adapter must be specified and implemented separately without editing private region state.
+- Compiler DOM now provides an opt-in `bindExitAwareConditionalRegion` pre-removal protocol, and `createConditionalExitAnimation` adapts its cancellation signal to WAAPI. Keyed-loop, portal and routed exit orchestration remains to be certified.
 - Router has no public DOM-commit transition interception contract. `@zaakiyjs/motion/route` is a transport-neutral helper, **not** an installed Router adapter. Never run before guards, loaders and authorization succeed.
 - `animateKeyedMoves` requires the caller to capture element positions before the compiler's reorder and invoke it after. No private keyed ABI access or automatic hooks.
 - Native WAAPI, View Transitions, CSS individual transforms, IntersectionObserver and Pointer Events need Chromium, Firefox and WebKit compatibility verification. Unsupported WAAPI skips, and View Transitions fall back to committing without animation.
