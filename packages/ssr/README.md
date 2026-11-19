@@ -25,6 +25,12 @@ const response = await handler.handle(new Request("https://app.example.test/"), 
 });
 ```
 
+## Opt-in compiler-region route hydration (H4/H5 subset)
+
+The browser-safe `@zaakiyjs/ssr/client` entry now exports `hydrateRegionRoute(container, plan, envelope, manifest, transaction, bindings)`. It combines the existing compiler-generated `zaakiy.region-hydration/2` preflight/native-node adoption with the H5 navigation transaction. The public Router must first match the route and finish guards/loaders. Pass a transaction from `createHydrationTransitionCoordinator().start(matchedRouteId)`; a stale or aborted transaction cannot commit, and subsequent navigation aborts its attached listeners and reactive owner.
+
+This is **not** unrestricted TSX hydration, automatic route matching, streaming component hydration, or an alternate JSX interpreter. It preserves the existing ABI, element/keyed identity and default fail-closed mismatch policy. Do not pass untrusted compiler plans, manually fabricated digests or arbitrary HTML.
+
 ## Implemented/blocked matrix
 
 | Capability | State |
