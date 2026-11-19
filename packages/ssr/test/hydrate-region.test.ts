@@ -2,6 +2,8 @@
 import { describe, expect, it } from "vitest";
 import { flushSync, signal } from "@zaakiyjs/signals";
 import { hydrateRegionPage } from "../src/hydrate-region.js";
+import { hydrateRegionRoute } from "../src/hydration-route.js";
+import { createHydrationTransitionCoordinator } from "../src/hydration-transitions.js";
 import type { RegionHydrationPlanV2 } from "../src/hydrate-region.js";
 import type { HydrationEnvelopeV1, TrustedServerBuildManifestV1 } from "../src/protocol.js";
 
@@ -99,6 +101,38 @@ describe("H4 compiler-region client adoption", () => {
     again.dispose();
     container.remove();
   });
+  it("transactionally adopts keyed/conditional SSR regions; stale navigation cannot attach listeners", () => {
+    const coordinator = createHydrationTransitionCoordinator();
+    const container = fixture();
+    document.body.append(container);
+    const rowButtons = [...container.querySelectorAll("button")];
+    const html = container.innerHTML;
+    const before = coordinator.start(routeId);
+    const active = coordinator.start(routeId);
+    const read = (path: readonly string[]) => state()[path[0] as keyof ReturnType<typeof state>];
+    let clicks = 0;
+    expect(() => hydrateRegionRoute(container, plan, envelope, manifest, before, {
+      read, events: [{elementId: rowId + ":b", name: "click", handler: () => { clicks++; }}]
+    })).toThrow(/Stale or aborted hydration transaction/);
+    expect(container.innerHTML).toBe(html);
+    const handle = hydrateRegionRoute(container, plan, envelope, manifest, active, {
+      read, events: [{elementId: rowId + ":b", name: "click", handler: () => { clicks++; }}]
+    });
+    expect(container.querySelectorAll("button")[1]).toBe(rowButtons[1]);
+    rowButtons[1]!.click();
+    expect(clicks).toBe(1);
+    const next = coordinator.start("other");
+    expect(next.current).toBe(true);
+    rowButtons[1]!.click();
+    expect(clicks).toBe(1);
+    expect(container.innerHTML).toBe(html);
+    expect(() => hydrateRegionRoute(container, plan, envelope, manifest, next, {read}))
+      .toThrow(/route mismatch/);
+    handle.dispose();
+    coordinator.dispose();
+    container.remove();
+  });
+
   it("hydrates compiler-declared keyed JSX events with stable owner cleanup", () => {
     const container=fixture();
     const rows=state();
