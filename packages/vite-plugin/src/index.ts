@@ -8,14 +8,14 @@ export interface ZaakiyViteOptions {
   readonly exclude?: readonly string[];
   readonly cssVirtualId?: string;
   readonly browserTargets?: readonly string[];
-  /** Opt-in TSX-source and final-JS strict browser feature analysis; emits compat-manifest.json.
+  /** Opt-in TSX-source and final-JS browser feature analysis; emits compat-manifest.json.
    * This is NOT full CSS/dynamic-API certification and will reject transforms/shims
    * until verified source maps and runtime integration are implemented.
    */
   readonly compatibility?: {
-    readonly mode: "strict";
+    readonly mode: "off" | "auto" | "strict";
     readonly targets: TargetConfiguration;
-    /** Explicit opt-in: TypeScript 5.9.3 ES2019 transforms final JS chunks with chained maps. */
+    /** Strict opt-in: TypeScript 5.9.3 ES2019 transform with chained maps. Auto selects this approved transform when needed; off never transforms. */
     readonly syntaxTransforms?: "approved-es2019";
   };
   /** Explicit IR v2 opt-in for compiled default component children slots. */
