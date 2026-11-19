@@ -190,6 +190,55 @@ describe("H4 compiler-backed region SSR target", () => {
     expect(html).toContain("<p>Body</p>");
     expect(html).not.toContain("<Slot");
   });
+  it("rejects textarea text markers in region SSR plans", () => {
+    const tsx='function Page(props:{text:string}){return <main><textarea>{props.text}</textarea></main>;}';
+    const result=build(tsx);
+    expect(result.js).toHaveLength(0);
+    expect(result.diagnostics.some(item => item.code === "ZSSR4001")).toBe(true);
+  });
+
+  it("propagates caller-owned named slots through conditional fallback", async () => {
+    const source=[
+      'import { Slot } from "@zaakiyjs/core";',
+      'function Panel(props:{show:boolean;header?:unknown}) { return <article>{props.show ? <p>Visible</p> : <Slot name="header" />}</article>; }',
+      'function Page(props:{show:boolean;title:string}) { return <main><Panel show={props.show} header={<h2>{props.title}</h2>} /></main>; }'
+    ].join("\n");
+    const compiled=compileRegionServer({fileName,routeId:"products",source,componentSlots:true});
+    expect(compiled.diagnostics.filter(item => item.severity === "error")).toEqual([]);
+    expect(compiled.js).toHaveLength(1);
+    const server=await import("data:text/javascript;base64,"+
+      Buffer.from(compiled.js[0]!.code).toString("base64"));
+    const context=(show:boolean)=>({
+      schema:"zaakiy.render/1",route:{id:"products"},
+      request:{signal:{aborted:false}},loaderData:{show,title:"Fallback <safe>"}
+    });
+    const fallback:string=server.render(context(false)).body;
+    expect(fallback).toContain("<h2>");
+    expect(fallback).toContain("Fallback &lt;safe&gt;");
+    expect(fallback).not.toContain("<Slot");
+    const visible:string=server.render(context(true)).body;
+    expect(visible).toContain("<p>Visible</p>");
+  });
+
+  it("propagates named slots through keyed row conversion", async () => {
+    const source=[
+      'import { Slot } from "@zaakiyjs/core";',
+      'function Panel(props:{rows:{id:string}[];header?:unknown}) { return <ul>{props.rows.map(item=><li key={item.id}><Slot name="header" /></li>)}</ul>; }',
+      'function Page(props:{rows:{id:string}[];title:string}) { return <main><Panel rows={props.rows} header={<span>{props.title}</span>} /></main>; }'
+    ].join("\n");
+    const compiled=compileRegionServer({fileName,routeId:"products",source,componentSlots:true});
+    expect(compiled.diagnostics.filter(item => item.severity === "error")).toEqual([]);
+    expect(compiled.js).toHaveLength(1);
+    const server=await import("data:text/javascript;base64,"+
+      Buffer.from(compiled.js[0]!.code).toString("base64"));
+    const html:string=server.render({
+      schema:"zaakiy.render/1",route:{id:"products"},
+      request:{signal:{aborted:false}},
+      loaderData:{rows:[{id:"a"},{id:"b"}],title:"Repeated"}
+    }).body;
+    expect((html.match(/<span>Repeated<\/span>/g)??[]).length).toBe(2);
+  });
+
   it("rejects unresolved slot outlets rather than rendering an empty fallback",()=>{
     const source=[
       'import { Slot } from "@zaakiyjs/core";',
