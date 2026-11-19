@@ -122,6 +122,9 @@ jobs:
       matrix:
         browser: [chromium, firefox, webkit]
     runs-on: ubuntu-24.04
+    # Use image-pinned browser libraries; avoid missing libevent/apt mirrors.
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.64.1-noble
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
@@ -215,6 +218,9 @@ jobs:
     name: h4 / 100-cycle owner cleanup across three browsers
     needs: [compile-references]
     runs-on: ubuntu-24.04
+    # Use image-pinned browser libraries; avoid missing libevent/apt mirrors.
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.64.1-noble
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
