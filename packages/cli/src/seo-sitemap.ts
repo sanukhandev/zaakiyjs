@@ -54,8 +54,8 @@ function readEntry(value: unknown): SitemapEntry {
       !Number.isFinite(value.priority) || value.priority < 0 || value.priority > 1)) {
     throw new CliError("SEO_SITEMAP_INPUT", "Invalid sitemap priority");
   }
-  if (value.status !== undefined && (!Number.isInteger(value.status) ||
-      typeof value.status !== "number" || value.status < 100 || value.status > 599)) {
+  if (value.status !== undefined && (typeof value.status !== "number" || !Number.isInteger(value.status) ||
+      value.status < 100 || value.status > 599)) {
     throw new CliError("SEO_SITEMAP_INPUT", "Invalid sitemap HTTP status");
   }
   if (value.visibility !== undefined && !["public", "private", "draft"].includes(String(value.visibility))) {
@@ -125,7 +125,7 @@ export async function generateSitemapFiles(
     throw new CliError("SEO_SITEMAP_INPUT", "siteURL must be a trusted HTTPS origin");
   }
   for (const key of ["maxEntries", "maxBytes"] as const) {
-    if (input[key] !== undefined && (!Number.isSafeInteger(input[key]) || typeof input[key] !== "number")) {
+    if (input[key] !== undefined && (typeof input[key] !== "number" || !Number.isSafeInteger(input[key]))) {
       throw new CliError("SEO_SITEMAP_INPUT", "Invalid sitemap generation bound");
     }
   }
