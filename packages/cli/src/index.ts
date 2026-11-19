@@ -27,6 +27,7 @@ const help = [
   "  zaakiy doctor [--json]",
   "  zaakiy analyze bundle [--cwd project] [--json]",
   "  zaakiy seo audit <file.json> [--json]",
+  "  zaakiy seo sitemap <file.json> [--path public] [--dry-run] [--force] [--json]",
   "Options: --dry-run, --force, --path, --package-manager npm|pnpm|yarn, --workspace",
   "Generators: " + supportedGenerators().join(", "),
   "Deferred: analyze architecture|signals|styles|network, migrate, ai",
@@ -203,23 +204,36 @@ export async function runCli(argv: readonly string[], io?: Partial<CliIO>): Prom
       return 0;
     }
     if (args.command === "seo") {
-      assertOptions(args, ["json"], 2);
-      if (args.positionals[0] !== "audit" || !args.positionals[1]) {
-        throw new CliError("SEO_UNAVAILABLE", "Supported command: seo audit <file.json>. Other SEO commands remain deferred.");
+      assertOptions(args, ["json", "path", "dry-run", "force"], 2);
+      const [subcommand, input] = args.positionals;
+      if (!input || !["audit", "sitemap"].includes(subcommand ?? "")) {
+        throw new CliError("SEO_UNAVAILABLE", "Supported: seo audit <file.json> or seo sitemap <file.json>.");
       }
       await ensureProjectDirectory(root);
-      // Load the SEO adapter only for this command. The packed CLI must be able
-      // to print --help/--version before optional runtime dependencies are installed.
-      const {auditSeoFile} = await import("./seo-audit.js");
-      const report = await auditSeoFile(root, args.positionals[1]);
-      if (flagOption(args.options, "json")) {
-        out(JSON.stringify(report, null, 2) + "\n");
-      } else {
-        out("SEO audit: " + (report.ok ? "PASS" : "FAIL") + "\n" +
+      // Lazy-load SEO-only dependencies: packed CLI --help/--version must work offline.
+      if (subcommand === "audit") {
+        if (flagOption(args.options, "dry-run") || flagOption(args.options, "force") || valueOption(args.options, "path")) {
+          throw new CliError("INVALID_OPTION", "seo audit accepts only --json.");
+        }
+        const {auditSeoFile} = await import("./seo-audit.js");
+        const report = await auditSeoFile(root, input);
+        if (flagOption(args.options, "json")) out(JSON.stringify(report, null, 2) + "\n");
+        else out("SEO audit: " + (report.ok ? "PASS" : "FAIL") + "\n" +
           report.diagnostics.map(item =>
             item.severity.toUpperCase() + " " + item.code + ": " + item.message).join("\n") + "\n");
+        return report.ok ? 0 : 1;
       }
-      return report.ok ? 0 : 1;
+      const {generateSitemapFiles} = await import("./seo-sitemap.js");
+      const report = await generateSitemapFiles(root, input, {
+        dryRun: flagOption(args.options, "dry-run"),
+        force: flagOption(args.options, "force"),
+        outputPath: valueOption(args.options, "path")
+      });
+      if (flagOption(args.options, "json")) out(JSON.stringify(report, null, 2) + "\n");
+      else out((report.dryRun ? "Would generate" : "Generated") + " sitemap (" +
+        report.included + " public URLs, " + report.excluded + " excluded):\n" +
+        report.files.map(path => "  " + path).join("\n") + "\n");
+      return 0;
     }
     if (["migrate", "ai"].includes(args.command)) throw new CliError("COMMAND_UNAVAILABLE", args.command + " is planned but not implemented; no work was performed.");
     throw new CliError("UNKNOWN_COMMAND", "Unknown command " + args.command + ". Run zaakiy --help.");
