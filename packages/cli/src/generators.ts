@@ -1,7 +1,7 @@
 import {CliError} from "./args.js";
 import {safeRelativePath, writeGenerated, type PlannedWrite} from "./fs-safe.js";
 
-const supported = ["component", "view", "viewmodel", "model", "feature", "service", "provider", "context", "page", "layout", "store", "resource", "task", "interceptor", "proxy"] as const;
+const supported = ["component", "view", "viewmodel", "model", "feature", "service", "provider", "context", "page", "layout", "store", "resource", "task", "interceptor", "proxy", "signal", "custom-signal", "customsignal", "computed", "effect"] as const;
 const future = [] as const;
 type Generator = typeof supported[number];
 export interface GenerateOptions {
@@ -42,7 +42,9 @@ export function generatorPlan(type: string, name: string, architecture?: string,
     provider: "src/providers", context: "src/contexts",
     page: "src/pages", layout: "src/layouts",
     store: "src/stores", resource: "src/resources", task: "src/tasks",
-    interceptor: "src/interceptors", proxy: "server/proxies"
+    interceptor: "src/interceptors", proxy: "server/proxies",
+    signal: "src/signals", "custom-signal": "src/signals", customsignal: "src/signals",
+    computed: "src/signals", effect: "src/effects"
   };
   const folder = outputPath ? safeRelativePath(outputPath) : defaultFolder[type as Generator];
   const at = (relative: string) => folder + "/" + relative;
@@ -129,6 +131,44 @@ export function generatorPlan(type: string, name: string, architecture?: string,
         "export interface " + entity + "LayoutProps {readonly title: string}",
         "export function " + entity + "Layout({title}: " + entity + "LayoutProps) {",
         "  return <div><header><h1>{title}</h1></header><main id=\"" + n.kebab + "-outlet\"></main></div>;",
+        "}",
+        ""
+      ].join("\n"))];
+    case "signal":
+      return [file(at("create" + entity + "Signal.ts"), [
+        'import {signal, type WritableSignal} from "@zaakiyjs/signals";',
+        "// A local writable signal. Create once inside its consuming owner/component.",
+        "export function create" + entity + "Signal(initial = 0): WritableSignal<number> {",
+        "  return signal(initial);",
+        "}",
+        ""
+      ].join("\n"))];
+    case "custom-signal":
+    case "customsignal":
+      return [file(at("create" + entity + "Signal.ts"), [
+        'import {signal, type Equality, type WritableSignal} from "@zaakiyjs/signals";',
+        "// Equality must be pure, deterministic and symmetric; no hidden async tracking.",
+        "export function create" + entity + "Signal<T>(initial: T, equals: Equality<T> = Object.is): WritableSignal<T> {",
+        "  return signal(initial, {equals});",
+        "}",
+        ""
+      ].join("\n"))];
+    case "computed":
+      return [file(at("create" + entity + "Computed.ts"), [
+        'import {computed, type ComputedSignal, type ReadonlySignal} from "@zaakiyjs/signals";',
+        "// Keep derivations synchronous and pure; computed signals are lazy.",
+        "export function create" + entity + "Computed(source: ReadonlySignal<number>): ComputedSignal<number> {",
+        "  return computed(() => source.value * 2);",
+        "}",
+        ""
+      ].join("\n"))];
+    case "effect":
+      return [file(at("register" + entity + "Effect.ts"), [
+        'import {ownEffect} from "@zaakiyjs/core";',
+        'import {effect, type EffectHandle, type ReadonlySignal} from "@zaakiyjs/signals";',
+        "// Register within runWithOwner; cleanup is automatic on owner disposal.",
+        "export function register" + entity + "Effect(source: ReadonlySignal<number>, notify: (value: number) => void): EffectHandle {",
+        "  return ownEffect(() => effect(() => {notify(source.value);}, {phase: \"user\"}));",
         "}",
         ""
       ].join("\n"))];
