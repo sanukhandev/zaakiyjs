@@ -8,7 +8,6 @@ import { Alert, Badge, Button, Card, Checkbox, Progress, Stack, Table, TextField
 describe("owner-scoped native UI", () => {
   it("mounts compiler-style owned layout and Card slots once and disposes them with the caller", () => {
     const owner = createOwner();
-    let childCleanups = 0;
     const buttonSlot = createOwnedNativeSlot(owner, () => {
       const button = document.createElement("button");
       button.textContent = "Save";
@@ -39,7 +38,6 @@ describe("owner-scoped native UI", () => {
     expect(cardSlot.disposed).toBe(true);
     expect(stack.querySelector("button")).toBeNull();
     expect(card.querySelector("strong")).toBeNull();
-    expect(childCleanups).toBe(0);
   });
 
   it("guards disabled/loading actions and releases event listeners on disposal", () => {
