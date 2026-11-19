@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createOwner, disposeOwner } from "@zaakiyjs/core";
 import {
-  animateElement, animateOwned, createSpring, createStandalonePresence, createPresence, captureLayout, animateKeyedMoves,
+  animateElement, animateOwned, createSpring, createStandalonePresence, createConditionalExitAnimation, createPresence, captureLayout, animateKeyedMoves,
   observeViewport, createGestures
 } from "../src/index.js";
 import { runRouteTransition } from "../src/route.js";
@@ -86,6 +86,50 @@ describe("animation ownership and WAAPI", () => {
     expect(() => animateElement(target, { keyframes: [], duration: -1 })).toThrow(RangeError);
     const zero = animateElement(target, { keyframes: [], duration: 0 });
     expect((await zero.finished).status).toBe("finished");
+  });
+});
+
+describe("compiler DOM conditional-region exit animation bridge", () => {
+  it("keeps native node exit pending until animation settles", async () => {
+    const element = document.createElement("div");
+    document.body.append(element);
+    const {api,animate} = fakeAnimation(element);
+    const exit = createConditionalExitAnimation({
+      keyframes: [{opacity:1},{opacity:0}],duration:120
+    });
+    const abort = new AbortController();
+    const finished = exit(element, abort.signal);
+    expect(animate).toHaveBeenCalledOnce();
+    expect(api.cancel).not.toHaveBeenCalled();
+    api.finish();
+    await finished;
+    expect(api.cancel).toHaveBeenCalledOnce();
+  });
+  it("cancels on supersession and does not launch an already-aborted exit", async () => {
+    const element = document.createElement("div");
+    document.body.append(element);
+    const {api,animate} = fakeAnimation(element);
+    const exit = createConditionalExitAnimation({keyframes:[{opacity:1},{opacity:0}]});
+    const abort = new AbortController();
+    const pending = exit(element, abort.signal);
+    abort.abort(new Error("reentry"));
+    await pending;
+    expect(api.cancel).toHaveBeenCalledOnce();
+    const stale = new AbortController();
+    stale.abort();
+    await exit(element, stale.signal);
+    expect(animate).toHaveBeenCalledOnce();
+  });
+  it("fails closed on malformed callbacks without retaining animations", async () => {
+    expect(() => createConditionalExitAnimation({keyframes: undefined as unknown as Keyframe[]}))
+      .toThrow(TypeError);
+    const element = document.createElement("div");
+    document.body.append(element);
+    const {api} = fakeAnimation(element);
+    const exit = createConditionalExitAnimation({keyframes:[{opacity:1},{opacity:0}]});
+    const pending = exit(element, new AbortController().signal);
+    api.cancel();
+    await expect(pending).rejects.toThrow("cancelled");
   });
 });
 
