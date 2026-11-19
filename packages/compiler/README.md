@@ -2,6 +2,12 @@
 
 Node/build-time TSX compiler for ZaakiyJS. Uses **TypeScript 5.9.3**, not a custom parser/bundler. This release is a **safe, deliberately incomplete first vertical slice**, not a claim that all v0.1 TSX behavior already works.
 
+## Finite literal-only JSX spreads
+
+Inline object literal spreads such as `<input {...{id:"email", type:"email", disabled:false}} />` compile directly to native DOM property/attribute bindings. The compiler accepts only safe, statically known primitive literals and a narrow native allowlist (including `id`, `title`, `role`, `type`, `name`, `placeholder`, `htmlFor`, `value`, `checked`, `disabled`, `selected`, `hidden`, `tabIndex`, `aria-*` and `data-*`). Static component spreads accept primitive values. Neither a runtime props object nor a JSX interpreter is created.
+
+Dynamic variables, getters, computed keys, side effects, object/array values, event handlers, URLs, refs, classes/styles and unsafe HTML sinks remain rejected with source diagnostics `ZC1002` / `ZC2510`–`ZC2513`; duplicate names are rejected. The existing compiler IR/DOM ABI remains unchanged. This is not general JavaScript spread support.
+
 ## API
 
 The M0 public interfaces remain unchanged: CompileRequest, CompileResult, GeneratedAsset, CompilerDiagnostic, IRDocument, IRNode, IRExpression, SourceSpan, IR_SCHEMA_VERSION (= 1).
@@ -41,7 +47,7 @@ Generated output imports helpers from @zaakiyjs/dom/compiler and owners from @za
 ## Explicit unsupported behavior
 
 - Root-level conditional/keyed regions, component-root templates that capture stale item snapshots (use live zero-arg getters), complex/deconstructed map parameters, and unsupported reactive keyed attributes/props fail closed. Nested keyed loops and multi-root fragment templates are supported within native host parents. Supported conditional/keyed forms use the reviewed additive DOM region ABI (ADR 0004).
-- JSX spreads, top-level fragments, refs, component children, dynamic attributes/classes/styles, **all inline style attributes**, dynamic handler replacement, SVG foreignObject, unsafe HTML sinks and untrusted URL schemes produce focused diagnostics.
+- Dynamic/unsafe JSX spreads, top-level fragments, refs, component children, dynamic attributes/classes/styles, **all inline style attributes**, dynamic handler replacement, SVG foreignObject, unsafe HTML sinks and untrusted URL schemes produce focused diagnostics.
 - Reactivity analysis recognizes `.value` reads from aliases and nested props, but cannot prove all indirect reactive dependencies (for example, an unknown function that internally reads a signal). Calls in detected reactive text expressions fail closed without purity proof; destructured snapshot reads do not become magically reactive.
 - Dynamic text child expressions must have primitive TS types; arrays, object views and prebuilt JSX nodes require an explicit child/view semantics contract.
 - No CSS generation, browser compatibility lowering, SSR, hydration, or tree-shaking of unrelated source declarations. The compiler does not claim to be a bundler. Supplying explicit `targetBrowsers` fails with ZC2301 until a tested browser compatibility profile is frozen.
