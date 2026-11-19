@@ -50,7 +50,7 @@ const hash = (value: string): string => createHash("sha256").update(value).diges
 const ROUTE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$/;
 const NAME = /^[A-Za-z_$][\w$]*$/;
 const FORBIDDEN = new Set(["__proto__", "constructor", "prototype"]);
-const REPARENTED = new Set(["table","thead","tbody","tfoot","tr","td","th","select","option","optgroup","template"]);
+const REPARENTED = new Set(["table","thead","tbody","tfoot","tr","td","th","select","option","optgroup","template","textarea"]);
 const PATH = /^(?:[A-Za-z_$][\w$]*)(?:\.[A-Za-z_$][\w$]*){1,4}$/;
 
 function pathOf(expression: string, base: string): string[] {
@@ -297,7 +297,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           if (node.condition.reactive) throw new TypeError("H4 conditional cannot execute server signals");
           const id = hash("zaakiy-region:" + request.routeId + ":" + ordinal++).slice(0, 32);
           const yes = convert(node.whenTrue, itemName, depth + 1,aliases,stack,slots);
-          const no = convert(node.whenFalse, itemName, depth + 1,aliases,stack);
+          const no = convert(node.whenFalse, itemName, depth + 1,aliases,stack,slots);
           const condition=resolve(node.condition.source,itemName,aliases);
           output.push({ kind: "conditional", id, path: condition.path,source:condition.source,yes,no });
           break;
@@ -309,7 +309,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           const key = pathOf(node.key.source, node.itemParameter);
           if (key.length !== 1) throw new TypeError("H4 key must be one own item property");
           const id = hash("zaakiy-region:" + request.routeId + ":" + ordinal++).slice(0, 32);
-          const rows = convert(node.body, node.itemParameter, depth + 1,aliases,stack);
+          const rows = convert(node.body, node.itemParameter, depth + 1,aliases,stack,slots);
           if (rows.length !== 1 || rows[0]?.kind !== "element")
             throw new TypeError("H4 keyed row must have exactly one native root");
           const collection=resolve(node.collection.source,itemName,aliases);
