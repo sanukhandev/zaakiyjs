@@ -3,6 +3,19 @@
 # This runs on GitHub Actions Linux runners; no browser test or engine is skipped.
 set -euo pipefail
 
+# GitHub Actions starts the pinned Python Playwright container as root but
+# supplies /github/home owned by pwuser. Firefox refuses to launch with a HOME
+# not owned by the effective user; use the existing root-owned directory and
+# propagate it to subsequent browser-test steps via the GitHub environment file.
+# Do not change HOME for normal non-root host runners.
+if [ "$(id -u)" -eq 0 ] && [ -d /root ] && [ "${HOME:-}" != "/root" ]; then
+  echo "Using root-owned HOME for Playwright container browsers"
+  export HOME=/root
+  if [ -n "${GITHUB_ENV:-}" ]; then
+    printf 'HOME=/root\n' >> "$GITHUB_ENV"
+  fi
+fi
+
 version="1.64.1"
 export PIP_DISABLE_PIP_VERSION_CHECK=1
 export PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT="${PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT:-45000}"
