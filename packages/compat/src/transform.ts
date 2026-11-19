@@ -37,7 +37,9 @@ export function transformEmittedJavaScriptWithMap(request: JavaScriptTransformRe
     ts.forEachChild(node, scan);
   };
   scan(parsed);
-  if (jsx || parsed.parseDiagnostics.length) throw new TypeError("Compatibility transform refuses uncompiled or invalid JavaScript.");
+  if (jsx || (parsed as ts.SourceFile & {parseDiagnostics?: readonly ts.Diagnostic[]}).parseDiagnostics?.length) {
+    throw new TypeError("Compatibility transform refuses uncompiled or invalid JavaScript.");
+  }
   const result = ts.transpileModule(request.code, {
     fileName: request.fileName,
     reportDiagnostics: true,
