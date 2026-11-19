@@ -69,6 +69,7 @@ Exported symbols detected in the package root `src/index.ts`. Platform-specific 
 - `FeatureReference`
 - `FeatureRequirement`
 - `JavaScriptTransformRequest`
+- `JavaScriptTransformResult`
 - `SourceInput`
 - `StrategyKind`
 - `StrategySelection`
@@ -88,6 +89,7 @@ Exported symbols detected in the package root `src/index.ts`. Platform-specific 
 - `targetLabel`
 - `toStylesTargets`
 - `transformEmittedJavaScript`
+- `transformEmittedJavaScriptWithMap`
 - `validateManifest`
 
 ## Detailed feature guide
@@ -101,6 +103,7 @@ The root entrypoint is Node/build-time only:
 - serializeManifest, validateManifest
 - detectSourceFeatures, detectIRFeatures, detectStylesFeatures
 - transformEmittedJavaScript: explicit post-emission JavaScript-only TypeScript ES2019 transform
+- transformEmittedJavaScriptWithMap: opt-in approved emitted-JS lowering with a chainable v3 source map
 - toStylesTargets: adapter for the current public Styles target type
 
 The browser-safe subpath is deliberately separate:
