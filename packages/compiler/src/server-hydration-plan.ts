@@ -66,7 +66,7 @@ export function buildDataHydrationPlan(root: IRNode, routeId: string): DataHydra
       case "StaticElement": {
         if (node.namespace !== "html" || !SSR_STATIC_TAGS.has(node.tag) ||
             // These tags can be reparented/normalized by HTML tree construction.
-            ["table", "tbody", "thead", "tfoot", "tr", "td", "th", "select", "option", "optgroup", "template"].includes(node.tag)) {
+            ["table", "tbody", "thead", "tfoot", "tr", "td", "th", "select", "option", "optgroup", "template", "textarea"].includes(node.tag)) {
           throw new TypeError("Hydration does not support HTML parser-reparented elements");
         }
         const id = digest("zaakiy-hydrate-element:" + routeId + ":" + elementCount++).slice(0, 32);
