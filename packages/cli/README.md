@@ -27,6 +27,9 @@ First-party ZaakiyJS project starter and typed SOLID/MVVM generators. Source imp
     zaakiy doctor --json
     zaakiy analyze bundle
     zaakiy analyze bundle --json
+    zaakiy seo audit seo.json --json
+    zaakiy seo sitemap pages.json --path public --dry-run
+    zaakiy seo sitemap pages.json --path public --json
 
 The executable is named **zaakiy**. Project creation uses **start --project**, not create.
 
@@ -38,7 +41,20 @@ Project creation never installs dependencies or runs template scripts. Run your 
 
 generate/g supports component, view, viewmodel, model, feature, service, provider, context, page, layout, store, resource, task, interceptor and proxy. The page/layout generators emit one native TSX root each with strict props. Layout includes a named native outlet element to wire manually through an application Router adapter; they do not promise automatic route registration or unrestricted JSX children. Store is owner-scoped. Resource/Task use AbortSignal and do not silently retry mutations. Interceptor uses public typed HTTP request hooks. Proxy is server-only and requires an explicit authenticator and authenticated routes. Feature generation uses Model repository interfaces, an owner-scoped signal-based ViewModel with native AbortController cancellation and stale-result protection, a typed TSX View, a service gateway and an owner adapter. The context and provider generators use the real @zaakiyjs/core scoped context API. Stateless components do not need ViewModels.
 
-SEO audit: `zaakiy seo audit seo.json --json` accepts a versioned `SeoAuditInputV1` JSON envelope (`resolution` plus `visibility`) and runs the existing `@zaakiyjs/seo.auditSeoV1` implementation without executing code or modifying files. It returns exit code 1 when error diagnostics exist. Inputs are bounded at 256 KiB and reject symlinks/traversal. Sitemap generation and migration remain deferred.
+SEO audit: `zaakiy seo audit seo.json --json` accepts a versioned `SeoAuditInputV1` JSON envelope (`resolution` plus `visibility`) and runs the existing `@zaakiyjs/seo.auditSeoV1` implementation without executing code or modifying files. It returns exit code 1 when error diagnostics exist. Inputs are bounded at 256 KiB and reject symlinks/traversal. Static sitemap generation is available through `zaakiy seo sitemap pages.json [--path public] [--dry-run] [--force] [--json]`. It uses the existing `@zaakiyjs/seo.generateSitemaps` implementation, excludes nonpublic/nonindexable records, enforces trusted HTTPS canonical origins, and emits sorted XML plus an index when needed. A valid JSON feed is: 
+
+```json
+{
+  "schema": "zaakiy.sitemap-input/1",
+  "siteURL": "https://example.com",
+  "entries": [
+    {"loc": "/", "visibility": "public", "lastmod": "2026-11-18"},
+    {"loc": "/draft", "visibility": "draft"}
+  ]
+}
+```
+
+Only static, local feeds are accepted; external crawling, CMS pagination, deployment invalidation and automatic route discovery are outside this CLI command. Inputs are at most 256 KiB / 10,000 records, output is transactional and idempotent, and existing divergent files require `--force`. Migration remains deferred.
 
 Bundle analysis reads the generated `dist/zaakiy-assets.json` without executing output. `zaakiy analyze bundle [--json]` reports per-asset SHA-256 and raw/gzip/Brotli sizes for emitted JS and CSS; analysis is bounded and refuses path traversal or symlinks. It measures compiled asset bytes only, not runtime speed, network transfer, browser performance or third-party dependencies outside the manifest.
 
@@ -46,7 +62,7 @@ Bundle analysis reads the generated `dist/zaakiy-assets.json` without executing 
 
 dev/build/test delegate to real project scripts, forward subprocess exit codes and handle termination signals. doctor inspects required files, strict TSX configuration, framework package declarations/exports and the Vite plugin configuration. It does not substitute for a production build.
 
-analyze architecture|signals|styles|network, migrate, seo and ai are unavailable until their owning packages are implemented. They fail without creating files.
+analyze architecture|signals|styles|network, migrate and ai remain unavailable until their owning contracts are implemented. They fail without creating files.
 
 ## Release gates
 
