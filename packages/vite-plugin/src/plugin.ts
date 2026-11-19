@@ -246,6 +246,9 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         throw new Error("ZV4001: Use compatibility.targets OR legacy browserTargets, not both.");
       }
       if (options.compatibility) {
+        if (options.compatibility.mode === "off" && options.compatibility.syntaxTransforms) {
+          throw new Error("ZV4001: Compatibility mode off cannot request syntax transforms.");
+        }
         // Validate target syntax early; never wait until output emission to fail.
         try {
           analyzeCompatibility({mode: options.compatibility.mode, targets: options.compatibility.targets});
@@ -424,7 +427,8 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
     },
 
     renderChunk(code, chunk) {
-      if (!buildMode || options.compatibility?.syntaxTransforms !== "approved-es2019") return null;
+      if (!buildMode || !options.compatibility || options.compatibility.mode === "off" ||
+          (options.compatibility.mode !== "auto" && options.compatibility.syntaxTransforms !== "approved-es2019")) return null;
       const targets = options.compatibility.targets;
       const input = analyzeCompatibility({
         mode: "strict", targets, sources: [{fileName: chunk.fileName, source: code}]
@@ -483,22 +487,25 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
           }
           return { fileName: entry.fileName, source: entry.code };
         }).sort((a, b) => a.fileName.localeCompare(b.fileName));
+        const mode = options.compatibility.mode;
+        // Explicit off: do not claim to have analyzed or adapted browser output.
+        // A manifest documents that no compatibility guarantee is active.
         const result = analyzeCompatibility({
-          mode: options.compatibility.mode,
+          mode,
           targets: options.compatibility.targets,
-          sources: [...sourceFiles, ...bundledJs]
+          sources: mode === "off" ? [] : [...sourceFiles, ...bundledJs]
         });
-        if (!result.ok) {
+        if (!result.ok || (mode === "auto" && result.manifest.unsupportedFeatures.length > 0)) {
           const fatal = result.manifest.diagnostics.filter(item => item.severity === "error");
           this.error("ZV4003: Strict compatibility analysis failed: " +
             fatal.slice(0, 5).map(item => item.code + " " + item.message).join("; "));
         }
-        const hasApprovedTransform = options.compatibility.syntaxTransforms === "approved-es2019";
+        const hasApprovedTransform = mode === "auto" || options.compatibility.syntaxTransforms === "approved-es2019";
         if (result.manifest.shims.length || (result.manifest.transforms.length && !hasApprovedTransform)) {
           this.error("ZV4004: Compatibility transformations or scoped shims are required but " +
             "the active Vite compiler pipeline has not certified their application and source maps.");
         }
-        if (hasApprovedTransform) {
+        if (mode !== "off" && hasApprovedTransform) {
           // All final chunks must be compatible after renderChunk, regardless of
           // whether Rollup/esbuild or the approved TypeScript pass did the lowering.
           const emitted = analyzeCompatibility({
