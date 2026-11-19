@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   analyzeCompatibility, compareVersions, detectIRFeatures, detectSourceFeatures,
   getFeature, listFeatures, parseMode, resolveTargets, serializeManifest, toStylesTargets,
-  transformEmittedJavaScript, validateManifest, type CompatIRNode
+  transformEmittedJavaScript, transformEmittedJavaScriptWithMap, validateManifest, type CompatIRNode
 } from "../src/index.js";
 
 const modern = { profile: "modern-2024" as const };
@@ -75,6 +75,28 @@ describe("syntax/API/IR/CSS detection and planning", () => {
     const js = transformEmittedJavaScript({ fileName: "app.js", code: "let x = true; x &&= false;", manifest: r.manifest });
     expect(js).not.toContain("&&=");
     expect(() => transformEmittedJavaScript({ fileName: "app.tsx", code: "const x = <div/>", manifest: r.manifest })).toThrow();
+  });
+  it("preserves a chainable v3 source map for approved ES2019 downleveling", () => {
+    const manifest = analyzeCompatibility({
+      mode: "strict", targets: {browsers:["safari >=13.1"]},
+      sources: source("let enabled = true; enabled &&= false;")
+    }).manifest;
+    const request = {fileName:"assets/entry.js",code:"let enabled = true; enabled &&= false;",manifest};
+    const output = transformEmittedJavaScriptWithMap(request);
+    expect(output.code).not.toContain("&&=");
+    expect(output.code).not.toContain("sourceMappingURL");
+    const map = JSON.parse(output.map!) as {version:number;sources:string[];mappings:string};
+    expect(map.version).toBe(3);
+    expect(map.sources).toEqual(["entry.js"]);
+    expect(map.mappings.length).toBeGreaterThan(0);
+    expect(transformEmittedJavaScriptWithMap(request)).toEqual(output);
+    expect(() => transformEmittedJavaScriptWithMap({...request,fileName:"../secrets.js"})).toThrow();
+    expect(() => transformEmittedJavaScriptWithMap({...request,code:"const x = <h1 />;"})).toThrow();
+    const native = analyzeCompatibility({mode:"strict",targets:{profile:"modern-2024"},
+      sources:source("let enabled = true;")}).manifest;
+    expect(transformEmittedJavaScriptWithMap({...request,manifest:native})).toEqual({
+      code:request.code,map:null
+    });
   });
   it("fails closed for unapproved native AbortSignal.any use on an older target", () => {
     const request = { targets: oldFirefox, sources: source("const s = AbortSignal.any([a, b]);") };
