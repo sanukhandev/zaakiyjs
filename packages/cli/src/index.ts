@@ -22,7 +22,7 @@ const help = [
   "Usage:",
   "  zaakiy start --project <name> [--template minimal|standard|enterprise]",
   "  zaakiy generate <type> <name> [--architecture mvvm] [--path folder]",
-  "  zaakiy g <type> <name>",
+  "  zaakiy g <type> <name> [--target route for middleware]",
   "  zaakiy dev | build | test",
   "  zaakiy doctor [--json]",
   "  zaakiy analyze bundle [--cwd project] [--json]",
@@ -155,13 +155,13 @@ export async function runCli(argv: readonly string[], io?: Partial<CliIO>): Prom
       return 0;
     }
     if (args.command === "generate" || args.command === "g") {
-      assertOptions(args, ["architecture", "path", "dry-run", "force"], 2);
+      assertOptions(args, ["architecture", "path", "target", "dry-run", "force"], 2);
       const [type, name] = args.positionals;
       if (!type || !name) throw new CliError("MISSING_ARGUMENT", "Use: zaakiy generate <type> <name>.");
       await ensureProjectDirectory(root);
       const created = await generateFiles({
         type, name, cwd: root, path: valueOption(args.options, "path"),
-        architecture: valueOption(args.options, "architecture"),
+        architecture: valueOption(args.options, "architecture"), target: valueOption(args.options, "target"),
         dryRun: flagOption(args.options, "dry-run"), force: flagOption(args.options, "force")
       });
       out(created.length === 0 ? "No changes: generated files are already up to date.\n" : (flagOption(args.options, "dry-run") ? "Would generate" : "Generated") + ":\n" + created.map(path => "  " + path).join("\n") + "\n");
