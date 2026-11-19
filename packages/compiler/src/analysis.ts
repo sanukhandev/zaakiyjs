@@ -468,6 +468,41 @@ export function analyze(request: CompileRequest): Analysis {
         }
         continue;
       }
+      if (!isComponent && name === "style") {
+        // Only a literal object with statically known property names can be lowered
+        // into independent, owner-scoped DOM.setStyle/bindStyle writes. Never pass
+        // an object/string through the forbidden raw style HTML attribute sink.
+        const object = attr.initializer && ts.isJsxExpression(attr.initializer)
+          ? attr.initializer.expression : undefined;
+        if (!object || !ts.isObjectLiteralExpression(object)) {
+          report("ZC2204", "Inline style requires a literal object with explicit CSS properties.", attr);
+          continue;
+        }
+        const seenNames = new Set<string>();
+        for (const item of object.properties) {
+          if (!ts.isPropertyAssignment(item) ||
+              (!ts.isIdentifier(item.name) && !ts.isStringLiteral(item.name))) {
+            report("ZC2214", "Style property must be an explicit literal key and value; no spreads or computed names.", item);
+            continue;
+          }
+          const raw = item.name.text;
+          const cssName = raw.startsWith("--") ? raw :
+            raw.replace(/[A-Z]/g, char => "-" + char.toLowerCase());
+          if (!/^(?:--[a-zA-Z0-9_-]+|-?[a-zA-Z][a-zA-Z0-9-]*)$/.test(cssName) ||
+              ["__proto__", "prototype", "constructor"].includes(raw) ||
+              seenNames.has(cssName)) {
+            report("ZC2214", "Invalid, forbidden or duplicate inline CSS property.", item);
+            continue;
+          }
+          seenNames.add(cssName);
+          const span = spanOf(source, item);
+          attributes.push({
+            kind: "PropertyBinding", id: idOf("StyleBinding:" + cssName, span), span,
+            name: cssName, target: "style", expression: expression(item.initializer)
+          });
+        }
+        continue;
+      }
       if (!isComponent && /^on/i.test(name) && !/^on[A-Z]/.test(name)) {
         report("ZC1006", "Inline event attributes must use typed onEvent handlers, not HTML on* strings.", attr);
         continue;
