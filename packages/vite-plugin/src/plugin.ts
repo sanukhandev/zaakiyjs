@@ -12,6 +12,7 @@ import { analyzeCompatibility, serializeManifest, transformEmittedJavaScriptWith
 import type { CompilerDiagnostic } from "@zaakiyjs/compiler";
 import { cssSourceMapComment, portableSourceFile } from "./asset-paths.js";
 import { equalStyleInputs } from "./style-inputs.js";
+import { detectEmittedCssFeatures } from "./compat-css.js";
 import type { ZaakiyAssetManifest, ZaakiyViteOptions, GeneratedAssetRecord } from "./index.js";
 import {
   assertBrowserOutput,
@@ -488,12 +489,26 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
           return { fileName: entry.fileName, source: entry.code };
         }).sort((a, b) => a.fileName.localeCompare(b.fileName));
         const mode = options.compatibility.mode;
+        // Analyze the actual emitted CSS (not TSX string approximations).
+        // The Zaakiy stylesheet is emitted by this hook and must be added
+        // separately from Rollup's already materialized output assets.
+        const cssFeatures = options.compatibility.mode === "off" ? [] :
+          [...Object.values(bundle).flatMap(entry =>
+            entry.type === "asset" && entry.fileName.endsWith(".css") ? [{
+              fileName: entry.fileName,
+              content: typeof entry.source === "string" ? entry.source :
+                new TextDecoder().decode(entry.source)
+            }] : []
+          ), {fileName: cssOutputFile, content: css}]
+            .sort((a, b) => a.fileName.localeCompare(b.fileName))
+            .flatMap(entry => detectEmittedCssFeatures(entry.content, entry.fileName));
         // Explicit off: do not claim to have analyzed or adapted browser output.
         // A manifest documents that no compatibility guarantee is active.
         const result = analyzeCompatibility({
           mode,
           targets: options.compatibility.targets,
-          sources: mode === "off" ? [] : [...sourceFiles, ...bundledJs]
+          sources: mode === "off" ? [] : [...sourceFiles, ...bundledJs],
+          cssFeatures
         });
         if (!result.ok || (mode === "auto" && result.manifest.unsupportedFeatures.length > 0)) {
           const fatal = result.manifest.diagnostics.filter(item => item.severity === "error");
