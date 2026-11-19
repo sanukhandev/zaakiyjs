@@ -72,3 +72,9 @@ The browser-only `@zaakiyjs/ssr/client` `inspectHydration` preflight now require
 ### Byte-attested Node adapter
 
 The `@zaakiyjs/ssr/node` subpath also exports `createByteAttestedNodeServerAdapter(options, bytesByModuleId)`. This factory validates the pinned manifest's SHA-256 build identity and each server module's exact artifact bytes *before* creating the request handler. It rejects missing/tampered bytes rather than serving through an unchecked factory. The original `createNodeServerAdapter` remains available for compatibility and does not imply byte attestation. The deployment must still guarantee that its immutable module registry loads the same verified bytes.
+
+## H5 route-scoped public-state hydration
+
+`@zaakiyjs/ssr/client` exposes `hydrateRegionRoute` and `hydrateRegionRouteWithState` for the supported `zaakiy.region-hydration/2` subset. Both require a current `HydrationTransition` with a matching plan/envelope/route identity. The state-aware method verifies a build/route-bound serialized **public** JSON packet, initializes trusted application signals only after the transaction commit gate, and adopts existing native DOM nodes without replacing them.
+
+On navigation supersession or abort, the transaction signal disposes both native hydration subscriptions and the caller's `disposeState` resources exactly once; explicit repeated disposal is idempotent. Stale routes never invoke the state initializer. Host loaders and backend authorization must complete before hydration. This does not provide general arbitrary TSX SSR, automatic Router loader integration, or private-state serialization.
