@@ -442,6 +442,43 @@ function originalLineAt(map: { mappings: string }, generatedLine: number, genera
     expect(result.diagnostics.some(d => d.code === "ZC2204")).toBe(true);
   });
 
+  it("lowers finite style objects to independent DOM properties with no raw style sink", () => {
+    const source = [
+      signalDecl,
+      "function App() { const active = signal(true);",
+      'return <section style={{ color: active.value ? "red" : "blue", opacity: active.value ? 1 : 0.5, "background-color": "black" }}>Safe</section>;',
+      "}"
+    ].join("\n");
+    const result = compile({fileName, source});
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    const js = result.js[0]?.code ?? "";
+    expect(js).toContain("bindStyle");
+    expect(js).toContain("setStyle");
+    expect(js).toContain('"background-color"');
+    expect(js).not.toContain('setAttribute(__z_');
+    const ir = parseToIR({fileName, source}).document;
+    const root = ir.nodes[0];
+    expect(root?.kind).toBe("StaticElement");
+    if (root?.kind === "StaticElement") {
+      expect(root.children.filter(n => n.kind === "PropertyBinding" && n.target === "style")).toHaveLength(3);
+    }
+  });
+
+  it("rejects unbounded, computed, duplicate and spread style names", () => {
+    const cases = [
+      'const s = {color:"red"}; function App(){ return <div style={s}/>; }',
+      'function App(){ return <div style={{...{color:"red"}}}/>; }',
+      'function App(){ return <div style={{["color"]:"red"}}/>; }',
+      'function App(){ return <div style={{color:"red",color:"blue"}}/>; }',
+      'function App(){ return <div style={{constructor:"evil"}}/>; }'
+    ];
+    for (const source of cases) {
+      const result = compile({fileName,source});
+      expect(result.js).toEqual([]);
+      expect(result.diagnostics.some(d => d.code === "ZC2204" || d.code === "ZC2214")).toBe(true);
+    }
+  });
+
   it("tracks aliased signal reads and nested signal props, without reinitializing components", () => {
     const aliases = [
       signalDecl,
