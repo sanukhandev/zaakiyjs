@@ -61,6 +61,22 @@ Any selected downlevel syntax transform or scoped shim aborts the build with `ZV
 
 This capability is intentionally narrower than the final Polyfill Zone target. Full compiler/Vite graph lowering, source-map-preserving transforms, approved ponyfill wiring and browser-target certification are separate gates.
 
+### Opt-in approved syntax transforms
+
+The strict compatibility configuration can opt in to `syntaxTransforms: "approved-es2019"`. In this mode Rollup's `renderChunk` hook applies the approved TypeScript 5.9.3 ES2019 pass to emitted JavaScript **only when its pinned compatibility analysis requires it**. The returned v3 source map is composed by Rollup with the existing TSX compiler map. The final emitted JS is rescanned, so incompatible syntax or unapplied shims fail the build. The manifest still records planned source features and their transform strategy; a safe final bundle is required, not assumed.
+
+```ts
+zaakiyPlugin({
+  compatibility: {
+    mode: "strict",
+    targets: {browsers: ["safari >=13.1"]},
+    syntaxTransforms: "approved-es2019"
+  }
+})
+```
+
+This does not add unapproved global polyfills, CSS feature rewrites, or general browser API emulation. The default strict mode continues to reject a needed transform if the opt-in is absent. Actual browser conformance and source-map spot checks remain release gates.
+
 ## Verification
 
 ```sh
