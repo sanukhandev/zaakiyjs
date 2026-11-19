@@ -1,10 +1,47 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
 import { createOwner, disposeOwner, runWithOwner } from "@zaakiyjs/core";
+import { createOwnedNativeSlot } from "@zaakiyjs/dom/compiler";
 import { signal, flushSync } from "@zaakiyjs/signals";
-import { Alert, Badge, Button, Checkbox, Progress, Table, TextField } from "../src/index.js";
+import { Alert, Badge, Button, Card, Checkbox, Progress, Stack, Table, TextField } from "../src/index.js";
 
 describe("owner-scoped native UI", () => {
+  it("mounts compiler-style owned layout and Card slots once and disposes them with the caller", () => {
+    const owner = createOwner();
+    let childCleanups = 0;
+    const buttonSlot = createOwnedNativeSlot(owner, () => {
+      const button = document.createElement("button");
+      button.textContent = "Save";
+      return button;
+    });
+    const cardSlot = createOwnedNativeSlot(owner, () => {
+      const strong = document.createElement("strong");
+      strong.textContent = "Owned child";
+      return strong;
+    });
+    const stack = runWithOwner(owner, () => Stack({
+      items: ["Legacy item"], children: buttonSlot
+    })) as unknown as HTMLElement;
+    const card = runWithOwner(owner, () => Card({
+      title: "Notice", children: cardSlot
+    })) as unknown as HTMLElement;
+    document.body.append(stack, card);
+    expect(stack.querySelector("button")?.textContent).toBe("Save");
+    expect(stack.textContent).toContain("Legacy item");
+    expect(card.querySelector("strong")?.textContent).toBe("Owned child");
+    expect(buttonSlot.mounted).toBe(true);
+    expect(cardSlot.mounted).toBe(true);
+    expect(() => runWithOwner(owner, () => Stack({children: buttonSlot}))).toThrow();
+    const unsafe = "not a compiled slot";
+    expect(() => runWithOwner(owner, () => Stack({children: unsafe}))).toThrow();
+    disposeOwner(owner);
+    expect(buttonSlot.disposed).toBe(true);
+    expect(cardSlot.disposed).toBe(true);
+    expect(stack.querySelector("button")).toBeNull();
+    expect(card.querySelector("strong")).toBeNull();
+    expect(childCleanups).toBe(0);
+  });
+
   it("guards disabled/loading actions and releases event listeners on disposal", () => {
     const scope = createOwner();
     let fired = 0;
