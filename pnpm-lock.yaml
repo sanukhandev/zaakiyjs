@@ -102,6 +102,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@zaakiyjs/seo':
+        specifier: workspace:^
+        version: link:../seo
       '@zaakiyjs/core':
         specifier: workspace:^
         version: link:../core
