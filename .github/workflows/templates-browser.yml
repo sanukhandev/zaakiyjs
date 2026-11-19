@@ -32,6 +32,9 @@ jobs:
   generated-app-browser:
     # Stable native browser image during Ubuntu 26.04 latest migration.
     runs-on: ubuntu-24.04
+    # Pinned Playwright image includes WebKit's native libraries; no apt mirror dependency.
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.64.1-noble
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
