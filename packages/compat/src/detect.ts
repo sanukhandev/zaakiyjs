@@ -121,18 +121,37 @@ export function detectSourceFeatures(input: SourceInput): DetectionResult {
 function nodesOf(node: CompatIRNode): readonly CompatIRNode[] {
   return [
     ...(node.children ?? []), ...(node.whenTrue ?? []), ...(node.whenFalse ?? []),
-    ...(node.body ?? []), ...(node.props ?? [])
+    ...(node.body ?? []), ...(node.props ?? []),
+    ...(node.slots ?? []).flatMap(slot => slot.children)
   ];
 }
 export function detectIRFeatures(document: CompatIRDocument): DetectionResult {
-  if (document.irVersion !== 1) {
+  if (document.irVersion !== 1 && document.irVersion !== 2) {
     return { requirements: [], diagnostics: [{
       code: "ZK2001", severity: "error", message: "Unsupported compiler IR version: " + document.irVersion
     }] };
   }
   const requirements: FeatureRequirement[] = [];
   const diagnostics: CompatibilityDiagnostic[] = [];
-  function visit(node: CompatIRNode): void {
+  const seen = new WeakSet<object>();
+  const stack = [...document.nodes].reverse();
+  const MAX_IR_NODES = 100_000;
+  let visited = 0;
+  // Explicit traversal stack: compiler-produced nested loops and slots may be deeper
+  // than the host JS call stack. Bound resource use for untrusted object-backed input.
+  while (stack.length) {
+    if (++visited > MAX_IR_NODES) {
+      diagnostics.push({ code: "ZK2005", severity: "error",
+        message: "Compiler IR exceeds the 100000-node compatibility analysis limit." });
+      break;
+    }
+    const node = stack.pop()!;
+    if (seen.has(node)) {
+      diagnostics.push({ code: "ZK2004", severity: "error",
+        message: "Compiler IR contains a reused or cyclic node; a tree with unique ownership is required." });
+      continue;
+    }
+    seen.add(node);
     if (node.kind === "CompatFeature" && (typeof node.feature !== "string" || !node.feature)) {
       diagnostics.push({ code: "ZK2003", severity: "error",
         message: "Compiler CompatFeature node is missing a feature ID.",
@@ -144,9 +163,9 @@ export function detectIRFeatures(document: CompatIRDocument): DetectionResult {
         line: node.span?.start.line, column: node.span?.start.column, offset: node.span?.start.offset
       } });
     }
-    for (const nested of nodesOf(node)) visit(nested);
+    const nested = nodesOf(node);
+    for (let i = nested.length - 1; i >= 0; i--) stack.push(nested[i]!);
   }
-  for (const root of document.nodes) visit(root);
   return { requirements, diagnostics };
 }
 export function detectStylesFeatures(evidence: readonly CssFeatureEvidence[]): DetectionResult {

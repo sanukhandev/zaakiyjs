@@ -1,7 +1,8 @@
 import { onMount } from "@zaakiyjs/core";
 import type { ViewNode } from "@zaakiyjs/core";
+import type { JSXChild } from "@zaakiyjs/core/jsx-runtime";
 import type { ReadonlySignal } from "@zaakiyjs/signals";
-import { listen } from "@zaakiyjs/dom/compiler";
+import { listen, mountOwnedSlot, type OwnedNativeSlot } from "@zaakiyjs/dom/compiler";
 import {
   createDialog, createTabs, createMenu, createTooltip,
   createPopover, createDisclosure, createAccordion
@@ -14,6 +15,8 @@ export interface DialogProps {
   readonly triggerLabel:string;readonly overlays:OverlayManager;
   readonly modal?:boolean;readonly defaultOpen?:boolean;readonly open?:ReadonlySignal<boolean>;
   readonly onOpenChange?:(open:boolean)=>void;
+  /** Optional compiler IR v2 named body slot; native nodes are caller-owned. */
+  readonly body?: JSXChild | OwnedNativeSlot;
 }
 export function Dialog(props:DialogProps):ViewNode {
   const owner=currentOwner();
@@ -28,7 +31,9 @@ export function Dialog(props:DialogProps):ViewNode {
   const close=native("button") as HTMLButtonElement;
   close.type="button";close.className="zui-button zui-button--sm zui-button--neutral zui-button--outline";
   close.textContent="Close";
-  panel.append(title,description,close);root.append(trigger,panel);
+  panel.append(title,description);
+  if (props.body != null) mountOwnedSlot(props.body, panel);
+  panel.append(close);root.append(trigger,panel);
   // A mounted, connected node is required for native showModal and focus.
   onMount(()=>{
     const ctl=createDialog({
@@ -123,17 +128,21 @@ export function Tooltip(props:TooltipProps):ViewNode {
 }
 
 export interface PopoverProps {
-  readonly id:string;readonly triggerLabel:string;readonly text:string;
+  readonly id:string;readonly triggerLabel:string;readonly text?:string;
+  /** Optional compiler IR v2 named content slot (not raw HTML). */
+  readonly content?: JSXChild | OwnedNativeSlot;
   readonly overlays:OverlayManager;readonly autoFocus?:boolean;
 }
 export function Popover(props:PopoverProps):ViewNode {
   const owner=currentOwner();
+  if (props.text === undefined && props.content == null) throw new TypeError("Popover requires text or a compiled content slot");
   const root=native("span");root.className="zui-popover-root";
   const trigger=native("button") as HTMLButtonElement;trigger.type="button";
   trigger.className="zui-button zui-button--md zui-button--neutral zui-button--outline";
   trigger.textContent=props.triggerLabel;
   const content=native("div");content.className="zui-popover";content.id=nonEmpty(props.id,"Popover id");
-  content.textContent=props.text;
+  content.textContent=props.text??"";
+  if (props.content != null) mountOwnedSlot(props.content, content);
   root.append(trigger,content);
   onMount(()=>{createPopover({owner,trigger,content,overlays:props.overlays,autoFocus:props.autoFocus});});
   return view(root);

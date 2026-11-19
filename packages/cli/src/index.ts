@@ -3,6 +3,7 @@ import {readFile, stat} from "node:fs/promises";
 import {resolve, join, posix} from "node:path";
 import {CliError, parseArgs, assertOptions, flagOption, valueOption} from "./args.js";
 import {diagnoseProject} from "./doctor.js";
+import {analyzeBundle} from "./analyze.js";
 import {generateFiles, supportedGenerators} from "./generators.js";
 import {safeRelativePath, validateProjectName} from "./fs-safe.js";
 import {assertFrameworkReady, getInstalledVersions, parsePreset, scaffoldProject, type Versions} from "./scaffold.js";
@@ -21,12 +22,15 @@ const help = [
   "Usage:",
   "  zaakiy start --project <name> [--template minimal|standard|enterprise]",
   "  zaakiy generate <type> <name> [--architecture mvvm] [--path folder]",
-  "  zaakiy g <type> <name>",
+  "  zaakiy g <type> <name> [--target route for middleware]",
   "  zaakiy dev | build | test",
   "  zaakiy doctor [--json]",
+  "  zaakiy analyze bundle [--cwd project] [--json]",
+  "  zaakiy seo audit <file.json> [--json]",
+  "  zaakiy seo sitemap <file.json> [--path public] [--dry-run] [--force] [--json]",
   "Options: --dry-run, --force, --path, --package-manager npm|pnpm|yarn, --workspace",
   "Generators: " + supportedGenerators().join(", "),
-  "Deferred: page, layout, store, resource, task, interceptor, proxy, analyze, migrate, seo, ai",
+  "Deferred: analyze architecture|signals|styles|network, migrate, ai",
   "Use --help for help and --version for the installed CLI version."
 ].join("\n") + "\n";
 
@@ -151,13 +155,13 @@ export async function runCli(argv: readonly string[], io?: Partial<CliIO>): Prom
       return 0;
     }
     if (args.command === "generate" || args.command === "g") {
-      assertOptions(args, ["architecture", "path", "dry-run", "force"], 2);
+      assertOptions(args, ["architecture", "path", "target", "dry-run", "force"], 2);
       const [type, name] = args.positionals;
       if (!type || !name) throw new CliError("MISSING_ARGUMENT", "Use: zaakiy generate <type> <name>.");
       await ensureProjectDirectory(root);
       const created = await generateFiles({
         type, name, cwd: root, path: valueOption(args.options, "path"),
-        architecture: valueOption(args.options, "architecture"),
+        architecture: valueOption(args.options, "architecture"), target: valueOption(args.options, "target"),
         dryRun: flagOption(args.options, "dry-run"), force: flagOption(args.options, "force")
       });
       out(created.length === 0 ? "No changes: generated files are already up to date.\n" : (flagOption(args.options, "dry-run") ? "Would generate" : "Generated") + ":\n" + created.map(path => "  " + path).join("\n") + "\n");
@@ -179,7 +183,59 @@ export async function runCli(argv: readonly string[], io?: Partial<CliIO>): Prom
       else out(issues.length ? issues.map(item => item.severity.toUpperCase() + " " + item.code + ": " + item.message).join("\n") + "\n" : "No project diagnostics found.\n");
       return issues.some(item => item.severity === "error") ? 1 : 0;
     }
-    if (["analyze", "migrate", "seo", "ai"].includes(args.command)) throw new CliError("COMMAND_UNAVAILABLE", args.command + " is planned but not implemented; no work was performed.");
+    if (args.command === "analyze") {
+      assertOptions(args, ["cwd", "json"], 1);
+      if (args.positionals[0] !== "bundle") {
+        throw new CliError("ANALYZE_UNAVAILABLE", "Supported analyzer: analyze bundle. Other analyzers remain deferred.");
+      }
+      const target = valueOption(args.options, "cwd");
+      const cwd = target ? resolve(root, safeRelativePath(target)) : root;
+      await ensureProjectDirectory(cwd);
+      const result = await analyzeBundle(cwd);
+      if (flagOption(args.options, "json")) out(JSON.stringify(result, null, 2) + "\n");
+      else {
+        const fmt = (kind: "js" | "css") => {
+          const sum = result.totals[kind];
+          return kind.toUpperCase() + ": raw " + sum.rawBytes + " B, gzip " + sum.gzipBytes +
+            " B, brotli " + sum.brotliBytes + " B";
+        };
+        out("Zaakiy build bundle (" + result.files.length + " files)\n" + fmt("js") + "\n" + fmt("css") + "\n");
+      }
+      return 0;
+    }
+    if (args.command === "seo") {
+      assertOptions(args, ["json", "path", "dry-run", "force"], 2);
+      const [subcommand, input] = args.positionals;
+      if (!input || !["audit", "sitemap"].includes(subcommand ?? "")) {
+        throw new CliError("SEO_UNAVAILABLE", "Supported: seo audit <file.json> or seo sitemap <file.json>.");
+      }
+      await ensureProjectDirectory(root);
+      // Lazy-load SEO-only dependencies: packed CLI --help/--version must work offline.
+      if (subcommand === "audit") {
+        if (flagOption(args.options, "dry-run") || flagOption(args.options, "force") || valueOption(args.options, "path")) {
+          throw new CliError("INVALID_OPTION", "seo audit accepts only --json.");
+        }
+        const {auditSeoFile} = await import("./seo-audit.js");
+        const report = await auditSeoFile(root, input);
+        if (flagOption(args.options, "json")) out(JSON.stringify(report, null, 2) + "\n");
+        else out("SEO audit: " + (report.ok ? "PASS" : "FAIL") + "\n" +
+          report.diagnostics.map(item =>
+            item.severity.toUpperCase() + " " + item.code + ": " + item.message).join("\n") + "\n");
+        return report.ok ? 0 : 1;
+      }
+      const {generateSitemapFiles} = await import("./seo-sitemap.js");
+      const report = await generateSitemapFiles(root, input, {
+        dryRun: flagOption(args.options, "dry-run"),
+        force: flagOption(args.options, "force"),
+        outputPath: valueOption(args.options, "path")
+      });
+      if (flagOption(args.options, "json")) out(JSON.stringify(report, null, 2) + "\n");
+      else out((report.dryRun ? "Would generate" : "Generated") + " sitemap (" +
+        report.included + " public URLs, " + report.excluded + " excluded):\n" +
+        report.files.map(path => "  " + path).join("\n") + "\n");
+      return 0;
+    }
+    if (["migrate", "ai"].includes(args.command)) throw new CliError("COMMAND_UNAVAILABLE", args.command + " is planned but not implemented; no work was performed.");
     throw new CliError("UNKNOWN_COMMAND", "Unknown command " + args.command + ". Run zaakiy --help.");
   } catch (error) {
     if (error instanceof CliError) {

@@ -1,0 +1,58 @@
+name: B5 Missing Package Baseline Benchmarks
+
+on:
+  push:
+    branches: [perf/b5-remaining-package-baselines]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: b990850b75a021e0ad7258d9f48a6e16306d8721
+          path: .benchmark-b4
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Validate candidate package APIs and benchmark scripts
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec vitest run packages/ads/test packages/cli/test packages/motion/test packages/ssr/test packages/ui/test
+          pnpm exec eslint benchmarks/microbench-ads.mjs benchmarks/microbench-cli.mjs benchmarks/microbench-ssr.mjs benchmarks/microbench-motion.mjs benchmarks/microbench-ui.mjs benchmarks/report-b5-remaining.mjs
+          pnpm typecheck
+      - name: Build immutable B4 baseline
+        run: |
+          pnpm --dir .benchmark-b4 install --frozen-lockfile
+          pnpm --dir .benchmark-b4 build
+      - name: Run five package reference workloads
+        run: |
+          mkdir -p benchmark-artifacts
+          for name in ads cli ssr motion ui; do
+            node "benchmarks/microbench-$name.mjs" .benchmark-b4 "benchmark-artifacts/$name-baseline.json"
+            node "benchmarks/microbench-$name.mjs" . "benchmark-artifacts/$name-candidate.json"
+          done
+          node benchmarks/report-b5-remaining.mjs
+          cat benchmark-artifacts/b5-summary.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload complete raw sample evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b5-five-package-baselines
+          path: benchmark-artifacts/
+          if-no-files-found: warn

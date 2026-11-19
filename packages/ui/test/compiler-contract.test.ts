@@ -25,6 +25,24 @@ describe("current TSX compiler integration boundary", () => {
     expect(result.js[0]?.code).not.toContain("jsx-runtime");
   });
 
+  it("compiles native UI layout/Card JSX child slots with IR v2", () => {
+    const source = [
+      'import { Stack, Card, Button } from "@zaakiyjs/ui";',
+      "function App() { return <main>",
+      '  <Stack gap="sm"><Button label="Save" /></Stack>',
+      '  <Card title="Notice"><strong>Compiled child</strong></Card>',
+      "</main>; }"
+    ].join("\n");
+    const result = compile({
+      fileName: "packages/ui/test/native-children-v2.tsx", source, componentSlots: true
+    });
+    expect(result.diagnostics.filter(x => x.severity === "error")).toEqual([]);
+    expect(result.irVersion).toBe(2);
+    expect(result.js[0]?.code).toContain("createOwnedNativeSlot");
+    expect(result.js[0]?.code).toContain('"children": ');
+    expect(result.js[0]?.code).not.toContain("jsx-runtime");
+  });
+
   it("fails closed on component children until the compiler owns their semantics", () => {
     const result = compile({
       fileName: "unsupported-children.tsx",

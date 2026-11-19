@@ -46,7 +46,7 @@ Mode semantics: off detects but plans nothing and emits an informational no-guar
 
 ## Detection scope
 
-Uses TypeScript 5.9.3 parser for selected JS/TS syntax, selected global Web API references, and explicit imports from @zaakiyjs/compat/abort. Parses IR v1 CompatFeature nodes and nested nodes through the public JSON-like contract. CSS feature evidence must come from an adapter at the Styles boundary: css.selector-has, css.container-query, css.nesting and css.color-mix. The package does not introspect private Styles modules or parse arbitrary CSS text.
+Uses TypeScript 5.9.3 parser for selected JS/TS syntax, selected global Web API references, and explicit imports from @zaakiyjs/compat/abort. Parses compiler IR v1 and opt-in IR v2 CompatFeature nodes through the public JSON-like contract, including named component slots, conditional and keyed regions. IR v2 traversal is iterative, accepts at most 100,000 nodes and rejects cyclic/reused node objects. No source text is serialized into the output manifest. CSS feature evidence must come from an adapter at the Styles boundary: css.selector-has, css.container-query, css.nesting and css.color-mix. The package does not introspect private Styles modules or parse arbitrary CSS text.
 
 Static analysis is *not* a guarantee. Computed property names, shadowed names, code loaded at runtime, third-party dependencies, dynamic imports, browser plugins and CSS not surfaced by the styles adapter need an additional build graph scan. Source locations are stored, source content and credentials are not.
 

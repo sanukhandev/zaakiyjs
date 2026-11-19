@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   analyzeCompatibility, compareVersions, detectIRFeatures, detectSourceFeatures,
   getFeature, listFeatures, parseMode, resolveTargets, serializeManifest, toStylesTargets,
-  transformEmittedJavaScript, validateManifest
+  transformEmittedJavaScript, transformEmittedJavaScriptWithMap, validateManifest, type CompatIRNode
 } from "../src/index.js";
 
 const modern = { profile: "modern-2024" as const };
@@ -75,6 +75,28 @@ describe("syntax/API/IR/CSS detection and planning", () => {
     const js = transformEmittedJavaScript({ fileName: "app.js", code: "let x = true; x &&= false;", manifest: r.manifest });
     expect(js).not.toContain("&&=");
     expect(() => transformEmittedJavaScript({ fileName: "app.tsx", code: "const x = <div/>", manifest: r.manifest })).toThrow();
+  });
+  it("preserves a chainable v3 source map for approved ES2019 downleveling", () => {
+    const manifest = analyzeCompatibility({
+      mode: "strict", targets: {browsers:["safari >=13.1"]},
+      sources: source("let enabled = true; enabled &&= false;")
+    }).manifest;
+    const request = {fileName:"assets/entry.js",code:"let enabled = true; enabled &&= false;",manifest};
+    const output = transformEmittedJavaScriptWithMap(request);
+    expect(output.code).not.toContain("&&=");
+    expect(output.code).not.toContain("sourceMappingURL");
+    const map = JSON.parse(output.map!) as {version:number;sources:string[];mappings:string};
+    expect(map.version).toBe(3);
+    expect(map.sources).toEqual(["entry.js"]);
+    expect(map.mappings.length).toBeGreaterThan(0);
+    expect(transformEmittedJavaScriptWithMap(request)).toEqual(output);
+    expect(() => transformEmittedJavaScriptWithMap({...request,fileName:"../secrets.js"})).toThrow();
+    expect(() => transformEmittedJavaScriptWithMap({...request,code:"const x = <h1 />;"})).toThrow();
+    const native = analyzeCompatibility({mode:"strict",targets:{profile:"modern-2024"},
+      sources:source("let enabled = true;")}).manifest;
+    expect(transformEmittedJavaScriptWithMap({...request,manifest:native})).toEqual({
+      code:request.code,map:null
+    });
   });
   it("fails closed for unapproved native AbortSignal.any use on an older target", () => {
     const request = { targets: oldFirefox, sources: source("const s = AbortSignal.any([a, b]);") };
@@ -160,7 +182,59 @@ describe("syntax/API/IR/CSS detection and planning", () => {
     const r = analyzeCompatibility({ mode: "strict", targets: modern, ir: [ir] });
     expect(r.ok).toBe(false);
     expect(r.manifest.unsupportedFeatures).toEqual(["web.experimental-x"]);
-    expect(analyzeCompatibility({ mode: "auto", targets: modern, ir: [{ ...ir, irVersion: 2 }] }).ok).toBe(false);
+    expect(analyzeCompatibility({ mode: "auto", targets: modern, ir: [{ ...ir, irVersion: 3 }] }).ok).toBe(false);
+  });
+  it("traverses IR v2 component children, named slots and nested keyed/conditional regions", () => {
+    const span = (offset: number) => ({file: "src/app.tsx",
+      start: {line: 1, column: offset + 1, offset}});
+    const ir = {irVersion: 2, sourceFile: "src/app.tsx", nodes: [{
+      kind: "ComponentCall", slots: [{name: "header", children: [{
+        kind: "KeyedLoop", body: [{kind: "CompatFeature", feature: "web.abort-signal-any", span: span(18)}]
+      }]}, {name: "footer", children: [{
+        kind: "ConditionalBlock", whenTrue: [{
+          kind: "CompatFeature", feature: "web.fetch", span: span(78)
+        }], whenFalse: []
+      }]}],
+      children: [{kind: "CompatFeature", feature: "js.logical-assignment", span: span(105)}]
+    }]};
+    const detected = detectIRFeatures(ir);
+    expect(detected.diagnostics).toEqual([]);
+    expect(detected.requirements.map(item => item.id)).toEqual([
+      "js.logical-assignment", "web.abort-signal-any", "web.fetch"
+    ]);
+    const first = analyzeCompatibility({mode: "strict", targets: {browsers: ["firefox >=100"]}, ir: [ir]});
+    const second = analyzeCompatibility({mode: "strict", targets: {browsers: ["firefox >=100"]}, ir: [ir]});
+    expect(first.ok).toBe(false);
+    expect(first.manifest.unsupportedFeatures).toContain("web.abort-signal-any");
+    expect(first.manifest.detectedFeatures.find(item => item.id === "web.fetch")?.status).toBe("native");
+    expect(first.manifest.hash).toBe(second.manifest.hash);
+    expect(first.manifest.detectedFeatures.find(item => item.id === "web.abort-signal-any")?.requiredBy[0]?.offset).toBe(18);
+  });
+  it("rejects reused/cyclic IR v2 objects without recursion overflow or source-content leakage", () => {
+    const shared = {
+      kind: "CompatFeature", feature: "web.fetch"
+    };
+    const root = {kind: "StaticElement", children: [shared, shared]};
+    const found = detectIRFeatures({irVersion: 2, sourceFile: "secret.tsx", nodes: [root]});
+    expect(found.requirements).toHaveLength(1);
+    expect(found.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({code: "ZK2004", severity: "error"})
+    ]));
+    const loop: CompatIRNode & {children: CompatIRNode[]} = {kind: "StaticElement", children: []};
+    loop.children.push(loop);
+    const cyclic = analyzeCompatibility({mode: "strict", targets: modern, ir: [{
+      irVersion: 2, sourceFile: "secret.tsx", nodes: [loop]
+    }]});
+    expect(cyclic.ok).toBe(false);
+    expect(cyclic.manifest.diagnostics.some(item => item.code === "ZK2004")).toBe(true);
+  
+  });
+  it("analyzes 12000 nested IR v2 nodes without recursive-stack failure", () => {
+    let node: CompatIRNode = {kind: "CompatFeature", feature: "web.fetch"};
+    for (let i = 0; i < 12_000; i++) node = {kind: "StaticElement", children: [node]};
+    const detected = detectIRFeatures({irVersion: 2, sourceFile: "nested.tsx", nodes: [node]});
+    expect(detected.diagnostics).toEqual([]);
+    expect(detected.requirements).toEqual([expect.objectContaining({id: "web.fetch"})]);
   });
   it("consumes CSS evidence from Styles contract and warns for Edge adapter gap", () => {
     const r = analyzeCompatibility({

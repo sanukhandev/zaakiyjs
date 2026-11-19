@@ -28,6 +28,7 @@ These pages are **source documentation**, designed to be imported into a documen
 | [DOM](./packages/dom.md) | Native node bindings, mount/disposal, conditional/keyed regions |
 | [Compiler](./packages/compiler.md) | TSX semantic analysis, IR v1 and DOM code generation |
 | [Styles](./packages/styles.md) | Brand tokens, atomic utilities, responsive/dark CSS, recipes |
+| [Image](./packages/image.md) | Local build-time responsive image encoding and native picture markup (draft PR #61) |
 | [Vite Plugin](./packages/vite-plugin.md) | Compilation pipeline, asset output, diagnostics and HMR behavior |
 | [CLI](./packages/cli.md) | Starter projects, generators and project diagnostics |
 

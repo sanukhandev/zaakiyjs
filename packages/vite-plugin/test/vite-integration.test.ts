@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { build, createServer, type ViteDevServer, type RollupOutput } from "vite";
 import { fileURLToPath } from "node:url";
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { cpSync, mkdtempSync, rmSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { hasCompiler, hasStyles } from "../src/bridge.js";
 import { zaakiyPlugin } from "../src/index.js";
@@ -68,6 +68,7 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
     };
     expect(parsed.schemaVersion).toBe(1);
     expect(parsed.assets.map(a => a.fileName)).toContain("assets/theme.css");
+    expect(new Set(parsed.assets.map(a => a.fileName)).size).toBe(parsed.assets.length);
     expect(parsed.assets.filter(a => a.fileName.endsWith(".js")).length).toBeGreaterThanOrEqual(2);
     // HTML entry chunks can have virtual proxy facades. Such IDs must be omitted,
     // rather than inventing an app source path from their generated chunk name.
@@ -75,6 +76,140 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
       !a.sourceFile || (!a.sourceFile.startsWith("/") &&
         !a.sourceFile.includes("\\") && !a.sourceFile.includes("../"))
     )).toBe(true);
+  });
+
+  it("emits a deterministic source-scoped strict compatibility manifest for supported TSX", async () => {
+    const builds: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      const result = await build({
+        configFile: false, root: fixtureRoot, logLevel: "silent",
+        plugins: [zaakiyPlugin({compatibility: {mode: "strict", targets: {profile: "modern-2024"}}})],
+        build: {write: false, emptyOutDir: false}
+      });
+      const output = Array.isArray(result) ? result[0] : result;
+      const assets = (output as RollupOutput).output;
+      const compat = assets.find(item => item.type === "asset" && item.fileName === "compat-manifest.json");
+      expect(compat?.type).toBe("asset");
+      const content = String(compat?.type === "asset" ? compat.source : "");
+      const parsed = JSON.parse(content) as {
+        mode: string; transforms: unknown[]; shims: unknown[]; unsupportedFeatures: unknown[];
+        detectedFeatures: unknown[]; hash: string;
+      };
+      expect(parsed.mode).toBe("strict");
+      expect(parsed.transforms).toHaveLength(0);
+      expect(parsed.shims).toHaveLength(0);
+      expect(parsed.unsupportedFeatures).toHaveLength(0);
+      expect(parsed.hash).toMatch(/^fnv1a64:[0-9a-f]{16}$/);
+      expect(content).not.toContain(fixtureRoot.replaceAll("\\", "/"));
+      const main = assets.find(item => item.type === "asset" && item.fileName === "zaakiy-assets.json");
+      const manifest = JSON.parse(String(main?.type === "asset" ? main.source : "")) as {
+        assets: Array<{fileName: string}>
+      };
+      expect(manifest.assets.filter(item => item.fileName === "compat-manifest.json")).toHaveLength(1);
+      builds.push(content);
+    }
+    expect(builds[0]).toBe(builds[1]);
+  });
+
+  it("downlevels approved syntax with verified output and chained compiler source maps", async () => {
+    const tmp = mkdtempSync(join(dirname(fixtureRoot), ".zaakiy-compat-transformed-"));
+    cpSync(fixtureRoot, tmp, {recursive:true});
+    const entry = join(tmp, "src", "main.tsx");
+    try {
+      writeFileSync(entry, readFileSync(entry, "utf8") +
+        '\nlet activated = false; activated ||= true; document.body.dataset.compat = String(activated);\n');
+      const buildOnce = async () => {
+        const result = await build({
+          configFile: false, root: tmp, logLevel: "silent",
+          plugins: [zaakiyPlugin({ compatibility: {
+            mode: "strict", targets: {browsers: ["safari >=13.1"]},
+            syntaxTransforms: "approved-es2019"
+          }})],
+          build: {write:false, emptyOutDir:false, sourcemap:true}
+        });
+        const output = Array.isArray(result) ? result[0] : result;
+        const files = (output as RollupOutput).output;
+        const js = files.filter(item => item.type === "chunk");
+        const maps = files.filter(item => item.type === "asset" && item.fileName.endsWith(".js.map"));
+        const audit = files.find(item => item.type === "asset" && item.fileName === "compat-manifest.json");
+        expect(js.length).toBeGreaterThan(0);
+        expect(js.every(item => !item.code.includes("||="))).toBe(true);
+        expect(maps.length).toBeGreaterThan(0);
+        const manifest = JSON.parse(String(audit?.type === "asset" ? audit.source : "")) as {
+          mode: string; transforms: {id:string}[];
+        };
+        expect(manifest.mode).toBe("strict");
+        expect(manifest.transforms.map(t => t.id)).toContain("typescript-5.9.3-es2019");
+        return JSON.stringify(files.map(item => [item.fileName,item.type === "chunk" ? item.code : String(item.source)]));
+      };
+      expect(await buildOnce()).toBe(await buildOnce());
+    } finally {
+      rmSync(tmp, {recursive:true, force:true});
+    }
+  });
+
+  it("rejects unsupported APIs and unapplied syntax transforms in strict production builds", async () => {
+    const temp = mkdtempSync(join(dirname(fixtureRoot), ".zaakiy-compat-strict-"));
+    cpSync(fixtureRoot, temp, {recursive: true});
+    const source = join(temp, "src", "main.tsx");
+    const original = readFileSync(source, "utf8");
+    try {
+      writeFileSync(source, original + "\nconst unsupported = AbortSignal.any([]); void unsupported;\n");
+      await expect(build({
+        configFile: false, root: temp, logLevel: "silent",
+        plugins: [zaakiyPlugin({compatibility: {mode: "strict",
+          targets: {browsers: ["firefox >=100"]}}})],
+        build: {write: false, emptyOutDir: false}
+      })).rejects.toThrow("ZV4003");
+      writeFileSync(source, original + "\nlet flag = false; flag ||= true;\n");
+      await expect(build({
+        configFile: false, root: temp, logLevel: "silent",
+        plugins: [zaakiyPlugin({compatibility: {mode: "strict",
+          targets: {browsers: ["safari >=13.1"]}}})],
+        build: {write: false, emptyOutDir: false}
+      })).rejects.toThrow("ZV4004");
+    } finally {
+      rmSync(temp, {recursive: true, force: true});
+    }
+  });
+
+  it("checks emitted ordinary JavaScript chunks beyond TSX source files", async () => {
+    const temp = mkdtempSync(join(dirname(fixtureRoot), ".zaakiy-compat-output-"));
+    cpSync(fixtureRoot, temp, {recursive: true});
+    try {
+      const html = join(temp, "index.html");
+      writeFileSync(html, readFileSync(html, "utf8").replace(
+        "</body>", '<script type="module" src="/src/external-feature.js"></script></body>'
+      ));
+      writeFileSync(join(temp, "src", "external-feature.js"),
+        "globalThis.__zaakiyCompatSmoke = AbortSignal.any([]);\n");
+      await expect(build({
+        configFile: false, root: temp, logLevel: "silent",
+        plugins: [zaakiyPlugin({compatibility: {mode: "strict",
+          targets: {browsers: ["firefox >=100"]}}})],
+        build: {write: false, emptyOutDir: false}
+      })).rejects.toThrow("ZV4003");
+    } finally {
+      rmSync(temp, {recursive: true, force: true});
+    }
+  });
+
+  it("rejects conflicting legacy target options and invalid compatibility profiles", async () => {
+    await expect(build({
+      configFile: false, root: plainRoot, logLevel: "silent",
+      plugins: [zaakiyPlugin({
+        browserTargets: ["chrome >=124"],
+        compatibility: {mode: "strict", targets: {profile: "modern-2024"}}
+      })],
+      build: {write: false, emptyOutDir: false}
+    })).rejects.toThrow("ZV4001");
+    await expect(build({
+      configFile: false, root: plainRoot, logLevel: "silent",
+      plugins: [zaakiyPlugin({
+        compatibility: {mode: "strict", targets: {browsers: ["chrome latest"]}}
+      })],
+      build: {write: false, emptyOutDir: false}
+    })).rejects.toThrow("ZV4001");
   });
 
   it("uses Vite's actual watcher to trigger a full reload for changed TSX, never silent owner reuse", async () => {
@@ -234,6 +369,61 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
       expect(css).toBeDefined();
       expect(String(css?.source)).toContain("flex");
       expect(manifest).toBeDefined();
+      const entries = (JSON.parse(String(manifest?.type === "asset" ? manifest.source : "")) as {
+        assets: Array<{fileName: string; kind: string}>
+      }).assets;
+      expect(entries.filter(a => a.fileName === "assets/zaakiy-styles.css")).toHaveLength(1);
+      expect(new Set(entries.map(a => a.fileName)).size).toBe(entries.length);
       expect(js.every(chunk => !/@zaakiyjs\/(?:ai|proxy|compiler|styles|vite-plugin)/.test(chunk.type === "chunk" ? chunk.code : ""))).toBe(true);
   });
+
+  it("preserves CSS on JS-only hot updates and regenerates it for changed utility tokens", async () => {
+    const temp = mkdtempSync(join(dirname(fixtureRoot), ".zaakiy-vite-css-hmr-"));
+    cpSync(fixtureRoot, temp, { recursive: true });
+    const sourcePath = join(temp, "src", "main.tsx");
+    try {
+      server = await createServer({
+        configFile: false, root: temp,
+        plugins: [zaakiyPlugin()], server: { middlewareMode: true, hmr: true }
+      });
+      const loadCss = async (): Promise<string> => {
+        const result = await server!.pluginContainer.load("\u0000virtual:zaakiy-styles.css");
+        return typeof result === "string" ? result : result?.code ?? "";
+      };
+      const first = await server.transformRequest("/src/main.tsx");
+      expect(first?.code).toContain("Count:");
+      const cssBefore = await loadCss();
+      expect(cssBefore).toContain("flex");
+
+      const original = readFileSync(sourcePath, "utf8");
+      writeFileSync(sourcePath, original.replace("Count:", "Clicks:"));
+      const socketSpy = vi.spyOn(server.ws, "send");
+      server.watcher.emit("change", sourcePath);
+      await vi.waitFor(() =>
+        expect(socketSpy).toHaveBeenCalledWith({ type: "full-reload", path: "*" }),
+        { timeout: 4000, interval: 50 }
+      );
+      const updated = await server.transformRequest("/src/main.tsx");
+      expect(updated?.code).toContain("Clicks:");
+      expect(await loadCss()).toBe(cssBefore);
+
+      socketSpy.mockClear();
+      writeFileSync(sourcePath, readFileSync(sourcePath, "utf8").replace("flex gap-4", "grid gap-4"));
+      server.watcher.emit("change", sourcePath);
+      await vi.waitFor(() =>
+        expect(socketSpy).toHaveBeenCalledWith({ type: "full-reload", path: "*" }),
+        { timeout: 4000, interval: 50 }
+      );
+      await server.transformRequest("/src/main.tsx");
+      const updatedCss = await loadCss();
+      expect(updatedCss).toContain("grid");
+      expect(updatedCss).not.toBe(cssBefore);
+      socketSpy.mockRestore();
+    } finally {
+      await server?.close();
+      server = undefined;
+      rmSync(temp, { recursive: true, force: true });
+    }
+  });
+
 });

@@ -1,6 +1,8 @@
 name: CLI Generated App Acceptance
 on:
   pull_request:
+  push:
+    branches: ['perf/**']
 permissions:
   contents: read
 jobs:
@@ -24,14 +26,81 @@ jobs:
         run: pnpm build
       - name: Run complete CLI package tests
         run: pnpm --filter @zaakiyjs/cli test
+      - name: Benchmark new CLI page/layout generators
+        run: node benchmarks/microbench-cli-generators.mjs . benchmark-artifacts/cli-generators.json
+      - name: Upload CLI generator benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-generator-plan-benchmark
+          path: benchmark-artifacts/cli-generators.json
+          if-no-files-found: warn
       - name: Scaffold a genuine app in the pnpm workspace
         run: node packages/cli/dist/bin.js start --project smoke-app --template minimal --workspace --path apps --package-manager pnpm
+      - name: Declare referenced optional package dependencies in generated app
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          path = Path("apps/smoke-app/package.json")
+          manifest = json.loads(path.read_text())
+          for pkg in ("store", "async", "http", "proxy"):
+              manifest["dependencies"][f"@zaakiyjs/{pkg}"] = "workspace:^"
+          manifest.setdefault("devDependencies", {})["@types/node"] = "22.15.30"
+          path.write_text(json.dumps(manifest, indent=2) + "\n")
+          PY
       - name: Resolve test app workspace dependency graph
         run: pnpm install --no-frozen-lockfile
+      - name: Generate and compile native pages and layouts in the real app
+        shell: bash
+        run: |
+          (
+            cd apps/smoke-app
+            node ../../packages/cli/dist/bin.js g page SalesReports --path src/pages
+            node ../../packages/cli/dist/bin.js g layout Dashboard --path src/layouts
+            node ../../packages/cli/dist/bin.js g store Cart
+            node ../../packages/cli/dist/bin.js g resource Products
+            node ../../packages/cli/dist/bin.js g task SaveProduct
+            node ../../packages/cli/dist/bin.js g interceptor Trace
+            node ../../packages/cli/dist/bin.js g proxy Gateway
+          )
+          python3 - <<'PY'
+          from pathlib import Path
+          entry = Path("apps/smoke-app/src/main.tsx")
+          original = entry.read_text()
+          entry.write_text('import "./pages/SalesReportsPage";\nimport "./layouts/DashboardLayout";\n' + original)
+          PY
       - name: Strict generated TypeScript check
         run: pnpm --dir apps/smoke-app typecheck
+      - name: Verify generated server proxy typecheck with Node target
+        run: pnpm --dir apps/smoke-app exec tsc --noEmit --strict --skipLibCheck --module NodeNext --moduleResolution NodeNext --target ES2022 --types node server/proxies/createGatewayProxy.ts
       - name: Compile real TSX and generated CSS through Vite
         run: pnpm --dir apps/smoke-app build
+      - name: Audit emitted JS/CSS sizes without executing bundled code
+        shell: bash
+        run: |
+          mkdir -p benchmark-artifacts
+          (
+            cd apps/smoke-app
+            node ../../packages/cli/dist/bin.js analyze bundle --json > ../../benchmark-artifacts/cli-smoke-bundle.json
+          )
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          result = json.loads(Path("benchmark-artifacts/cli-smoke-bundle.json").read_text())
+          assert result["schemaVersion"] == 1
+          assert result["totals"]["js"]["rawBytes"] > 0
+          assert any(item["kind"] == "js" for item in result["files"])
+          assert all(len(item["sha256"]) == 64 for item in result["files"])
+          PY
+      - name: Upload generated-app bundle metrics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-generated-app-bundle
+          path: benchmark-artifacts/cli-smoke-bundle.json
+          if-no-files-found: warn
       - name: Exercise generated Counter in real headless Chromium
         shell: bash
         run: |
@@ -69,6 +138,57 @@ jobs:
             cat /tmp/zaakiy-preview.log
             cat /tmp/zaakiy-browser-stderr.txt
             cat /tmp/zaakiy-browser-dom.txt
+            exit 1
+          fi
+      - name: Compile and exercise finite literal JSX spread attributes in Chromium
+        shell: bash
+        run: |
+          cat > apps/smoke-app/src/App.tsx <<'TSX'
+          export function App() {
+            return <main>
+              <label {...{htmlFor: "email", title: "Email", "aria-label": "Email address"}}>Email address</label>
+              <input {...{id: "email", type: "email", "data-test": "email", disabled: false}} />
+            </main>;
+          }
+          TSX
+          pnpm --dir apps/smoke-app typecheck
+          pnpm --dir apps/smoke-app build
+          python3 - <<'PY'
+          from pathlib import Path
+          html = Path("apps/smoke-app/dist/index.html")
+          source = html.read_text()
+          script = """<script type="module">
+          document.addEventListener("DOMContentLoaded", () => {
+            setTimeout(() => {
+              const label = document.querySelector("label");
+              const input = document.querySelector("input");
+              label?.click();
+              const good = label?.getAttribute("for") === "email" &&
+                label?.getAttribute("aria-label") === "Email address" &&
+                !label?.hasAttribute("htmlFor") &&
+                input?.getAttribute("data-test") === "email" &&
+                !input.disabled && document.activeElement === input;
+              document.body.setAttribute("data-zaakiy-literal-spread", good ? "pass" : "fail");
+            }, 60);
+          });
+          </script>"""
+          assert "</body>" in source
+          html.write_text(source.replace("</body>", script + "</body>"))
+          PY
+          pnpm --dir apps/smoke-app exec vite preview --host 127.0.0.1 --port 4176 > /tmp/zaakiy-literal-spread-preview.log 2>&1 &
+          preview_pid=$!
+          trap 'kill "$preview_pid" 2>/dev/null || true' EXIT
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:4176/ >/dev/null; then break; fi
+            sleep 1
+          done
+          google-chrome --headless=new --no-sandbox --disable-dev-shm-usage --disable-gpu \
+            --virtual-time-budget=3000 --dump-dom http://127.0.0.1:4176/ \
+            > /tmp/zaakiy-literal-spread-browser.txt 2>/tmp/zaakiy-literal-spread-stderr.txt
+          if ! grep -q 'data-zaakiy-literal-spread="pass"' /tmp/zaakiy-literal-spread-browser.txt; then
+            cat /tmp/zaakiy-literal-spread-preview.log
+            cat /tmp/zaakiy-literal-spread-stderr.txt
+            cat /tmp/zaakiy-literal-spread-browser.txt
             exit 1
           fi
       - name: Compile and exercise native Show and For in Chromium

@@ -3,7 +3,7 @@ export { analyzeCompatibility, serializeManifest, validateManifest, toStylesTarg
 export { parseMode, resolveTargets, compareVersions, targetLabel, COMPAT_DATA_VERSION } from "./targets.js";
 export { FEATURE_REGISTRY, getFeature, listFeatures } from "./registry.js";
 export { detectIRFeatures, detectSourceFeatures, detectStylesFeatures } from "./detect.js";
-export { transformEmittedJavaScript } from "./transform.js";
+export { transformEmittedJavaScript, transformEmittedJavaScriptWithMap } from "./transform.js";
 export type {
   BrowserFamily, BrowserTarget, CompatibilityProfile, CompatMode, FeatureCategory,
   StrategyKind, FeatureDefinition, FeatureReference, FeatureRequirement, CompatIRNode,
@@ -12,5 +12,5 @@ export type {
   StrategySelection, TargetConfiguration
 } from "./types.js";
 export type { StylesTargetAdapter } from "./planner.js";
-export type { JavaScriptTransformRequest } from "./transform.js";
+export type { JavaScriptTransformRequest, JavaScriptTransformResult } from "./transform.js";
 export const foundationStatus = { package: "@zaakiyjs/compat", implemented: true } as const;

@@ -60,6 +60,8 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `MountFactory`
 - `MountHandle`
 - `MountResult`
+- `HydrationMountHandle`
+- `hydrate`
 - `Namespace`
 - `foundationStatus`
 - `mount`
@@ -72,7 +74,7 @@ Sections below retain capability explanations and examples from the package's so
 
 - `@zaakiyjs/dom`: `mount(compiledFactory, container)` initializes a fresh owner once; `dispose()` cleans up and removes only its mounted range.
 - `@zaakiyjs/dom/compiler`: frozen v1 primitives `createElement`, `createText`, `setText`, `setProperty`, `setAttribute`, `bindText`, `bindProperty`, and `listen`.
-- Additional browser helpers: `setClass`, `setStyle`, `bindAttribute`, `bindClass`, `bindStyle`, `bindRef`, `listenStable`, and `cloneStatic`.
+- Additional browser helpers: `setClass`, `setStyle`, `bindAttribute`, `bindClass`, `bindStyle`, `bindRef`, `bindMountedRef`, `listenStable`, and `cloneStatic`.
 
 `bind*` functions connect render-phase signal effects to core owner cleanup. A read tracks only signals accessed by that binding. `setText` updates `Text.data` only when changed. Reactive boolean or nullish JSX children normalize to empty text, matching the compiler's nonreactive lowering. Immutable templates are constructed DOM nodes cloned with `cloneNode(true)`; HTML strings are never parsed.
 
@@ -125,3 +127,29 @@ See [ADR 0004](../../adr/0004-dom-region-abi.md) for the frozen protocol and its
 - [Public exports](https://github.com/sanukhandev/zaakiyjs/blob/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/dom/src/index.ts)
 - [Package tests](https://github.com/sanukhandev/zaakiyjs/tree/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/dom/test) (some packages use `tests/`)
 - Update this guide in the same PR that changes public APIs, compiler/DOM behavior, security rules or feature support.
+
+### Connected native refs versus eager refs
+
+`bindRef(owner, node, callback)` retains its existing eager callback semantics for compatibility with legacy DOM ABI consumers. The additive `bindMountedRef(owner, node, callback)` is designed for compiler-generated native JSX and invokes the callback only once the node is connected. A disconnected mount uses a scoped `MutationObserver` until connection; owner disposal disconnects the observer and sends a single `null` after a successful attachment. It does not provide a component-instance ref, slot ownership protocol, or server hydration support. Native TSX `ref` lowering is conditional, so modules not using refs do not import the extension.
+
+### Compiler-generated reactive classes and attributes
+
+The hardening compiler now emits `bindClass` for finite class-variant expressions and `bindAttribute` for reactive non-URL attributes. These reuse established owner-scoped effects and the native `setAttribute` URL/sink policy, retaining element identity across updates. The compiler never accepts arbitrary user-generated utility names or bypasses the verified Vite CSS token-offset contract. Dynamic URL expressions and inline style objects remain unsupported; runtime `setStyle` is not an implicit authorization for compiler-generated inline styles under strict CSP.
+
+
+### Additive exit-aware DOM integration
+
+`@zaakiyjs/dom/compiler` additionally exposes `bindExitAwareConditionalRegion` for direct native DOM integration. It retains one element/owner while `exit(element, signal)` settles, cancels pending exit on re-entry, and enforces a bounded 1–30000ms lifetime. Parent disposal is synchronous and aborts pending exits. Existing `bindConditionalRegion` and keyed-region behavior remain unchanged; this helper is not emitted automatically by TSX and does not support fragments, slots or nested keyed exit choreography.
+
+### Owner-scoped native slot integration
+
+The additive `createOwnedNativeSlot(owner, factory)` helper at `@zaakiyjs/dom/compiler` owns one native Node or DocumentFragment via logical Core ancestry and an exact anchored DOM range. The same slot cannot mount twice, portals do not change its DI ancestry, and parent disposal cleans up child owners and nodes. This was the manual precursor to compiler-generated default and restricted named JSX slots; see [ADR 0011](../../adr/0011-native-slot-ownership.md).
+
+### Compiler-generated default slots (IR v2)
+
+The `@zaakiyjs/dom/compiler` subpath exports the branded, one-shot `mountOwnedSlot` outlet helper alongside `createOwnedNativeSlot`. With `componentSlots: true`, the compiler creates the slot under the caller's Core owner and inserts it at `{props.children}` in a native callee element. The child owner is disposed with the caller, including portal-host placement. Default IR v1 rendering and manual slot APIs remain unchanged. See [ADR 0013](../../adr/0013-component-slots-ir2.md).
+
+
+### Native hydration owner (H2)
+
+`hydrate(existingNode, (owner, existing) => { /* attach verified bindings */ })` initializes one owner for an existing DOM root, never clones/replaces it, rejects duplicate adoption and disposes owner-scoped effects/listeners without deleting SSR markup. It does **not** validate server markup itself; use `hydrateDataPage` from `@zaakiyjs/ssr/client` for the approved compiler-generated data SSR subset and the pinned manifest/marker preflight.

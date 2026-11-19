@@ -12,10 +12,10 @@ Explicitly import \`@zaakiyjs/ui/styles.css\` once in the application entry. It 
 
 - **Actions:** Button, IconButton, LinkButton, ButtonGroup. Button uses frozen Contract 10 \`label\`, \`tone\`, \`appearance\`, \`size\`, \`type\`, semantic \`onPress({ originalEvent })\`.
 - **Fields:** TextField, Textarea, Checkbox, RadioGroup, Switch, Select (native), FieldLabel, FormField, FieldError, BoundTextField. BoundTextField uses a structural contract compatible with string-valued \`@zaakiyjs/forms\` fields; Forms is optional and owns validation.
-- **Layouts:** Container, Stack, Inline, Grid, Flex, Separator, AspectRatio, Card. Current explicit \`items\`/text props deliberately replace unsupported TSX component children; these are limited compositional forms.
+- **Layouts:** Container, Stack, Inline, Grid, Flex, Separator, AspectRatio, Card. Container, Stack, Inline, Grid, Flex and Card support compiler-owned native default child slots when `componentSlots: true` is enabled, in addition to existing explicit item/text props.
 - **Display:** Badge, Avatar, Skeleton, Progress, Alert, Table, Pagination, LoadingIndicator.
 - **Navigation:** Breadcrumbs, NavigationMenu (native semantic navigation), SidebarLayout, Pagination.
-- **Feedback:** Dialog, Tooltip, Popover, DropdownMenu, Tabs, Accordion, Toast and createToastCenter. Interactive behaviors delegate to \`@zaakiyjs/ui-primitives\`, and attach controllers in Core onMount after nodes become connected. Dialog, Popover and DropdownMenu accept an explicitly owned OverlayManager. ToastCenter is per owner/host, not a mutable process-global registry.
+- **Feedback:** Dialog, Tooltip, Popover, DropdownMenu, Tabs, Accordion, Toast and createToastCenter. Interactive behaviors delegate to `@zaakiyjs/ui-primitives`, and attach controllers in Core onMount after nodes become connected. Dialog accepts an optional compiler-owned named `body` slot; Popover accepts optional named `content` or text. Both require IR v2 for JSX-valued named props, reject forged/unowned slot values and preserve the existing overlay manager. ToastCenter remains per owner/host.
 
 Example:
 
@@ -36,9 +36,18 @@ export function Profile() {
 
 ## Compiler boundary (do not bypass)
 
-The current Compiler rejects component JSX children (\`ZC2102\`), attribute spreads (\`ZC1002\`), JSX slots inside props (\`ZC2108\`), native refs (\`ZC1003\`) and dynamic class/style patterns (\`ZC2203\`/\`ZC2204\`). This package does **not** ship a React-style renderer or a JSX interpreter to work around these constraints. Conventional composable Card/Stack slots, arbitrary nested dialog content and declarative DOM-ref attachment require the separate Compiler/DOM issue #37.
+For compiler IR v1, arbitrary JSX component children, JSX-valued named props and unrestricted spreads are not supported; rejected syntax must fail with diagnostics.
 
-The visual subset supports explicit typed text/data props; claiming parity with full declarative component children would be incorrect. Components requiring caller-composable rich content are limited until the compiler ABI extends.
+With `zaakiyPlugin({componentSlots: true})`, IR v2 compiles the supported native default JSX child slots and explicitly named JSX-valued props into **one-shot, caller-owned native slot factories**, not a JSX object tree. Layouts/Card accept default `children`; Dialog accepts `body`; Popover accepts `content`. For example:
+
+```tsx
+<Dialog id="confirm" title="Confirm" description="Review" triggerLabel="Open"
+  overlays={overlays} body={<section><p>Review this change</p></section>} />
+<Popover id="details" triggerLabel="Details" overlays={overlays}
+  content={<div>Extra information</div>} />
+```
+
+These slots are mounted once through `@zaakiyjs/dom/compiler.mountOwnedSlot` and disposed with the caller owner. They cannot be reused across components, substituted with raw HTML, or mounted from arbitrary JSX objects. Full interactive component-slot ergonomics, portal/keyed exits and universal JSX props remain separate work.
 
 ## Security and accessibility
 

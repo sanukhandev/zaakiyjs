@@ -96,3 +96,50 @@ export function mount(factory: MountFactory, container: DomTarget): MountHandle 
     }
   };
 }
+
+
+/**
+ * H2: attach an owner to already existing native DOM without replacing it.
+ * A caller must validate the SSR build and DOM blueprint before invoking this.
+ * This low-level API never parses HTML or executes source text.
+ */
+export interface HydrationMountHandle {
+  readonly root: Node;
+  readonly owner: OwnerScope;
+  dispose(): void;
+}
+const activeHydrations = new WeakMap<Node, OwnerScope>();
+export function hydrate<T extends Node>(
+  root: T,
+  attach: (owner: OwnerScope, existing: T) => void
+): HydrationMountHandle {
+  if (!root || typeof root.nodeType !== "number" || typeof attach !== "function")
+    throw new TypeError("Native DOM hydration requires an existing node and an attachment factory");
+  if (activeHydrations.has(root))
+    throw new Error("Native DOM root already has a hydration owner");
+  const owner = createOwner();
+  activeHydrations.set(root, owner);
+  let disposed = false;
+  try {
+    initializeOwnedComponent(owner, () => attach(owner, root));
+    mountOwner(owner);
+  } catch (error) {
+    activeHydrations.delete(root);
+    // initializeOwnedComponent already disposes after setup errors; mount errors
+    // still need owner disposal. Preserve the original error if both fail.
+    try { disposeOwner(owner); }
+    catch (cleanupError) {
+      throw new AggregateError([error, cleanupError], "Hydration setup and cleanup failed");
+    }
+    throw error;
+  }
+  return {
+    root, owner,
+    dispose(): void {
+      if (disposed) return;
+      disposed = true;
+      try { disposeOwner(owner); }
+      finally { activeHydrations.delete(root); }
+    }
+  };
+}

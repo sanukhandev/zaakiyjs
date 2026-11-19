@@ -31,5 +31,8 @@
   },
   "dependencies": {
     "typescript": "5.9.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.30"
   }
 }

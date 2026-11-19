@@ -3,6 +3,8 @@ export { animateElement } from "./animate.js";
 export { createSpring } from "./spring.js";
 export { animateOwned, createPresence } from "./contract.js";
 export { createStandalonePresence } from "./presence.js";
+export { createConditionalExitAnimation } from "./region-exit.js";
+export type { ConditionalExitAnimationOptions } from "./region-exit.js";
 export { captureLayout, animateLayout, animateKeyedMoves } from "./layout.js";
 export { observeViewport, observeScrollProgress } from "./scroll.js";
 export { createGestures } from "./gesture.js";

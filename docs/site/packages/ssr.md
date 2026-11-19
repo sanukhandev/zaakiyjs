@@ -47,7 +47,7 @@ This example uses **trusted application-supplied placeholders**; it is not a dro
 ## Usage and correctness guidelines
 
 - `@zaakiyjs/ssr` root is protocol/types; server functions live under `/node`, build helpers under `/build`, read-only checks under `/client`.
-- Hydration inspection checks markers but does not attach event listeners or adopt existing DOM nodes.
+- Hydration inspection alone checks markers; the optional `hydrateDataPage` API adopts only strictly validated data-bound SSR nodes and can attach explicitly declared client event handlers.
 - Default response caching is no-store; public/shared caches require explicit authorization and partition policy.
 
 ## Public API index
@@ -57,6 +57,11 @@ Exported symbols detected in the package root `src/index.ts`. Platform-specific 
 - `CacheScopeV1`
 - `HYDRATION_PROTOCOL`
 - `HydrationEnvelopeV1`
+- `DataHydrationNodeV1`
+- `DataHydrationPlanV1`
+- `DataHydrationElementV1`
+- `DataHydrationTextV1`
+- `DataHydrationSlotV1`
 - `HydrationMismatchV1`
 - `MANIFEST_PROTOCOL`
 - `NodeServerAdapterV1`
@@ -81,7 +86,7 @@ Exported symbols detected in the package root `src/index.ts`. Platform-specific 
 - `@zaakiyjs/ssr`: browser-safe schema IDs and TypeScript protocol declarations.
 - `@zaakiyjs/ssr/node`: `createNodeServerAdapter`, `MemoryRenderCache`, `createCacheInvalidator`, `verifyTrustedManifest`, head/hydration serializers.
 - `@zaakiyjs/ssr/build`: bounded `prerenderStatic`, strict manifest verification.
-- `@zaakiyjs/ssr/client`: `inspectHydration` performs read-only browser markup/manifest checks; **does not attach listeners or claim hydration**.
+- `@zaakiyjs/ssr/client`: `inspectHydration` performs read-only preflight. Opt-in `hydrateDataPage` now verifies and adopts existing native nodes for the compiler's restricted data-bound SSR subset, with owner-scoped text/event bindings. It is not general TSX component hydration.
 
 The Node bridge consumes deployment-controlled modules under `TrustedServerBuildManifestV1`. The `sourceDigest` is matched against the pinned registration metadata; verifying that it matches the **actual compiled module byte contents** must happen in the build pipeline (not yet available). Never populate the registry from an HTTP request, arbitrary dynamic import path, TSX expression source, or unverified source code. A handcrafted test module proves only infrastructure behavior, not compiler support.
 
@@ -145,3 +150,99 @@ No quantified bundle-size/latency/memory improvement is claimed until measured. 
 - [Public source exports](https://github.com/sanukhandev/zaakiyjs/blob/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/ssr/src/index.ts)
 - [Package test cases](https://github.com/sanukhandev/zaakiyjs/tree/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/ssr/test)
 - Update this page when public APIs, runtime semantics or platform guarantees change.
+
+
+### Data-bound native hydration (H0–H3 initial vertical slice)
+
+This opt-in path is intentionally narrow. Build-time `compileDataServer({ ..., hydratable: true })` emits a `hydrationPlan` with stable IDs and comment markers. Deployment code must deliver a matching `HydrationEnvelopeV1` with the verified buildId and route. The browser imports `hydrateDataPage` from `@zaakiyjs/ssr/client` and supplies a trusted reactive read function and optional event handlers keyed by the compiler's element IDs. A matching page retains all server-rendered nodes and input state; owner disposal unregisters listeners and effects without removing server markup. Invalid structure, mismatched initial values, bad routes/builds or unexpected attributes fail before attachment.
+
+This subset does **not** support compiler-generated JSX event expressions, arbitrary TSX components, keyed lists, conditional regions or automatic client bundle generation. Normal `compileDataServer` output remains byte-compatible when `hydratable` is disabled.
+
+### H4 native interactive-region hydration (opt-in, experimental)
+
+The Node-only compiler target `compileRegionServer` emits a deterministic
+`zaakiy.region-hydration/2` plan and escaped server HTML from reviewed TSX IR.
+Its restricted compiler subset supports one native root, static attributes,
+own-data text paths, safe conditional/keyed regions and pure local component
+calls with mapped data props. It rejects runtime TSX execution, unsafe URLs,
+arbitrary JSX event expressions, nested dynamic regions and unsupported slots.
+
+A verified deployment serves exact compiled module bytes with a matching
+`HydrationEnvelopeV1` and trusted manifest. The browser imports
+`hydrateRegionPage` from `@zaakiyjs/ssr/client`, supplies a trusted reactive
+`read(path)` callback, and optionally provides explicit event callbacks keyed
+to compiler-generated element IDs (for repeated rows, `id:key`). Strict
+preflight checks every server node, marker, key, attribute and initial text
+before constructing owners. Matching nodes retain identity, focus and live
+input drafts. DOM/Signals handle post-adoption keyed ordering and branch
+switching; owner disposal releases listeners/effects without removing
+remaining SSR markup.
+
+```ts
+import { hydrateRegionPage } from "@zaakiyjs/ssr/client";
+
+// plan and envelope come from the verified compiler/deployment artifacts.
+// manifest must be byte-bound to the actual server module.
+const handle = hydrateRegionPage(
+  container, plan, envelope, manifest, "products", {
+    read: path => trustedClientState.read(path)
+  }
+);
+handle.dispose();
+```
+
+These values are intentionally application-supplied; no public state or
+`read(path)` implementation is invented by the framework. H4 does not yet
+cover arbitrary components, named slots, JSX event lowering, nested dynamic
+regions or broad production browser certification. Do not treat this opt-in
+source implementation as a published npm feature. See ADR 0015.
+
+### H4 verified state initialization and compiler event resolution
+
+`hydrateRegionPageWithState(container, plan, envelope, manifest, routeId,
+serializedPublicState, initialize)` first decodes a bounded
+`zaakiy.hydration-state/1` public JSON packet, checks the expected deployment
+build and route, and calls the application's synchronous initializer to create
+reactive state/readers. The initialized bindings are passed to the same strict
+native DOM preflight. On rejection, state is disposed; on a successful owner
+disposal, state is disposed exactly once. This API never merges arbitrary JSON
+into an existing global store and **does not authorize private or tenant data**.
+Only explicitly allowlisted public data should be serialized.
+
+For compiler-declared typed JSX handlers, supply
+`resolveEvent: path => trustedEventHandlers[path.join(".")]`.
+The resolver must return an existing function; JavaScript source is never
+evaluated or hydrated from SSR markup. Event ownership and cancellation are
+handled by the adopted DOM owner.
+
+Nested conditional/component regions may now be recreated as detached native
+DOM through the same structural preflight before owner/effect attachment.
+Dynamic branch rollback, cross-tenant authorization, imported dependency
+attestation, unsupported JSX closure semantics, and unrestricted nested keyed
+scopes must still pass separate certification before broader production claims.
+
+### H4-E compiler-owned mismatch recovery (explicit opt-in)
+
+`hydrateRegionPageRecoverBoundary(container, plan, envelope, manifest,
+routeId, bindings, {boundaryId, prepare})` first attempts strict zero-mutation
+adoption. Only when that fails does it consider one explicitly selected,
+unique compiler-authored region identifier. Manifest, build, route and template
+identity are checked **before** invoking the caller's trusted detached-native
+node factory. The replacement is confined to the ordered region markers,
+revalidated with the complete v2 plan and rolled back on failure.
+Missing, duplicate, foreign or canceled boundaries fail closed. This cannot
+be used to recover an untrusted deployment or bypass per-user authorization.
+
+Generated JSX event factories from `compileRegionServer().clientEvents` are
+trusted browser bundles, not serialized closures. For the audited inline
+subset, only synchronous direct calls to root-props actions with literal,
+event-parameter, root-props-path or lexical keyed-row data arguments are
+lowered. The browser resolver receives a live `getItem` callback, so a
+retained keyed row observes current item data when clicked after a reorder.
+Arbitrary statements, async callbacks, dynamic computed properties, direct
+global calls and spread arguments fail the compiler gate.
+
+Nested keyed loops use distinct lexical item scopes and are keyed by their
+full parent/child identity. Named and default slots are inserted by compiler
+IR lowering (`componentSlots: true`), not interpreted at runtime.
+Complex application component graphs still require independent validation.

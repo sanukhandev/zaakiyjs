@@ -21,7 +21,7 @@ zaakiyjs/
 
 Use pnpm workspaces, a single lockfile, Turborepo task graph and pinned tool versions. The layout is **planned**; folders not yet implemented must not be treated as available packages. Root and app workspaces are `private: true`.
 
-## 26 logical modules
+## 27 logical modules
 
 | Proposed `@zaakiyjs/` suffix | Environment | Boundary and role |
 | --- | --- | --- |
@@ -30,6 +30,7 @@ Use pnpm workspaces, a single lockfile, Turborepo task graph and pinned tool ver
 | `dom` | Browser | DOM binding helpers, keyed identity and event cleanup |
 | `compiler` | Node/build | AST, IR, optimization and JavaScript emission |
 | `styles` | Build + CSS | Brand tokens, utility extraction, CSS recipes |
+| `image` | Browser-safe descriptor + Node build | Local responsive raster optimization (Sharp adapter), picture markup, immutable image manifest |
 | `vite-plugin` | Node/build | Compiler + Vite, HMR and source maps |
 | `cli` | Node | Starters, generators, diagnostics, migrations |
 | `store` | Browser | Local/app/route store abstractions and explicit actions |

@@ -1,7 +1,8 @@
 /** Versioned ZaakiyJS compiler IR and deterministic TSX-to-DOM compilation API. */
 export const foundationStatus = { package: "@zaakiyjs/compiler", implemented: true } as const;
 export const IR_SCHEMA_VERSION = 1 as const;
-export type IRVersion = typeof IR_SCHEMA_VERSION;
+/** IR v1 stays frozen; explicit componentSlots requests opt into IR v2. */
+export type IRVersion = 1 | 2;
 export interface SourceSpan { readonly file: string; readonly start: { readonly line: number; readonly column: number; readonly offset: number }; readonly end: { readonly line: number; readonly column: number; readonly offset: number } }
 export type Purity = "pure" | "impure" | "unknown";
 export interface IRExpression { readonly source: string; readonly span: SourceSpan; readonly purity: Purity; readonly reactive: boolean }
@@ -13,22 +14,33 @@ export interface PropertyBinding extends IRNodeBase { readonly kind: "PropertyBi
 export interface EventBinding extends IRNodeBase { readonly kind: "EventBinding"; readonly name: string; readonly expression: IRExpression }
 export interface ConditionalBlock extends IRNodeBase { readonly kind: "ConditionalBlock"; readonly condition: IRExpression; readonly whenTrue: readonly IRNode[]; readonly whenFalse: readonly IRNode[] }
 export interface KeyedLoop extends IRNodeBase { readonly kind: "KeyedLoop"; readonly collection: IRExpression; readonly key: IRExpression; readonly body: readonly IRNode[]; readonly itemParameter?: string }
-export interface ComponentCall extends IRNodeBase { readonly kind: "ComponentCall"; readonly component: string; readonly props: readonly PropertyBinding[] }
+export interface NamedSlot { readonly name: string; readonly children: readonly IRNode[] }
+export interface ComponentCall extends IRNodeBase { readonly kind: "ComponentCall"; readonly component: string; readonly props: readonly PropertyBinding[]; readonly children?: readonly IRNode[]; readonly slots?: readonly NamedSlot[] }
+export interface SlotOutlet extends IRNodeBase { readonly kind: "SlotOutlet"; readonly name: string }
 export interface StyleToken extends IRNodeBase { readonly kind: "StyleToken"; readonly token: string; readonly variant?: string }
 export interface CompatFeature extends IRNodeBase { readonly kind: "CompatFeature"; readonly feature: string; readonly targets: readonly string[] }
-export type IRNode = StaticText | StaticElement | DynamicText | PropertyBinding | EventBinding | ConditionalBlock | KeyedLoop | ComponentCall | StyleToken | CompatFeature;
+export type IRNode = StaticText | StaticElement | DynamicText | PropertyBinding | EventBinding | ConditionalBlock | KeyedLoop | ComponentCall | SlotOutlet | StyleToken | CompatFeature;
 export interface IRDocument { readonly irVersion: IRVersion; readonly sourceFile: string; readonly nodes: readonly IRNode[] }
 export type DiagnosticSeverity = "error" | "warning" | "info";
 export interface CompilerDiagnostic { readonly code: string; readonly severity: DiagnosticSeverity; readonly message: string; readonly span?: SourceSpan }
 export interface GeneratedAsset { readonly fileName: string; readonly code: string; readonly map?: string }
 export interface CompileResult { readonly irVersion: IRVersion; readonly js: readonly GeneratedAsset[]; readonly css: readonly GeneratedAsset[]; readonly diagnostics: readonly CompilerDiagnostic[]; readonly manifest?: Readonly<Record<string, unknown>> }
-export interface CompileRequest { readonly fileName: string; readonly source: string; readonly rootDir?: string; readonly targetBrowsers?: readonly string[] }
+export interface CompileRequest { readonly fileName: string; readonly source: string; readonly rootDir?: string; readonly targetBrowsers?: readonly string[]; readonly componentSlots?: boolean }
 
 
 import { analyze } from "./analysis.js";
+import type { Analysis } from "./analysis.js";
+import { createTypeDiagnosticsSession } from "./type-session.js";
 import { emitJavaScript, loweringDiagnostics, typeDiagnostics } from "./generate.js";
 import { collectStyleTokens, optimizeIR, validateIR, OPTIMIZATION_PASSES } from "./optimize.js";
 export { optimizeIR, validateIR, OPTIMIZATION_PASSES };
+export { compileStaticServer } from "./server-static.js";
+export type { StaticServerRequest, StaticServerCompileResult } from "./server-static.js";
+export { compileDataServer } from "./server-data.js";
+export { compileRegionServer } from "./server-region.js";
+export type { RegionServerRequest, RegionServerCompileResult, RegionHydrationPlanV2 } from "./server-region.js";
+export type { DataServerRequest, DataServerCompileResult } from "./server-data.js";
+export type { DataHydrationPlanV1, HydrationNodeV1, HydrationElementV1, HydrationSlotV1 } from "./server-hydration-plan.js";
 
 /** Analyze a TSX source and return a stable JSON-serializable IR v1 document. */
 export function parseToIR(request: CompileRequest): { document: IRDocument; diagnostics: readonly CompilerDiagnostic[] } {
@@ -36,8 +48,45 @@ export function parseToIR(request: CompileRequest): { document: IRDocument; diag
   return { document: parsed.document, diagnostics: parsed.diagnostics };
 }
 
+/**
+ * Emit exact offsets for finite dynamic class candidates. Legacy static CSS
+ * tokens remain strings and can be recovered by the stable styles extractor.
+ * No incorrect source offset is ever fabricated for the build pipeline.
+ */
+function styleTokenManifest(nodes: readonly IRNode[], source: string): readonly (
+  string | { readonly token: string; readonly offset: number }
+)[] {
+  const located = new Map<string, number>();
+  const visit = (node: IRNode): void => {
+    if (node.kind === "StyleToken") {
+      const offset = node.span.start.offset;
+      if (node.span.end.offset - offset === node.token.length &&
+          source.slice(offset, offset + node.token.length) === node.token &&
+          !located.has(node.token)) {
+        located.set(node.token, offset);
+      }
+    } else if (node.kind === "StaticElement") node.children.forEach(visit);
+    else if (node.kind === "ConditionalBlock") {
+      node.whenTrue.forEach(visit);
+      node.whenFalse.forEach(visit);
+    } else if (node.kind === "KeyedLoop") node.body.forEach(visit);
+    else if (node.kind === "ComponentCall") {
+      node.children?.forEach(visit);
+      node.slots?.forEach(slot => slot.children.forEach(visit));
+    }
+  };
+  nodes.forEach(visit);
+  return collectStyleTokens(nodes).map(token => {
+    const offset = located.get(token);
+    return offset === undefined ? token : { token, offset };
+  });
+}
+
 /** Compile a supported TSX source file. Fatal diagnostics always suppress generated assets. */
-export function compile(request: CompileRequest): CompileResult {
+function compileWithDiagnostics(
+  request: CompileRequest,
+  getDiagnostics: (request: CompileRequest, analysis: Analysis) => CompilerDiagnostic[]
+): CompileResult {
   const parsed = analyze(request);
   const ir = optimizeIR(parsed.document);
   const compatibilityDiagnostics: CompilerDiagnostic[] = request.targetBrowsers?.length
@@ -49,7 +98,7 @@ export function compile(request: CompileRequest): CompileResult {
   const diagnostics = [
     ...parsed.diagnostics,
     ...loweringDiagnostics(ir),
-    ...typeDiagnostics(request, parsed),
+    ...getDiagnostics(request, parsed),
     ...compatibilityDiagnostics
   ];
   const unique = new Map<string, CompilerDiagnostic>();
@@ -62,20 +111,20 @@ export function compile(request: CompileRequest): CompileResult {
     a.code.localeCompare(b.code));
   const manifest = {
     domAbiVersion: 1,
-    irVersion: IR_SCHEMA_VERSION,
+    irVersion: ir.irVersion,
     optimizationPasses: [...OPTIMIZATION_PASSES],
-    styleTokens: collectStyleTokens(ir.nodes),
+    styleTokens: styleTokenManifest(ir.nodes, request.source),
     targetBrowsers: [...(request.targetBrowsers ?? [])].sort()
   } as const;
   if (ordered.some(d => d.severity === "error")) {
-    return { irVersion: IR_SCHEMA_VERSION, js: [], css: [], diagnostics: ordered, manifest };
+    return { irVersion: ir.irVersion, js: [], css: [], diagnostics: ordered, manifest };
   }
   try {
     const asset = emitJavaScript(request, parsed, ir);
-    return { irVersion: IR_SCHEMA_VERSION, js: [asset], css: [], diagnostics: ordered, manifest };
+    return { irVersion: ir.irVersion, js: [asset], css: [], diagnostics: ordered, manifest };
   } catch (error) {
     return {
-      irVersion: IR_SCHEMA_VERSION, js: [], css: [],
+      irVersion: ir.irVersion, js: [], css: [],
       diagnostics: [...ordered, {
         code: error instanceof Error && /^ZC\d{4}:/.test(error.message)
           ? error.message.slice(0, 6) : "ZC9001",
@@ -85,4 +134,33 @@ export function compile(request: CompileRequest): CompileResult {
       manifest
     };
   }
+}
+
+
+/** The session and its TypeScript program belong to one build/plugin instance. */
+export interface CompilerSession {
+  compile(request: CompileRequest): CompileResult;
+  invalidate(fileName: string): void;
+  dispose(): void;
+}
+
+/** Standalone compilation preserves its original isolated diagnostic behavior. */
+export function compile(request: CompileRequest): CompileResult {
+  return compileWithDiagnostics(request, typeDiagnostics);
+}
+
+/**
+ * Reuse TypeScript semantic work across TSX modules in one Node build.
+ * A new session is required per project/build; never cache across app roots.
+ */
+export function createCompilerSession(rootDir: string): CompilerSession {
+  const diagnostics = createTypeDiagnosticsSession(rootDir);
+  return {
+    compile(request) {
+      return compileWithDiagnostics(request, (current, parsed) =>
+        diagnostics.diagnose(current, parsed));
+    },
+    invalidate: file => diagnostics.invalidate(file),
+    dispose: () => diagnostics.dispose()
+  };
 }

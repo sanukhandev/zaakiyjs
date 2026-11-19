@@ -120,3 +120,7 @@ Compiler errors are fatal with original file/line/column; warnings are emitted t
 - [Public exports](https://github.com/sanukhandev/zaakiyjs/blob/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/vite-plugin/src/index.ts)
 - [Package tests](https://github.com/sanukhandev/zaakiyjs/tree/9f6c6603c98ca566c2fed6fed34cc770f6a72960/packages/vite-plugin/test) (some packages use `tests/`)
 - Update this guide in the same PR that changes public APIs, compiler/DOM behavior, security rules or feature support.
+
+### Optional compiler IR v2 default slots
+
+Pass `zaakiyPlugin({ componentSlots: true })` to opt a Vite app into the experimental default JSX component-children contract. The plugin includes the mode in transform caching and sends it to the compiler. The default remains frozen IR v1. This enables restricted static JSX-valued named props consumed through `<Slot name="header" />`, but still rejects dynamic slot names, arbitrary JSX-in-props, SSR transforms and unsafe runtime JSX fallback. See [ADR 0013](../../adr/0013-component-slots-ir2.md).

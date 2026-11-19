@@ -1,0 +1,52 @@
+name: E9 Native Image Optimization Benchmark
+
+on:
+  pull_request:
+    paths:
+      - 'packages/image/**'
+      - 'pnpm-lock.yaml'
+      - 'benchmarks/microbench-image-optimizer.mjs'
+      - '.github/workflows/image-optimizer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image-optimization:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Install frozen framework workspace
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec vitest run packages/image/test
+          pnpm exec eslint benchmarks/microbench-image-optimizer.mjs
+      - name: Install isolated pinned reference image codec (build-only)
+        run: |
+          mkdir -p .benchmark-image-codec
+          npm install --prefix .benchmark-image-codec --no-save --no-audit --no-fund sharp@0.35.5
+          node -e "const sharp=require('./.benchmark-image-codec/node_modules/sharp'); if(sharp.versions.sharp!=='0.35.5') process.exit(1)"
+      - name: Benchmark actual AVIF/WebP/JPEG bytes and processing times
+        run: |
+          node benchmarks/microbench-image-optimizer.mjs
+          cat benchmark-artifacts/image-optimizer.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive raw measurements and comparison
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e9-image-optimization
+          path: benchmark-artifacts/image-optimizer.*
+          if-no-files-found: error

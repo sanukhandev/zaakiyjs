@@ -35,6 +35,7 @@
     "access": "public"
   },
   "dependencies": {
+    "@zaakiyjs/seo": "workspace:^",
     "@zaakiyjs/core": "workspace:^",
     "@zaakiyjs/dom": "workspace:^",
     "@zaakiyjs/signals": "workspace:^",

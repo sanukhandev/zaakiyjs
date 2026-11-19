@@ -2,6 +2,12 @@
 
 Node/build-time TSX compiler for ZaakiyJS. Uses **TypeScript 5.9.3**, not a custom parser/bundler. This release is a **safe, deliberately incomplete first vertical slice**, not a claim that all v0.1 TSX behavior already works.
 
+## Finite literal-only JSX spreads
+
+Inline object literal spreads such as `<input {...{id:"email", type:"email", disabled:false}} />` compile directly to native DOM property/attribute bindings. The compiler accepts only safe, statically known primitive literals and a narrow native allowlist (including `id`, `title`, `role`, `type`, `name`, `placeholder`, `htmlFor`, `value`, `checked`, `disabled`, `selected`, `hidden`, `tabIndex`, `aria-*` and `data-*`). Static component spreads accept primitive values. Neither a runtime props object nor a JSX interpreter is created.
+
+Dynamic variables, getters, computed keys, side effects, object/array values, event handlers, URLs, refs, classes/styles and unsafe HTML sinks remain rejected with source diagnostics `ZC1002` / `ZC2510`–`ZC2513`; duplicate names are rejected. The existing compiler IR/DOM ABI remains unchanged. This is not general JavaScript spread support.
+
 ## API
 
 The M0 public interfaces remain unchanged: CompileRequest, CompileResult, GeneratedAsset, CompilerDiagnostic, IRDocument, IRNode, IRExpression, SourceSpan, IR_SCHEMA_VERSION (= 1).
@@ -41,7 +47,7 @@ Generated output imports helpers from @zaakiyjs/dom/compiler and owners from @za
 ## Explicit unsupported behavior
 
 - Root-level conditional/keyed regions, component-root templates that capture stale item snapshots (use live zero-arg getters), complex/deconstructed map parameters, and unsupported reactive keyed attributes/props fail closed. Nested keyed loops and multi-root fragment templates are supported within native host parents. Supported conditional/keyed forms use the reviewed additive DOM region ABI (ADR 0004).
-- JSX spreads, top-level fragments, refs, component children, dynamic attributes/classes/styles, **all inline style attributes**, dynamic handler replacement, SVG foreignObject, unsafe HTML sinks and untrusted URL schemes produce focused diagnostics.
+- Dynamic/unsafe JSX spreads, top-level fragments, refs, component children, dynamic attributes/classes/styles, **all inline style attributes**, dynamic handler replacement, SVG foreignObject, unsafe HTML sinks and untrusted URL schemes produce focused diagnostics.
 - Reactivity analysis recognizes `.value` reads from aliases and nested props, but cannot prove all indirect reactive dependencies (for example, an unknown function that internally reads a signal). Calls in detected reactive text expressions fail closed without purity proof; destructured snapshot reads do not become magically reactive.
 - Dynamic text child expressions must have primitive TS types; arrays, object views and prebuilt JSX nodes require an explicit child/view semantics contract.
 - No CSS generation, browser compatibility lowering, SSR, hydration, or tree-shaking of unrelated source declarations. The compiler does not claim to be a bundler. Supplying explicit `targetBrowsers` fails with ZC2301 until a tested browser compatibility profile is frozen.
@@ -87,3 +93,43 @@ No npm publication is authorized without per-package approval, scope verificatio
 Within native host parents, the compiler now flattens JSX fragments to native children without introducing a wrapper element, accepts multiple `<Show>` branch roots and fragment fallbacks, and supports nested `<For>` loops with lexical item signal stacks. The existing `IR_SCHEMA_VERSION=1` and DOM region ABI v1 remain intact; `whenTrue`, `whenFalse`, and `body` already encode arrays of child IR nodes. At runtime, the compiler emits a native `DocumentFragment` for multi-root insertion; owners and stable comment anchors are still managed by the existing DOM region API.
 
 Keyed component-root templates are supported when each varying item prop is a simple zero-argument live getter, e.g. `live={() => item}`, and the component uses `computed(() => props.live().field)`. Direct item snapshots, arbitrary getter factories, implicit reactive props and root-level TSX fragments remain rejected. See ADR 0006. No virtual DOM is introduced. Three-browser acceptance is required for this extension.
+
+## Compiler-generated static server output (PR #61)
+
+`compileStaticServer({ fileName, source, routeId })` is an additive, build-time **literal-only** TSX-to-HTML server compiler. It emits an ES module exporting `protocol = "zaakiy.render/1"` and a `render(context)` function returning `no-store` HTML. The compiler does not import browser DOM or ship any TSX/IR interpreter to Node HTTP requests. Static HTML text and values are escaped, and unsafe HTML elements, attributes, URLs, styles, event handlers, dynamic text, reactive state, components and keyed loops are rejected rather than silently degraded.
+
+The emitted `js[0].code` is the exact module source. Encode it to bytes at build time and pass those bytes to `@zaakiyjs/ssr/build`'s `buildVerifiedManifestV1` and `verifyTrustedArtifactBytes`, then activate the byte-attested Node adapter. The compiler does **not** produce hydration markers or claim to reuse server DOM; see [ADR 0010](../../docs/adr/0010-static-server-compiler-slice.md). Full compiler SSR/hydration remains issue #59.
+
+## Request-scoped data SSR — experimental
+
+`compileDataServer({ fileName, source, routeId })` generates a Node server renderer from supported **read-only typed props paths** without interpreting TSX during HTTP requests. Example source:
+
+```tsx
+function Product(props: { customer: { name: string }; order: number }) {
+  return <main class="item"><h1>{props.customer.name}</h1><p>{props.order}</p></main>;
+}
+```
+
+The renderer reads the corresponding paths from `ServerRequestContextV1.loaderData` via own-property descriptors, disallowing accessors and nonplain objects, and escapes primitive values before returning HTML. It uses the established `zaakiy.render/1` protocol with `no-store` caching. The deployment must pin the emitted module bytes through `buildVerifiedManifestV1`, `verifyTrustedArtifactBytes` and the byte-attested SSR Node adapter. Compiled source cannot access arbitrary context fields or invoke JS expressions. This **does not** hydrate browser DOM or support dynamic attributes/components/slots; issue #59 remains open. See [ADR 0012](../../docs/adr/0012-data-bound-ssr.md).
+
+## Experimental component default slots (IR v2)
+
+`compile({ fileName, source, componentSlots: true })` emits IR v2 with `ComponentCall.children` and `SlotOutlet`. Example:
+
+```tsx
+import type { JSXChild } from "@zaakiyjs/core/jsx-runtime";
+
+function Panel(props: { readonly children?: JSXChild }) {
+  return <section>{props.children}</section>;
+}
+
+function App() {
+  return <Panel><button type="button">Open</button></Panel>;
+}
+```
+
+This compiles a lazily mounted, caller-owned native slot factory. Each slot is single-use; the callee's outlet mounts it at a native parent and it disposes with the caller's lexical scope. Default `compile()` continues to emit IR v1 and reject component JSX children. Explicit `children` props conflicting with nested JSX, named slots, arbitrary JSX-in-props and runtime JSX interpretation remain rejected. See [ADR 0013](../../docs/adr/0013-component-slots-ir2.md).
+
+### Restricted named JSX prop slots
+
+`<Panel header={<h2>Title</h2>}>...</Panel>` is supported under `componentSlots: true` when the callee inserts `<Slot name="header" />` imported from Core. The compiler extracts the JSX into a lazy caller-owned native factory. Dynamic names, duplicate names, JSX spreads and arbitrary JSX-in-props are rejected. Named slots share the one-shot lifetime semantics of default children and do not imply hydration.

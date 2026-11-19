@@ -97,11 +97,13 @@ describe("M0 Vite/compiler/styles contract bridge", () => {
   it("blocks build-time and AI imports from browser output", () => {
     for (const specifier of [
       "@zaakiyjs/ai", "@zaakiyjs/proxy/router", "@zaakiyjs/compiler",
-      "@zaakiyjs/styles", "@zaakiyjs/vite-plugin"
+      "@zaakiyjs/styles", "@zaakiyjs/vite-plugin", "@zaakiyjs/compat", "@zaakiyjs/compat/planner"
     ]) {
       expect(forbiddenBrowserImport(specifier)).toBe(true);
       expect(() => assertBrowserOutput('import x from "' + specifier + '";', "view.tsx")).toThrow("ZV3001");
     }
+    expect(forbiddenBrowserImport("@zaakiyjs/compat/abort")).toBe(false);
+    expect(() => assertBrowserOutput('import { composeAbortSignals } from "@zaakiyjs/compat/abort";', "view.tsx")).not.toThrow();
     expect(forbiddenBrowserImport("@zaakiyjs/dom/compiler")).toBe(false);
     expect(() => assertBrowserOutput('import { mount } from "@zaakiyjs/dom";', "view.tsx")).not.toThrow();
   });

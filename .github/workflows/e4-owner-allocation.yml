@@ -1,0 +1,58 @@
+name: E4 Owner Allocation Benchmark
+
+on:
+  pull_request:
+    paths:
+      - 'packages/core/**'
+      - 'benchmarks/report-e4-owner.mjs'
+      - '.github/workflows/e4-owner-allocation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  core-allocations:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: 0fd4f175ef037bcb5ea5127cac4250d7d825ae51
+          path: .benchmark-before-e4
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Build and test candidate
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec vitest run packages/core/test/ownership.test.ts
+          pnpm exec eslint benchmarks/report-e4-owner.mjs
+      - name: Build frozen pre-E4 reference
+        run: |
+          pnpm --dir .benchmark-before-e4 install --frozen-lockfile
+          pnpm --dir .benchmark-before-e4 build
+      - name: Compare owner lifecycle performance
+        run: |
+          mkdir -p benchmark-artifacts
+          node benchmarks/microbench-core.mjs .benchmark-before-e4 benchmark-artifacts/e4-core-before.json
+          node benchmarks/microbench-core.mjs . benchmark-artifacts/e4-core-after.json
+          node benchmarks/report-e4-owner.mjs
+          cat benchmark-artifacts/e4-core-comparison.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive performance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e4-owner-allocation
+          path: benchmark-artifacts/
+          if-no-files-found: warn
