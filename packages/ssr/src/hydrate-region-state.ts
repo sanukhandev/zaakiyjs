@@ -49,19 +49,22 @@ export function hydrateRegionPageWithState(
     }
     throw error;
   }
-  let closed=false;
-  return {
-    root:handle.root,owner:handle.owner,
-    dispose() {
-      if (closed) return;
-      closed=true;
-      let failure:unknown;
-      try {handle.dispose();} catch(error){failure=error;}
-      try {bindings.disposeState?.();} catch(error){
-        if(failure!==undefined) throw new AggregateError([failure,error],"Hydration cleanup failed");
-        throw error;
-      }
-      if(failure!==undefined) throw failure;
+  let closed = false;
+  const navigation = bindings.signal;
+  const dispose = (): void => {
+    if (closed) return;
+    closed = true;
+    navigation?.removeEventListener("abort", dispose);
+    let failure: unknown;
+    try { handle.dispose(); } catch (error) { failure = error; }
+    try { bindings.disposeState?.(); } catch (error) {
+      if (failure !== undefined) throw new AggregateError([failure, error], "Hydration cleanup failed");
+      throw error;
     }
+    if (failure !== undefined) throw failure;
   };
+  // Route cancellation must release both native bindings and public-state resources.
+  if (navigation?.aborted) dispose();
+  else navigation?.addEventListener("abort", dispose, {once: true});
+  return {root: handle.root, owner: handle.owner, dispose};
 }
