@@ -94,7 +94,13 @@ zaakiyPlugin({
 })
 ```
 
-This covers only the currently approved JavaScript syntax subset. It does **not** install global polyfills or certify dynamic APIs, external scripts, arbitrary CSS compatibility or the real-browser target matrix. Read and retain the manifest limitations; publish only after independent browser verification.
+The automatic transform covers only the currently approved JavaScript syntax subset. CSS receives detection and fail-closed target checks, **not rewriting**. This does **not** install global polyfills or certify dynamic APIs, external scripts, undetected CSS constructs or the real-browser target matrix. Read and retain the manifest limitations; publish only after independent browser verification.
+
+### Emitted CSS feature evidence
+
+In `auto` and `strict`, Vite also inspects **actual emitted CSS assets** and the generated Zaakiy stylesheet using pinned PostCSS 8.5.32. The bounded parser detects active `:has()` selectors, `@container` queries, nested rules and `@nest`, plus `color-mix()` declarations, without mistaking comments or quoted content for executable CSS. Those features feed the existing Compat target planner and appear as deterministic source-offset evidence in `compat-manifest.json`.
+
+Unsupported CSS on a declared browser fails with `ZV4003` in both `auto` and `strict`: **no automatic CSS fallback is implemented**. Malformed CSS fails with `ZV4011`; unsafe asset paths and oversized inputs fail with `ZV4010`. Explicit `off` performs no CSS feature scan and claims no browser support. CSS loaded from external URLs or injected at runtime is outside this analysis, and metadata alone is not actual browser certification.
 
 ## Verification
 
