@@ -4,6 +4,7 @@ import {resolve, join, posix} from "node:path";
 import {CliError, parseArgs, assertOptions, flagOption, valueOption} from "./args.js";
 import {diagnoseProject} from "./doctor.js";
 import {analyzeBundle} from "./analyze.js";
+import {auditSeoFile} from "./seo-audit.js";
 import {generateFiles, supportedGenerators} from "./generators.js";
 import {safeRelativePath, validateProjectName} from "./fs-safe.js";
 import {assertFrameworkReady, getInstalledVersions, parsePreset, scaffoldProject, type Versions} from "./scaffold.js";
@@ -26,9 +27,10 @@ const help = [
   "  zaakiy dev | build | test",
   "  zaakiy doctor [--json]",
   "  zaakiy analyze bundle [--cwd project] [--json]",
+  "  zaakiy seo audit <file.json> [--json]",
   "Options: --dry-run, --force, --path, --package-manager npm|pnpm|yarn, --workspace",
   "Generators: " + supportedGenerators().join(", "),
-  "Deferred: analyze architecture|signals|styles|network, migrate, seo, ai",
+  "Deferred: analyze architecture|signals|styles|network, migrate, ai",
   "Use --help for help and --version for the installed CLI version."
 ].join("\n") + "\n";
 
@@ -201,7 +203,23 @@ export async function runCli(argv: readonly string[], io?: Partial<CliIO>): Prom
       }
       return 0;
     }
-    if (["migrate", "seo", "ai"].includes(args.command)) throw new CliError("COMMAND_UNAVAILABLE", args.command + " is planned but not implemented; no work was performed.");
+    if (args.command === "seo") {
+      assertOptions(args, ["json"], 2);
+      if (args.positionals[0] !== "audit" || !args.positionals[1]) {
+        throw new CliError("SEO_UNAVAILABLE", "Supported command: seo audit <file.json>. Other SEO commands remain deferred.");
+      }
+      await ensureProjectDirectory(root);
+      const report = await auditSeoFile(root, args.positionals[1]);
+      if (flagOption(args.options, "json")) {
+        out(JSON.stringify(report, null, 2) + "\n");
+      } else {
+        out("SEO audit: " + (report.ok ? "PASS" : "FAIL") + "\n" +
+          report.diagnostics.map(item =>
+            item.severity.toUpperCase() + " " + item.code + ": " + item.message).join("\n") + "\n");
+      }
+      return report.ok ? 0 : 1;
+    }
+    if (["migrate", "ai"].includes(args.command)) throw new CliError("COMMAND_UNAVAILABLE", args.command + " is planned but not implemented; no work was performed.");
     throw new CliError("UNKNOWN_COMMAND", "Unknown command " + args.command + ". Run zaakiy --help.");
   } catch (error) {
     if (error instanceof CliError) {
