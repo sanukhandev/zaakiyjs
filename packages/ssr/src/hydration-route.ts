@@ -1,5 +1,8 @@
 /** H5 navigation integration for restricted data-bound page hydration. */
 import { hydrateDataPage } from "./hydrate-data.js";
+import { hydrateRegionPage } from "./hydrate-region.js";
+import type { RegionHydrationBindingsV2, RegionHydrationPlanV2 } from "./hydrate-region.js";
+import type { HydrationMountHandle } from "@zaakiyjs/dom";
 import type { DataHydrationBindings, DataHydrationHandle } from "./hydrate-data.js";
 import type { DataHydrationPlanV1, HydrationEnvelopeV1,
   TrustedServerBuildManifestV1 } from "./protocol.js";
@@ -25,5 +28,28 @@ export function hydrateDataRoute(
   }
   return transaction.commit(() =>
     hydrateDataPage(container, plan, envelope, manifest, transaction.routeId,
+      { ...bindings, signal: transaction.signal }));
+}
+
+/**
+ * Transactionally adopt compiler-backed H4/H5 keyed and conditional regions.
+ * The transition controls the abort signal; user bindings cannot substitute it.
+ * Stale navigation is rejected before the DOM is inspected or listeners attached.
+ */
+export function hydrateRegionRoute(
+  container: Element,
+  plan: RegionHydrationPlanV2,
+  envelope: HydrationEnvelopeV1,
+  manifest: TrustedServerBuildManifestV1,
+  transaction: HydrationTransition,
+  bindings: Omit<RegionHydrationBindingsV2, "signal">
+): HydrationMountHandle {
+  if (!transaction || typeof transaction.commit !== "function" ||
+      !transaction.signal || transaction.routeId !== plan?.routeId ||
+      envelope?.routeId !== transaction.routeId) {
+    throw new TypeError("Region hydration transaction route mismatch");
+  }
+  return transaction.commit(() =>
+    hydrateRegionPage(container, plan, envelope, manifest, transaction.routeId,
       { ...bindings, signal: transaction.signal }));
 }
