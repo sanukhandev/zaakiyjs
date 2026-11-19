@@ -15,6 +15,8 @@ export interface ZaakiyViteOptions {
   readonly compatibility?: {
     readonly mode: "strict";
     readonly targets: TargetConfiguration;
+    /** Explicit opt-in: TypeScript 5.9.3 ES2019 transforms final JS chunks with chained maps. */
+    readonly syntaxTransforms?: "approved-es2019";
   };
   /** Explicit IR v2 opt-in for compiled default component children slots. */
   readonly componentSlots?: boolean;
