@@ -111,6 +111,43 @@ describe("real Vite integration (M0 prerequisite checks)", () => {
     expect(builds[0]).toBe(builds[1]);
   });
 
+  it("downlevels approved syntax with verified output and chained compiler source maps", async () => {
+    const tmp = mkdtempSync(join(dirname(fixtureRoot), ".zaakiy-compat-transformed-"));
+    cpSync(fixtureRoot, tmp, {recursive:true});
+    const entry = join(tmp, "src", "main.tsx");
+    try {
+      writeFileSync(entry, readFileSync(entry, "utf8") +
+        '\nlet activated = false; activated ||= true; document.body.dataset.compat = String(activated);\n');
+      const buildOnce = async () => {
+        const result = await build({
+          configFile: false, root: tmp, logLevel: "silent",
+          plugins: [zaakiyPlugin({ compatibility: {
+            mode: "strict", targets: {browsers: ["safari >=13.1"]},
+            syntaxTransforms: "approved-es2019"
+          }})],
+          build: {write:false, emptyOutDir:false, sourcemap:true}
+        });
+        const output = Array.isArray(result) ? result[0] : result;
+        const files = (output as RollupOutput).output;
+        const js = files.filter(item => item.type === "chunk");
+        const maps = files.filter(item => item.type === "asset" && item.fileName.endsWith(".js.map"));
+        const audit = files.find(item => item.type === "asset" && item.fileName === "compat-manifest.json");
+        expect(js.length).toBeGreaterThan(0);
+        expect(js.every(item => !item.code.includes("||="))).toBe(true);
+        expect(maps.length).toBeGreaterThan(0);
+        const manifest = JSON.parse(String(audit?.type === "asset" ? audit.source : "")) as {
+          mode: string; transforms: {id:string}[];
+        };
+        expect(manifest.mode).toBe("strict");
+        expect(manifest.transforms.map(t => t.id)).toContain("typescript-5.9.3-es2019");
+        return JSON.stringify(files.map(item => [item.fileName,item.type === "chunk" ? item.code : String(item.source)]));
+      };
+      expect(await buildOnce()).toBe(await buildOnce());
+    } finally {
+      rmSync(tmp, {recursive:true, force:true});
+    }
+  });
+
   it("rejects unsupported APIs and unapplied syntax transforms in strict production builds", async () => {
     const temp = mkdtempSync(join(dirname(fixtureRoot), ".zaakiy-compat-strict-"));
     cpSync(fixtureRoot, temp, {recursive: true});
