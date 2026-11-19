@@ -214,6 +214,40 @@ describe("generators", () => {
     expect(safeRelativePath("src\\components\\Button.tsx")).toBe("src/components/Button.tsx");
   });
 });
+describe("versioned SEO audit command", () => {
+  it("reports clean public SEO and rejects nonpublic indexability without changing input", async () => {
+    const root = await temp();
+    await writeFile(join(root, "package.json"), JSON.stringify({
+      name:"seo-fixture",dependencies:{"@zaakiyjs/core":"workspace:^"}
+    }));
+    const file = join(root, "seo.json");
+    const input = {resolution:{version:1,status:200,metadata:{
+      version:1,title:"Home",description:"Public page",canonical:"https://example.com/"
+    }},visibility:"public"};
+    await writeFile(file,JSON.stringify(input));
+    const before = await readFile(file,"utf8");
+    const passed = capture(root);
+    expect(await runCli(["seo","audit","seo.json","--json"],passed.io)).toBe(0);
+    const report = JSON.parse(passed.output().stdout) as {
+      ok:boolean;diagnostics:readonly {severity:string;code:string}[]
+    };
+    expect(report.ok).toBe(true);
+    expect(report.diagnostics.some(item=>item.severity==="error")).toBe(false);
+    expect(await readFile(file,"utf8")).toBe(before);
+    await writeFile(file,JSON.stringify({...input,visibility:"private"}));
+    const denied = capture(root);
+    expect(await runCli(["seo","audit","seo.json","--json"],denied.io)).toBe(1);
+    expect((JSON.parse(denied.output().stdout) as {ok:boolean}).ok).toBe(false);
+    expect(denied.output().stderr).toBe("");
+    const traversal = capture(root);
+    expect(await runCli(["seo","audit","../secrets.json"],traversal.io)).toBe(1);
+    expect(traversal.output().stderr).toContain("UNSAFE_PATH");
+    const unsupported = capture(root);
+    expect(await runCli(["seo","generate","site"],unsupported.io)).toBe(1);
+    expect(unsupported.output().stderr).toContain("SEO_UNAVAILABLE");
+  });
+});
+
 describe("built-bundle analyzer", () => {
   it("reports deterministic JS/CSS bytes from the real Zaakiy manifest", async () => {
     const root = await temp();
