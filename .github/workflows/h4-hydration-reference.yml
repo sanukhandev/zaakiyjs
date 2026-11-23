@@ -38,7 +38,7 @@ jobs:
           run_install: false
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.23.5'
           cache: pnpm
       - name: Build frozen ZaakiyJS workspace
         run: |
@@ -89,7 +89,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.23.5'
       - name: Install pinned Angular 21 direct references and record resolved lock
         run: |
           npm ci --prefix benchmarks/h4-hydration/angular --no-audit --no-fund
@@ -132,7 +132,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.23.5'
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
