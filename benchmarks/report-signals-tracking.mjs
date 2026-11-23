@@ -5,19 +5,20 @@ const read = async file => JSON.parse(await readFile(resolve(directory, file), "
 const before = await read("signals-tracking-frozen.json");
 const after = await read("signals-tracking-candidate.json");
 if (before.schemaVersion !== 1 || after.schemaVersion !== 1 ||
-    before.fixture !== after.fixture || before.modes.length !== 2 ||
-    after.modes.length !== 2) throw new Error("Incompatible signal tracking benchmarks");
+    before.fixture !== after.fixture || before.modes.length !== 4 ||
+    after.modes.length !== 4) throw new Error("Incompatible signal tracking benchmarks");
 const lines = [
-  "# B7 — Direct signal tracking allocation probe",
+  "# B7 — Direct/computed signals: high fan-out and single-subscriber invalidation",
   "",
-  "Frozen consolidated B0–B5 runtime vs candidate on identical 400-subscriber, 150-update workloads; 2 warmups and 12 recorded samples.",
+  "Frozen consolidated B0–B5 runtime vs candidate on matching workloads: 400 subscribers × 150 updates and 1 subscriber × 25,000 updates; 2 warmups and 12 recorded samples per mode.",
   "",
   "| Mode | Frozen p50 | Candidate p50 | Candidate change | Frozen p95 | Candidate p95 |",
   "| --- | ---: | ---: | ---: | ---: | ---: |"
 ];
-for (let i = 0; i < 2; i++) {
+for (let i = 0; i < before.modes.length; i++) {
   const a = before.modes[i], b = after.modes[i];
   if (a.mode !== b.mode || a.fanout !== b.fanout || a.updates !== b.updates ||
+      a.expectedCallsPerSample !== a.fanout * (a.updates + 1) ||
       a.expectedCallsPerSample !== b.expectedCallsPerSample ||
       a.postDisposeRuns !== 0 || b.postDisposeRuns !== 0 ||
       a.samples_ms.length !== 12 || b.samples_ms.length !== 12 ||
