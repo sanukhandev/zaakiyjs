@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+const clone=value=>JSON.parse(JSON.stringify(value));
 import {digest,productionEvidence,validateComparison} from "./vite-production-evidence.mjs";
 
 function assets(entry,code,css=".flex{display:flex}",extra={}){
@@ -43,7 +44,7 @@ test("normalizes only the validated entry name; retains actual hashes and other 
 test("rejects unlisted outputs, missing references and conflicting duplicate records",()=>{
   const output=assets("assets/index-aaa.js","old");
   assert.throws(()=>productionEvidence([...output,{name:"extra.js",content:"unexpected"}]));
-  const broken=structuredClone(output);
+  const broken=clone(output);
   broken[2].content=broken[2].content.replace("index-aaa","index-missing");
   assert.throws(()=>productionEvidence(broken),/references/);
   const dup=JSON.parse(output[3].content);
@@ -60,14 +61,14 @@ test("strict gate rejects runtime differences; explicit runtime mode requires be
   assert.equal(result.length,3);
   assert.notEqual(result[0].baselineEntrySha256,result[0].candidateEntrySha256);
   for(const key of ["fixtureSha256","compilerSha256"]){
-    const altered=structuredClone(b);altered.scenarios[0][key]=digest("different");
+    const altered=clone(b);altered.scenarios[0][key]=digest("different");
     assert.throws(()=>validateComparison(a,altered,"reviewed-runtime-delta"));
   }
   for(const key of ["cssSha256","htmlSha256","manifestSha256"]){
-    const altered=structuredClone(b);altered.scenarios[0].production[key]=digest("different");
+    const altered=clone(b);altered.scenarios[0].production[key]=digest("different");
     assert.throws(()=>validateComparison(a,altered,"reviewed-runtime-delta"));
   }
-  const altered=structuredClone(b);
+  const altered=clone(b);
   altered.scenarios[0].browser.evidence.styles[0]="block";
   altered.scenarios[0].browser.sha256=digest(JSON.stringify(altered.scenarios[0].browser.evidence));
   assert.throws(()=>validateComparison(a,altered,"reviewed-runtime-delta"),/native behavior differs/);
@@ -80,7 +81,7 @@ test("rejects incomplete instrumentation and forged byte accounting",()=>{
     r=>{r.appJsCssGzipBytes++;},
     r=>{r.browser.status="failed";}
   ]){
-    const b=structuredClone(a);change(b.scenarios[0]);
+    const b=clone(a);change(b.scenarios[0]);
     assert.throws(()=>validateComparison(a,b,"reviewed-runtime-delta"));
   }
 });
