@@ -169,6 +169,11 @@ jobs:
             --output benchmark-artifacts/h4-smoke-${{ matrix.browser }}.json \
             --head "${{ github.sha }}" --engines "${{ matrix.browser }}" --sizes 100 \
             --warmups 0 --samples 1 --timeout-ms 12000
+      - name: Certify clean application-mode fixture (untimed)
+        run: |
+          python3 benchmarks/h4-hydration/clean-smoke.py \
+            --site benchmark-artifacts/h4-hydration-sites \
+            --engine "${{ matrix.browser }}" --output benchmark-artifacts/h4-clean-${{ matrix.browser }}.json
       - name: Measure 12 independent framework/size hydration cases
         run: |
           python3 benchmarks/h4-hydration/measure.py \
@@ -184,6 +189,7 @@ jobs:
           path: |
             benchmark-artifacts/h4-hydration-${{ matrix.browser }}.json
             benchmark-artifacts/h4-smoke-${{ matrix.browser }}.json
+            benchmark-artifacts/h4-clean-${{ matrix.browser }}.json
           if-no-files-found: warn
           retention-days: 14
 
