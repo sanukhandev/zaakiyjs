@@ -39,6 +39,28 @@ describe("H4 compiler-backed region SSR target", () => {
     expect(()=>largeModule.render(context(10001))).toThrow();
   });
 
+  it("specializes opt-in compact-v2 sole item scalars without changing legacy plans",async()=>{
+    const source='function Page(props:{rows:{id:string;label:string}[]}){return <main><ul>{props.rows.map(item=><li key={item.id}>{item.label}</li>)}</ul></main>;}';
+    const v1=compileRegionServer({fileName,routeId:"products",source,hydrationScale:"large"});
+    const v2=compileRegionServer({fileName,routeId:"products",source,hydrationScale:"large",hydrationMarkerFormat:"compact-v2"});
+    expect(v2.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    expect(v2.hydrationPlan?.markerFormat).toBe("compact-v2");
+    expect(v2.hydrationPlan?.templateDigest).not.toBe(v1.hydrationPlan?.templateDigest);
+    const load=async(code:string)=>import("data:text/javascript;base64,"+Buffer.from(code).toString("base64"));
+    const [a,b]=await Promise.all([load(v1.js[0]!.code),load(v2.js[0]!.code)]);
+    const context={schema:"zaakiy.render/1",route:{id:"products"},request:{signal:{aborted:false}},
+      loaderData:{rows:[{id:"a",label:"<safe>"},{id:"b",label:""}]}};
+    const legacy=a.render(context).body as string;
+    const compact=b.render(context).body as string;
+    expect(legacy).toContain("<!--z-d:");
+    expect(compact).not.toContain("<!--z-d:");
+    expect(compact).toContain("<li>&lt;safe&gt;</li>");
+    expect(compact).toContain("<li></li>");
+    expect(compact).toContain("<!--z-k:a:s-->");
+    expect(compact.length).toBeLessThan(legacy.length);
+    expect(compileRegionServer({fileName,routeId:"products",source,hydrationMarkerFormat:"compact-v2"}).diagnostics.some(d=>d.severity==="error")).toBe(true);
+  });
+
   it("bounds aggregate UTF-8 SSR output after valid per-scalar checks",async()=>{
     const source='function Page(props:{rows:{id:string;label:string}[]}){return <main>{props.rows.map(item=><p key={item.id}>{item.label}</p>)}</main>;}';
     const compiled=compileRegionServer({fileName,routeId:"products",source,hydrationScale:"large"});
