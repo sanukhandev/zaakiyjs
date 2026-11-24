@@ -51,4 +51,27 @@ describe("lazy derived-read tracking", () => {
     flushSync();
     expect(selected).toEqual([10, 11, 20, 21]);
   });
+
+  it("switches between direct and derived reads without stale equality suppression", () => {
+    const selected = signal(false);
+    const source = signal(1);
+    const derived = computed(() => source.value % 2);
+    const seen: number[] = [];
+    const handle = effect(() => { seen.push(selected.value ? derived.value : source.value); });
+    source.value = 3;
+    flushSync();
+    selected.value = true;
+    flushSync();
+    source.value = 5;
+    flushSync();
+    selected.value = false;
+    flushSync();
+    source.value = 7;
+    flushSync();
+    expect(seen).toEqual([1, 3, 1, 5, 7]);
+    handle.dispose();
+    source.value = 8;
+    flushSync();
+    expect(seen).toEqual([1, 3, 1, 5, 7]);
+  });
 });
