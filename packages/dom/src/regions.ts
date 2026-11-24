@@ -539,12 +539,13 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
     const items = read();
     // A validated identical snapshot needs no new Map, no second key walk,
     // and no DOM work. Call keyOf exactly once per item, in source order.
+    const previousOrder = lastOrder;
     let next: Map<Key, Item> | undefined;
     let prefix = 0;
     const seedPrefix = (): Map<Key, Item> => {
       const seeded = new Map<Key, Item>();
       for (let i = 0; i < prefix; i++) {
-        const record = lastOrder![i]!;
+        const record = previousOrder![i]!;
         seeded.set(record.key, record.item);
       }
       return seeded;
@@ -555,7 +556,7 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
         throw new TypeError("Keyed region requires a stable string, number or symbol key");
       }
       if (!next) {
-        const former = lastOrder?.[prefix];
+        const former = previousOrder?.[prefix];
         if (former && Object.is(former.key, key) && Object.is(former.item, item) &&
             records.get(key) === former) {
           prefix++;
@@ -567,7 +568,7 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
       next.set(key, item);
     }
     if (!next) {
-      if (lastOrder && prefix === lastOrder.length) return;
+      if (previousOrder && lastOrder === previousOrder && prefix === previousOrder.length) return;
       next = seedPrefix();
     }
 
