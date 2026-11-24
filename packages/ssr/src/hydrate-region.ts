@@ -166,7 +166,9 @@ function safeField(field:unknown):field is string {
 }
 function flatTemplate(plan:RegionHydrationPlanV2,spec:KeyedNode):FlatTemplate {
   const leaf=spec.rows[0];
-  if(plan.markerFormat!=="compact-v3" || spec.flat!==true || spec.source==="item" ||
+  if(plan.markerFormat!=="compact-v3" || spec.flat!==true ||
+      (spec.source!==undefined && spec.source!=="props") || !Array.isArray(spec.path) ||
+      spec.path.length<1 || spec.path.length>4 || !spec.path.every(safeField) ||
       spec.rows.length!==1 || leaf?.kind!=="element" || !ID.test(leaf.id) ||
       !Array.isArray(leaf.attrs) || !Array.isArray(leaf.children) ||
       (leaf.events!==undefined && (!Array.isArray(leaf.events)||leaf.events.length!==0)) ||
