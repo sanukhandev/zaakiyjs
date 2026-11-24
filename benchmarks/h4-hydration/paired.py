@@ -12,7 +12,7 @@ import platform
 from pathlib import Path
 from measure import run, percentile
 
-LABELS = ("main", "pr99", "candidate")
+LABELS = ("main", "pr99", "prior", "candidate")
 SIZES = (1000, 10000)
 ORDERS = (LABELS, tuple(reversed(LABELS)))
 
@@ -26,6 +26,7 @@ def main():
     expected = {
         "main": "b0da54d2bdfb9c984cf0409755fafc98b940f183",
         "pr99": "afb71fd8e9f175271e832fac34c776c2570c51ed",
+        "prior": "185478cc8f5361b8cec780c42b5d7d7ffd89b991",
         "candidate": args.candidate,
     }
     args.output.mkdir(parents=True, exist_ok=True)
@@ -34,6 +35,9 @@ def main():
         manifest = json.loads((args.site_root / label / "build-manifest.json").read_text())
         if manifest.get("schema") != "zaakiy.h4-paired-build/1" or manifest.get("commit") != expected[label]:
             raise AssertionError(f"Unexpected build identity for {label}: {manifest}")
+        expected_format={"main":"compact-v1","pr99":"compact-v1","prior":"compact-v2","candidate":"compact-v3"}[label]
+        if manifest["build"]["markerFormat"] != expected_format:
+            raise AssertionError(f"Unexpected marker format for {label}")
         variants[label] = manifest
     if len({v["node"] for v in variants.values()}) != 1:
         raise AssertionError("Inconsistent build Node runtime")
@@ -75,7 +79,7 @@ def main():
                 "p50": percentile(raw, .50), "p95": percentile(raw, .95),
                 "p99": percentile(raw, .99), "raw": raw,
             }
-        for before, after in (("main", "pr99"), ("pr99", "candidate"), ("main", "candidate")):
+        for before, after in (("main", "pr99"), ("pr99", "prior"), ("prior", "candidate"), ("pr99", "candidate"), ("main", "candidate")):
             if metrics[before]["p95"] <= 0:
                 raise AssertionError("Invalid p95 denominator")
             change = (metrics[after]["p95"] / metrics[before]["p95"] - 1) * 100
