@@ -234,6 +234,51 @@ describe("H4 compiler-region client adoption", () => {
     })).toThrow(/resolver/);
     expect(container.innerHTML).toBe(original);
   });
+  it("adopts opt-in markerless scalar rows and retains text identity on updates", () => {
+    const container=fixture();
+    const compact:RegionHydrationPlanV2={
+      ...plan,markerFormat:"compact-v2",
+      limits:{maxRows:10000,maxNodes:50000,maxHtmlBytes:8388608}
+    };
+    for(const node of Array.from(container.querySelectorAll("button"))){
+      for(const child of Array.from(node.childNodes))
+        if(child.nodeType===8) child.remove();
+    }
+    const walker=document.createTreeWalker(container,128);
+    for(let node=walker.nextNode();node;node=walker.nextNode()){
+      if(node.nodeValue?.startsWith("zaakiy-d2:")){
+        node.nodeValue=node.nodeValue.replace(/^zaakiy-d2:([0-9a-f]{16})[0-9a-f]{16}:(start|end)$/,
+          (_,id,side)=>"z-d:"+id+":"+(side==="start"?"s":"e"));
+      } else if(node.nodeValue?.startsWith("zaakiy-k2:")){
+        node.nodeValue=node.nodeValue.replace(/^zaakiy-k2:[0-9a-f]{32}:([^:]+):(start|end)$/,
+          (_,key,side)=>"z-k:"+key+":"+(side==="start"?"s":"e"));
+      }
+    }
+    const app=signal(state());
+    const initial=container.querySelector("button")!;
+    const text=initial.firstChild;
+    const html=container.innerHTML;
+    const hydrate=()=>hydrateRegionPage(container,compact,envelope,manifest,routeId,{
+      read:path=>app.value[path[0] as keyof ReturnType<typeof state>]
+    });
+    const handle=hydrate();
+    try{
+      expect(container.innerHTML).toBe(html);
+      flushSync(()=>{app.value={...app.value,rows:[{id:"a",label:""},{id:"b",label:"Beta"}]};});
+      expect(initial.firstChild).toBe(text);
+      expect(initial.textContent).toBe("");
+      flushSync(()=>{app.value={...app.value,rows:[{id:"a",label:"<safe>"},{id:"c",label:"Gamma"}]};});
+      expect(initial.firstChild).toBe(text);
+      expect(initial.textContent).toBe("<safe>");
+      expect(initial.querySelector("safe")).toBeNull();
+      expect(container.querySelectorAll("button")[1]?.childNodes).toHaveLength(1);
+    }finally{handle.dispose();}
+    initial.appendChild(document.createComment("unexpected"));
+    const tampered=container.innerHTML;
+    expect(hydrate).toThrow(/mismatch/);
+    expect(container.innerHTML).toBe(tampered);
+  });
+
   it("aborts before mutation when keyed state disagrees with SSR", () => {
     const container = fixture();
     const html = container.innerHTML;
