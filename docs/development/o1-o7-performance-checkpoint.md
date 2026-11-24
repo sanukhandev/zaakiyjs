@@ -94,3 +94,32 @@ Size increases are reported, not approved by the comparator.
 
 These are candidate test/infrastructure changes; certification requires
 the new exact-head workflow results.
+
+
+## Native flat-list architectural checkpoint
+
+See [compact-v3 ADR](../adr/compact-v3-flat-keyed-hydration.md). This candidate
+selects a resource-free scalar list path at compile time, parses static row
+metadata once per list, combines the v3 root marker proof with structural
+preflight, removes both row comments, and skips all per-row owners/effects.
+The flat list and the generic range list share native movement planning.
+Legacy and complex rows retain their existing semantics. The new format
+requires explicit snapshot mode and compiler-declared events only.
+
+The full H4 comparison still measures the complete hydration workload. The
+paired workflow now includes main, #99, the prior compact-v2 candidate
+185478c and compact-v3, with three independent trials per browser and 50
+samples per variant/size/trial (3,600 samples). Diagnostic counters assert
+all benchmark rows take the flat path and no per-row owner is created.
+A separate ordinary Vite application build is measured without benchmark
+instrumentation and validated in all three engines, including counter,
+row replacement/add/remove/reorder, conditional update and disposal.
+Its size is distinct from the historical full harness, not a substitute
+for the original comparison. The compiler marks specialized regions, but
+the general route hydration entry remains in use; fully separate
+capability-specific generated client entrypoints are not implemented here.
+
+The previous CI helper lint issues were corrected with explicit Node timer
+imports and JSON-only evidence cloning. All exact-head results still need
+review. No target attainment, merge, release or general runtime equivalence
+is claimed before CI evidence.
