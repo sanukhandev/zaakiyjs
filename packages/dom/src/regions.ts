@@ -717,10 +717,11 @@ export function bindFlatKeyedRegion<Item>(
   return ownEffect(owner,()=>{
     const items=read();
     if (!Array.isArray(items)) throw new TypeError("Flat keyed collection must be an array");
-    if (items.length===order.length && items.every((item,i)=>Object.is(item,order[i]!.item))) {
-      first=false;
-      return;
+    let equal=items.length===order.length;
+    if(equal) for(let i=0;i<items.length;i++) {
+      if(!Object.hasOwn(items,i)||!Object.is(items[i],order[i]!.item)){equal=false;break;}
     }
+    if(equal){first=false;return;}
     if(first) throw new TypeError("Flat keyed snapshot changed during hydration preflight");
     validateOrder();
     records??=new Map(order.map(row=>[row.key,row]));
