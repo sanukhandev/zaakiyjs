@@ -415,6 +415,49 @@ describe("compact-v3 resource-free native keyed hydration",()=>{
       expect(host.innerHTML).toBe(before);
     }
   });
+  it("rejects duplicate root markers and mismatched build identity without a separate DOM probe",()=>{
+    const data=state();
+    const read=(path:readonly string[])=>data[path[0] as keyof typeof data];
+    const host=flatFixture();
+    host.querySelector("button")!.appendChild(document.createComment("zaakiy-h:"+markerId+":"+digest));
+    const before=host.innerHTML;
+    expect(()=>hydrateRegionPage(host,flatPlan,envelope,manifest,routeId,{read,itemDataMode:"snapshot"})).toThrow(/mismatch/);
+    expect(host.innerHTML).toBe(before);
+    const valid=flatFixture();
+    expect(()=>hydrateRegionPage(valid,flatPlan,envelope,{...manifest,buildId:"9".repeat(64)},routeId,{
+      read,itemDataMode:"snapshot"
+    })).toThrow(/build\/route\/marker identity/);
+  });
+  it("keeps the existing scoped event path for non-flat rows in compact-v3",()=>{
+    const eventPlan:RegionHydrationPlanV2={
+      ...flatPlan,nodes:flatPlan.nodes.map(node=>node.kind==="element"?{
+        ...node,children:node.children.map(child=>{
+          if(child.kind!=="keyed")return child;
+          return {kind:"keyed" as const,id:child.id,path:child.path,itemName:child.itemName,key:child.key,
+            ...(child.source!==undefined?{source:child.source}:{}),rows:child.rows.map(row=>row.kind==="element"?{
+            ...row,events:[{name:"click",path:["onRow"]}]
+          }:row)};
+        })
+      }:node)
+    };
+    const host=flatFixture();
+    for(const button of host.querySelectorAll("button")){
+      const key=button.getAttribute("data-zk")!;
+      button.removeAttribute("data-zk");
+      button.before(document.createComment("z-k:"+key+":s"));
+      button.after(document.createComment("z-k:"+key+":e"));
+    }
+    let calls=0;const data=state();
+    const handle=hydrateRegionPage(host,eventPlan,envelope,manifest,routeId,{
+      itemDataMode:"snapshot",read:path=>data[path[0] as keyof typeof data],
+      resolveEvent:()=>()=>{calls++;}
+    });
+    const button=host.querySelector("button")!;
+    try{button.click();expect(calls).toBe(1);}
+    finally{handle.dispose();}
+    button.click();expect(calls).toBe(1);
+  });
+
   it("requires explicit immutable snapshots and refuses externally registered row events",()=>{
     const host=flatFixture(),data=state(),read=(path:readonly string[])=>data[path[0] as keyof typeof data];
     const before=host.innerHTML;
