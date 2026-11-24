@@ -11,7 +11,7 @@ import type { WritableSignal } from "@zaakiyjs/signals";
 import type { HydrationMountHandle } from "@zaakiyjs/dom";
 import { createOwner, disposeOwner, initializeOwnedComponent, mountOwner, onMount, runWithOwner } from "@zaakiyjs/core";
 import type { OwnerScope } from "@zaakiyjs/core";
-import { inspectHydration } from "./client.js";
+import { inspectHydration, validateHydrationIdentity } from "./hydration-probe.js";
 import type { HydrationEnvelopeV1, TrustedServerBuildManifestV1 } from "./protocol.js";
 
 export type RegionNodeV2 =
@@ -186,21 +186,21 @@ function flatTemplate(plan:RegionHydrationPlanV2,spec:KeyedNode):FlatTemplate {
   }
   return {tag:leaf.tag,attrs,keyField:spec.key,textField:child.path[0]!};
 }
+function readFlatField(item:object,field:string):unknown{
+  const descriptor=Object.getOwnPropertyDescriptor(item,field);
+  if(!descriptor)return null;
+  if(!Object.hasOwn(descriptor,"value"))mismatch("getter in flat row data");
+  return descriptor.value;
+}
 function describeFlat(template:FlatTemplate,item:unknown):{key:string;value:string}{
   if(!item || typeof item!=="object" || Array.isArray(item)) mismatch("invalid flat row data");
   const proto=Object.getPrototypeOf(item);
   if(proto!==Object.prototype && proto!==null) mismatch("nonplain flat row data");
-  const readField=(field:string):unknown=>{
-    const descriptor=Object.getOwnPropertyDescriptor(item,field);
-    if(!descriptor)return null;
-    if(!Object.hasOwn(descriptor,"value"))mismatch("getter in flat row data");
-    return descriptor.value;
-  };
-  const raw=readField(template.keyField);
+  const raw=readFlatField(item,template.keyField);
   if(typeof raw!=="string" && typeof raw!=="number")mismatch("invalid keyed identity");
   const key=String(raw);
   if(!SAFE_KEY.test(key))mismatch("unsafe keyed identity");
-  return {key,value:textOf(readField(template.textField))};
+  return {key,value:textOf(readFlatField(item,template.textField))};
 }
 function createFlat(doc:Document,template:FlatTemplate,key:string,value:string):Element{
   const node=doc.createElement(template.tag);
@@ -512,8 +512,12 @@ export function hydrateRegionPage(
       envelope.boundaries[0]?.templateDigest!==plan.templateDigest)
     mismatch("plan and envelope identity");
   if (bindings.signal?.aborted) mismatch("navigation canceled");
-  if (!inspectHydration(container,envelope,manifest,routeId).compatible)
-    mismatch("build/route/marker identity");
+  // v3 structural preflight validates the sole root marker and every native
+  // descendant (including comment boundaries). Avoid a separate tree walk.
+  const identity=plan.markerFormat==="compact-v3"
+    ? validateHydrationIdentity(envelope,manifest,routeId)
+    : inspectHydration(container,envelope,manifest,routeId);
+  if(!identity.compatible)mismatch("build/route/marker identity");
   if(plan.markerFormat==="compact-v3"){
     if(bindings.itemDataMode!=="snapshot" || (bindings.events?.length??0)!==0)
       mismatch("compact-v3 requires immutable snapshots and compiler-declared events");
