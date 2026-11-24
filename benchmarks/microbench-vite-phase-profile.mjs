@@ -20,8 +20,10 @@ function instrumentPlugin(plugin, metrics, project) {
   }
   plugin.transform = async function (...args) {
     const start = performance.now();
+    let elapsed;
     try {
       const result=await transform.apply(this,args);
+      elapsed=performance.now()-start;
       if (/\.[cm]?tsx(?:\?|$)/.test(args[1]??"")) {
         if(!result||typeof result.code!=="string")throw Error("Missing compiler output for "+args[1]);
         metrics.compiled.push({file:relative(project,args[1]),sha256:digest(result.code)});
@@ -30,7 +32,7 @@ function instrumentPlugin(plugin, metrics, project) {
     }
     finally {
       if (/\.[cm]?tsx(?:\?|$)/.test(args[1] ?? "")) {
-        metrics.transformMs += performance.now() - start;
+        metrics.transformMs += elapsed??(performance.now()-start);
         metrics.transformCalls++;
       }
     }
