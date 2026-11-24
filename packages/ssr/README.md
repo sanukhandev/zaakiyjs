@@ -78,3 +78,42 @@ The `@zaakiyjs/ssr/node` subpath also exports `createByteAttestedNodeServerAdapt
 `@zaakiyjs/ssr/client` exposes `hydrateRegionRoute` and `hydrateRegionRouteWithState` for the supported `zaakiy.region-hydration/2` subset. Both require a current `HydrationTransition` with a matching plan/envelope/route identity. The state-aware method verifies a build/route-bound serialized **public** JSON packet, initializes trusted application signals only after the transaction commit gate, and adopts existing native DOM nodes without replacing them.
 
 On navigation supersession or abort, the transaction signal disposes both native hydration subscriptions and the caller's `disposeState` resources exactly once; explicit repeated disposal is idempotent. Stale routes never invoke the state initializer. Host loaders and backend authorization must complete before hydration. This does not provide general arbitrary TSX SSR, automatic Router loader integration, or private-state serialization.
+
+
+## Opt-in compact scalar hydration and immutable row snapshots (candidate)
+
+The compiler's large-list tier accepts `hydrationMarkerFormat: "compact-v2"`.
+The default large-list format remains `compact-v1`; standard plans are unchanged.
+For an eligible native `li`, `span`, `p`, `div`, `button`, or heading with exactly
+one item-derived scalar child, compact-v2 uses the already validated element
+as the text boundary and omits the two redundant text comments. All keyed,
+component, conditional and root identity checks remain. Other text slots
+retain the compact-v1 comments. Build the server and client from the same
+trusted plan; the format participates in the template digest. Existing
+clients cannot adopt a new format without the matching runtime.
+
+The independent client option `itemDataMode: "snapshot"` is for immutable
+plain row snapshots only. It avoids one effect per item-derived text slot.
+Do not use it for reactive proxies, accessor properties, in-place item
+mutation or descriptor traps that read signals. Supply a new keyed item
+object and publish the updated collection through the reactive read binding.
+The default continues tracking item reads and supports the prior behavior.
+The snapshot contract is explicit because JavaScript cannot reliably prove
+a supplied object is not a Proxy. Both modes still validate scalar values,
+retain keyed node identity, and own conditional/list subscriptions and events.
+
+```ts
+const compiled = compileRegionServer({
+  fileName: "Page.tsx", routeId: "products", source,
+  hydrationScale: "large", hydrationMarkerFormat: "compact-v2"
+});
+// Use the matching verified compiler plan, manifest and envelope.
+const handle = hydrateRegionPage(container, plan, envelope, manifest, "products", {
+  itemDataMode: "snapshot",
+  read: path => readPublicPageState(path)
+});
+```
+
+These are candidate APIs, not a claim of general SSR support or completed
+performance certification. Diagnostic phase profiling is built only in a
+disposable CI checkout, never included in the normal production package.
