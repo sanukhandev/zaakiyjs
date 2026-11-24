@@ -101,6 +101,29 @@ describe("H4 compiler-region client adoption", () => {
     again.dispose();
     container.remove();
   });
+  it("preserves a validated prefix on truncation, insertion and duplicate-key rejection", () => {
+    const container=fixture();
+    const app=signal(state());
+    const handle=hydrateRegionPage(container,plan,envelope,manifest,routeId,{
+      read:path=>app.value[path[0] as keyof ReturnType<typeof state>]
+    });
+    try {
+      const initial=container.querySelectorAll("button");
+      const [a,b]=app.value.rows;
+      flushSync(()=>{app.value={...app.value,rows:[a!,b!]};});
+      expect(container.querySelectorAll("button")[1]).toBe(initial[1]);
+      flushSync(()=>{app.value={...app.value,rows:[a!]};});
+      expect(container.querySelectorAll("button")).toHaveLength(1);
+      expect(container.querySelector("button")).toBe(initial[0]);
+      expect(()=>flushSync(()=>{app.value={...app.value,rows:[a!,a!]};})).toThrow(/Duplicate key/);
+      expect(container.querySelectorAll("button")).toHaveLength(1);
+      expect(container.querySelector("button")).toBe(initial[0]);
+      flushSync(()=>{app.value={...app.value,rows:[a!,{id:"c",label:"Gamma"}]};});
+      expect(container.querySelectorAll("button")[0]).toBe(initial[0]);
+      expect(container.querySelectorAll("button")[1]?.textContent).toBe("Gamma");
+    } finally {handle.dispose();}
+  });
+
   it("transactionally adopts keyed/conditional SSR regions; stale navigation cannot attach listeners", () => {
     const coordinator = createHydrationTransitionCoordinator();
     const container = fixture();
