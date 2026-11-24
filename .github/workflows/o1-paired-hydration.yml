@@ -126,7 +126,7 @@ jobs:
 
 
   measure:
-    name: paired / ${{ matrix.browser }} same-runner hydration
+    name: paired / ${{ matrix.browser }} trial ${{ matrix.trial }}
     needs: build
     runs-on: ubuntu-24.04
     container:
@@ -136,6 +136,7 @@ jobs:
       fail-fast: false
       matrix:
         browser: [chromium, firefox, webkit]
+        trial: [1, 2, 3]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -169,7 +170,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: paired-hydration-${{ matrix.browser }}-${{ github.sha }}
+          name: paired-hydration-${{ matrix.browser }}-${{ matrix.trial }}-${{ github.sha }}
           path: benchmark-artifacts/paired/
           if-no-files-found: error
           retention-days: 14
@@ -208,5 +209,31 @@ jobs:
         with:
           name: hydration-profile-${{ matrix.browser }}-${{ github.sha }}
           path: benchmark-artifacts/profile.json
+          if-no-files-found: error
+          retention-days: 14
+
+  paired-review:
+    name: paired / validate three independent trials per browser
+    needs: measure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: paired-hydration-*-${{ github.sha }}
+          path: paired-evidence
+      - name: Validate repeated paired evidence and flag persistent regressions
+        run: python3 benchmarks/h4-hydration/paired-review.py --source paired-evidence --head "${{ github.sha }}" --output benchmark-artifacts/paired-review.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: paired-review-${{ github.sha }}
+          path: benchmark-artifacts/paired-review.json
           if-no-files-found: error
           retention-days: 14
