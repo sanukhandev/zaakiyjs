@@ -5,7 +5,7 @@
  */
 import { bindText, listen, setText, setAttribute, bindConditionalRegion, bindKeyedRegion } from "@zaakiyjs/dom/compiler";
 import { hydrate } from "@zaakiyjs/dom";
-import { signal } from "@zaakiyjs/signals";
+import { signal, untrack } from "@zaakiyjs/signals";
 import type { WritableSignal } from "@zaakiyjs/signals";
 import type { HydrationMountHandle } from "@zaakiyjs/dom";
 import { createOwner, disposeOwner, initializeOwnedComponent, mountOwner, onMount, runWithOwner } from "@zaakiyjs/core";
@@ -43,6 +43,10 @@ export interface RegionHydrationBindingsV2 {
   /** Resolve compiled onClick={props.handle} references from trusted client code. */
   readonly resolveEvent?: (path:readonly string[], currentItem?:()=>unknown) => EventListener;
   readonly signal?: AbortSignal;
+  /** Opt-in: item paths are immutable plain data snapshots without proxies or
+   * reactive descriptor reads. Replace changed keyed items; never mutate them.
+   * Default attachment retains tracked reads for backward compatibility. */
+  readonly itemDataMode?: "snapshot";
 }
 const ID = /^[a-f0-9]{32}$/;
 const HASH = /^[a-f0-9]{64}$/;
@@ -395,6 +399,7 @@ export function hydrateRegionPage(
       plan.schema!=="zaakiy.region-hydration/2" || plan.routeId!==routeId ||
       !ID.test(plan.markerId) || !HASH.test(plan.templateDigest) ||
       !Array.isArray(plan.nodes) || !bindings || typeof bindings.read!=="function" ||
+      (bindings.itemDataMode!==undefined && bindings.itemDataMode!=="snapshot") ||
       !Array.isArray(envelope?.boundaries) || envelope.boundaries.length!==1 ||
       envelope.boundaries[0]?.markerId!==plan.markerId ||
       envelope.boundaries[0]?.templateDigest!==plan.templateDigest)
@@ -453,7 +458,11 @@ export function hydrateRegionPage(
         else slot.anchor.appendChild(slot.text);
         inserted.push(slot.text);
       }
-      bindText(owner,slot.text,()=>slot.spec.source==="props"
+      if(slot.spec.source==="item" && bindings.itemDataMode==="snapshot"){
+        // No reactive descriptor reads are permitted by this explicit contract.
+        // Keyed replacement still uses updateSlots with full scalar validation.
+        untrack(()=>setText(slot.text!,textOf(own(slot.item,slot.spec.path))));
+      }else bindText(owner,slot.text,()=>slot.spec.source==="props"
         ? read(slot.spec.path):own(slot.item,slot.spec.path));
     }
   };
