@@ -103,6 +103,28 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Instrument separate diagnostic build (candidate only)
+        if: matrix.label == 'candidate'
+        working-directory: source
+        run: |
+          node benchmarks/h4-hydration/profile-source.mjs
+          pnpm --filter @zaakiyjs/ssr build
+      - name: Build isolated profile fixture
+        if: matrix.label == 'candidate'
+        working-directory: source
+        env:
+          H4_SITE: ${{ github.workspace }}/profile-site
+          NODE_ENV: production
+        run: node benchmarks/h4-hydration/build-zaakiy.mjs
+      - uses: actions/upload-artifact@v4
+        if: matrix.label == 'candidate'
+        with:
+          name: profile-site-${{ github.sha }}
+          path: profile-site/
+          if-no-files-found: error
+          retention-days: 14
+
+
   measure:
     name: paired / ${{ matrix.browser }} same-runner hydration
     needs: build
@@ -149,5 +171,42 @@ jobs:
         with:
           name: paired-hydration-${{ matrix.browser }}-${{ github.sha }}
           path: benchmark-artifacts/paired/
+          if-no-files-found: error
+          retention-days: 14
+
+  profile:
+    name: profile / ${{ matrix.browser }} hydration phases
+    needs: build
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.64.1-noble
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: profile-site-${{ github.sha }}
+          path: profile-site
+      - name: Install pinned native browsers
+        run: bash scripts/ci/install-playwright-browsers.sh
+      - name: Record diagnostic phase profiles (not production timings)
+        run: |
+          python3 benchmarks/h4-hydration/profile.py \
+            --site profile-site --output benchmark-artifacts/profile.json \
+            --engine "${{ matrix.browser }}" --head "${{ github.sha }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hydration-profile-${{ matrix.browser }}-${{ github.sha }}
+          path: benchmark-artifacts/profile.json
           if-no-files-found: error
           retention-days: 14
