@@ -1,5 +1,5 @@
 /** Build real compiler-backed H4 server HTML + Vite hydration clients. */
-import {resolve,join,dirname} from "node:path";
+import {resolve,join,dirname,relative} from "node:path";
 import {mkdir,writeFile,readFile} from "node:fs/promises";
 import {createHash} from "node:crypto";
 import {gzipSync,brotliCompressSync} from "node:zlib";
@@ -17,7 +17,7 @@ const source=[
 ].join("\n");
 const compiled=compileRegionServer({
   fileName:"benchmarks/h4-hydration/h4-benchmark.tsx",
-  source,routeId:"h4benchmark",hydrationScale:"large"
+  source,routeId:"h4benchmark",hydrationScale:"large",hydrationMarkerFormat:"compact-v2"
 });
 if(compiled.diagnostics.some(x=>x.severity==="error") ||
   !compiled.hydrationPlan || !compiled.js[0])
@@ -118,10 +118,25 @@ await writeFile(client,[
   '  };',
   '}catch(error){observe.disconnect();window.__h4={ready:true,error:String(error)};}'
 ].join("\n")+"\n");
+const attribution=[];
 await build({configFile:false,root:resolve("."),publicDir:false,logLevel:"warn",
+  plugins:[{name:"h4-module-attribution",generateBundle(_options,bundle){
+    for(const [file,chunk] of Object.entries(bundle)){
+      if(chunk.type!=="chunk")continue;
+      for(const [id,info] of Object.entries(chunk.modules)){
+        attribution.push({file,module:id.startsWith("\\0")?id:relative(resolve("."),id),
+          renderedBytes:info.renderedLength,originalBytes:info.originalLength});
+      }
+    }
+  }}],
   resolve:{alias:{"@zaakiyjs/ssr/client":resolve("packages/ssr/dist/client.js")}},
   build:{outDir:root,emptyOutDir:false,minify:"esbuild",
     lib:{entry:client,formats:["es"],fileName:"zaakiyjs"}}});
+await writeFile(join(root,"zaakiy-module-attribution.json"),JSON.stringify({
+  schema:"zaakiy.h4-module-attribution/1",
+  metric:"Rollup rendered module lengths before final chunk compression; not additive gzip attribution",
+  modules:attribution.sort((a,b)=>b.renderedBytes-a.renderedBytes || a.module.localeCompare(b.module))
+},null,2)+"\n");
 const variant={schema:"zaakiy.h4-reference/1",buildId:manifest.buildId,
   moduleSha256:createHash("sha256").update(bytes).digest("hex"),
   clientSha256:createHash("sha256").update(await readFile(join(root,"zaakiyjs.js"))).digest("hex"),
@@ -134,13 +149,15 @@ for(const size of [100,1000,10000]){
       loaderData:{count:0,shown:true,rows}}).body;
     const compact=sizeOf(html);
     const expanded=sizeOf(previousMarkerFormat(html));
-    markerImpact[size]={
+    markerImpact[size]=plan.markerFormat==="compact-v2" ? {
+      compact,comparison:"Use the paired compact-v1 baseline; omitted scalar markers cannot be recovered by marker replacement alone."
+    } : {
       compact,unoptimizedV2Markers:expanded,
       savedRawBytes:expanded.raw-compact.raw,
       savedGzipBytes:expanded.gzip-compact.gzip,
       savedBrotliBytes:expanded.brotli-compact.brotli
     };
-    if(plan.limits && compact.raw>=expanded.raw)
+    if(plan.limits && plan.markerFormat!=="compact-v2" && compact.raw>=expanded.raw)
       throw new Error("H4 compact markers did not reduce raw SSR payload");
     const output=join(root,"zaakiyjs",String(size),"index.html");
     await mkdir(dirname(output),{recursive:true});
