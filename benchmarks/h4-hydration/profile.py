@@ -58,6 +58,8 @@ def main():
                                 raise AssertionError(f"Incomplete profile: {measures}")
                             if (data["attachment"]["adoptedRows"] != size or data["attachment"]["itemSlots"] != size
                                     or data["attachment"]["snapshotTextBindings"] != size
+                                    or data["attachment"]["flatRows"] != size
+                                    or data["attachment"]["rowOwners"] != 0
                                     or data["attachment"]["trackedTextBindings"] + size != data["attachment"]["slots"]
                                     or data["structural"]["visitedPlanNodes"] < size):
                                 raise AssertionError(f"Invalid counters: {data}")
