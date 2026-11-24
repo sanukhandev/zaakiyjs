@@ -63,3 +63,34 @@ certificate remains required, not replaced by targeted experiments.
 Do not merge this stack until PR99 is certified and integrated, the
 candidate passes all exact-head checks, and paired performance evidence
 has been reviewed. No package publication or release tag is authorized.
+
+
+## Certification gate corrections
+
+At candidate `185478cc8f5361b8cec780c42b5d7d7ffd89b991`, 16 of 18 workflows
+passed. The two earlier owner-leak tests passed; the remaining Quality
+failure was Chrome process ETIMEDOUT in the native DOM smoke test, not
+a reported DOM assertion failure. A unique Chrome profile and bounded
+90-second process timeout address CI startup contention without skipping
+or retrying away failed behavior assertions.
+
+B8 originally required byte-identical production JS/CSS and a canonical
+asset manifest against the frozen B0–B5 baseline. That is appropriate for
+compiler/build-only optimization, but intentional runtime edits change the
+entry chunk and its content-addressed name. The reporter retains strict
+byte equality as its default. The integrated B8 workflow explicitly selects
+the reviewed-runtime-delta comparison, requiring identical fixture source
+hashes, compiler-emitted TSX JS, stylesheet bytes, HTML and canonical
+manifest metadata (only the validated entry filename is normalized),
+and actual native browser behavior. Each variant must still independently
+produce byte-identical repeated builds. The manifest must cover every
+emitted JS/CSS asset; missing, extra or conflicting asset records fail.
+All raw executable hashes, compressed byte counts and browser assertions
+remain available for review. This is not a claim of full equivalence for
+arbitrary applications: the native fixture checks independent counters,
+CSS, exact targeted mutations and DOM identity. Full H4, M1, Quality,
+release hardening and paired performance checks remain required.
+Size increases are reported, not approved by the comparator.
+
+These are candidate test/infrastructure changes; certification requires
+the new exact-head workflow results.
