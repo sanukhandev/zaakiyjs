@@ -168,6 +168,35 @@ describe("H4 compiler-region client adoption", () => {
     second.dispose();
     expect(container.querySelectorAll("button")[0]).toBe(a);
   });
+  it("rejects duplicate scoped element identities before resolving any event", () => {
+    const container=fixture();
+    const duplicate:RegionHydrationPlanV2={
+      ...plan,
+      nodes:plan.nodes.map(root=>root.kind==="element"?{
+        ...root,events:[{name:"click",path:["onRoot"]}],
+        children:root.children.map(child=>child.kind==="conditional"?{
+          ...child,yes:child.yes.map(node=>node.kind==="element"?{...node,id:rootId}:node)
+        }:child)
+      }:root)
+    };
+    const original=container.innerHTML;
+    let resolutions=0;
+    expect(()=>hydrateRegionPage(container,duplicate,envelope,manifest,routeId,{
+      read:path=>state()[path[0] as keyof ReturnType<typeof state>],
+      resolveEvent:()=>{resolutions++;return ()=>undefined;}
+    })).toThrow(/duplicate element ID/);
+    expect(resolutions).toBe(0);
+    expect(container.innerHTML).toBe(original);
+  });
+  it("rejects unexpected native attributes on elements with no compiled attributes", () => {
+    const container=fixture();
+    container.querySelector("main")!.setAttribute("data-extra","untrusted");
+    const original=container.innerHTML;
+    expect(()=>hydrateRegionPage(container,plan,envelope,manifest,routeId,{
+      read:path=>state()[path[0] as keyof ReturnType<typeof state>]
+    })).toThrow(/unexpected native attributes/);
+    expect(container.innerHTML).toBe(original);
+  });
   it("refuses unresolved compiler JSX events before attaching any owner", () => {
     const container=fixture();
     const withEvents:RegionHydrationPlanV2={
