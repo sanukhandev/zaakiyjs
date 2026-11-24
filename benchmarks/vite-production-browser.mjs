@@ -20,15 +20,12 @@ window.addEventListener("load",async()=>{
     const buttons=[...host.querySelectorAll("button")];
     const assert=(condition,message)=>{if(!condition)throw Error(message);};
     assert(buttons.length===${count},"button count");
-    assert(buttons.every(b=>b.textContent==="Count: 0"&&b.className==="flex gap-4 p-4"),"initial state");
+    assert(buttons.every(b=>b.textContent==="Count: 0"&&[...b.classList].sort().join(" ")==="flex gap-4 p-4"),"initial state");
     const style=getComputedStyle(buttons[0]);
     const styles=[style.display,style.columnGap,style.paddingTop];
     assert(styles[0]==="flex"&&parseFloat(styles[1])>0&&parseFloat(styles[2])>0,"stylesheet not applied");
-    const observer=new MutationObserver(()=>{});
-    observer.observe(host,{subtree:true,characterData:true,childList:true,attributes:true});
-    // Capture before the observer callback drains the records.
+    // Capture both delivered and pending mutation records.
     const records=[];
-    observer.disconnect();
     const tracked=new MutationObserver(changes=>records.push(...changes));
     tracked.observe(host,{subtree:true,characterData:true,childList:true,attributes:true});
     buttons[0].click();
