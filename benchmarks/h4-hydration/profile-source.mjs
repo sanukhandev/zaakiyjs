@@ -8,7 +8,7 @@ const replace=(before,after)=>{
 };
 replace('  return tree;\n}', '  performance.mark("h4/structural-counters",{detail:{visitedPlanNodes:budget}});\n  return tree;\n}');
 replace('):HydrationMountHandle {\n  if (!container', `):HydrationMountHandle {
-  const profileCounts={slots:0,itemSlots:0,createdTextNodes:0,listeners:0,components:0,conditions:0,keyedLists:0,adoptedRows:0};
+  const profileCounts={slots:0,itemSlots:0,trackedTextBindings:0,snapshotTextBindings:0,createdTextNodes:0,listeners:0,components:0,conditions:0,keyedLists:0,adoptedRows:0};
   performance.mark("h4/start");
   if (!container`);
 replace('  const tree=inspect(container,plan,bindings.read);', `  performance.mark("h4/protocol-end");
@@ -32,6 +32,8 @@ replace('    for (const slot of slots) {\n      if (!slot.text) {', `    for (co
       if(slot.spec.source==="item")profileCounts.itemSlots++;
       if (!slot.text) {
         profileCounts.createdTextNodes++;`);
+replace('      if(slot.spec.source==="item" && bindings.itemDataMode==="snapshot"){', '      if(slot.spec.source==="item" && bindings.itemDataMode==="snapshot"){\\n        profileCounts.snapshotTextBindings++;');
+replace('      }else bindText(owner,slot.text,()=>slot.spec.source==="props"\\n        ? read(slot.spec.path):own(slot.item,slot.spec.path));', '      }else {\\n        profileCounts.trackedTextBindings++;\\n        bindText(owner,slot.text,()=>slot.spec.source==="props"\\n          ? read(slot.spec.path):own(slot.item,slot.spec.path));\\n      }');
 replace('    for (const component of target.components) {\n      const child=createOwner(owner);', '    for (const component of target.components) {\n      profileCounts.components++;\n      const child=createOwner(owner);');
 replace('    for (const condition of target.conditions) {\n      bindConditionalRegion(owner,', '    for (const condition of target.conditions) {\n      profileCounts.conditions++;\n      bindConditionalRegion(owner,');
 replace('    for (const list of target.keyed) {\n      bindKeyedRegion(owner,', '    for (const list of target.keyed) {\n      profileCounts.keyedLists++;\n      profileCounts.adoptedRows+=list.rows.length;\n      bindKeyedRegion(owner,');
