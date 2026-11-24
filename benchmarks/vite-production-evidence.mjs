@@ -4,6 +4,7 @@
  */
 import {createHash} from "node:crypto";
 import {gzipSync} from "node:zlib";
+import {Buffer} from "node:buffer";
 
 export const digest=value=>createHash("sha256").update(value).digest("hex");
 export function canonicalManifest(content) {
