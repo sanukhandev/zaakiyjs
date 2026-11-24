@@ -7,6 +7,9 @@ on:
       - 'benchmarks/h4-hydration/**'
       - 'packages/compiler/**'
       - 'packages/ssr/**'
+      - 'packages/signals/**'
+      - 'packages/core/**'
+      - 'packages/dom/**'
       - '.github/workflows/h4-hydration-reference.yml'
   push:
     branches: ['feat/production-hardening-integration']
@@ -14,6 +17,9 @@ on:
       - 'benchmarks/h4-hydration/**'
       - 'packages/compiler/**'
       - 'packages/ssr/**'
+      - 'packages/signals/**'
+      - 'packages/core/**'
+      - 'packages/dom/**'
       - '.github/workflows/h4-hydration-reference.yml'
 
 permissions:
