@@ -206,7 +206,7 @@ function scopedKey(parent:string, key:string):string {
 
 /** No user callbacks are registered and no native mutations occur in preflight. */
 function inspect(container: Element, plan: RegionHydrationPlanV2,
-  read: RegionHydrationBindingsV2["read"], item:unknown=null, scopeKey=""): Zone {
+  read: RegionHydrationBindingsV2["read"], item:unknown=null, scopeKey="", syntheticRoot=false): Zone {
   if (container.childNodes.length !== 2 || container.childNodes[0]?.nodeType !== 8 ||
       container.childNodes[0]?.nodeValue !== "zaakiy-h:" + plan.markerId + ":" + plan.templateDigest)
     mismatch("route root marker");
@@ -248,7 +248,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
               });
             }
           }
-          const scalar=scalarChild(plan,spec);
+          const scalar=syntheticRoot && depth===0 ? undefined : scalarChild(plan,spec);
           if(scalar){
             if(++budget>limits.maxNodes || depth+1>64 || !ID.test(scalar.id))
               mismatch("scalar region budget or identity");
@@ -544,7 +544,7 @@ export function hydrateRegionPage(
       ...plan,nodes:[{kind:"element",id:"0".repeat(32),
         tag:"div",attrs:[],children:specs}]
     };
-    const discovered=inspect(fake,synthetic,read,item,key);
+    const discovered=inspect(fake,synthetic,read,item,key,true);
     const fragment=doc.createDocumentFragment();
     while(root.firstChild) fragment.appendChild(root.firstChild);
     return {fragment,discovered};
