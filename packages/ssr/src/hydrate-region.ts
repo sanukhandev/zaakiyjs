@@ -28,7 +28,7 @@ export interface RegionHydrationPlanV2 {
   readonly nodes: readonly RegionNodeV2[];
   readonly limits?: {readonly maxRows:10000;readonly maxNodes:50000;readonly maxHtmlBytes:8388608};
   /** Omission deliberately selects the original full-length v2 markers. */
-  readonly markerFormat?: "compact-v1";
+  readonly markerFormat?: "compact-v1" | "compact-v2";
 }
 export interface RegionHydrationEventV2 {
   /** Compiler element ID; keyed item elements use id:key. */
@@ -53,20 +53,20 @@ const EVENT = /^[a-z][a-z0-9:_-]*$/;
 const DENIED = new Set(["__proto__", "constructor", "prototype"]);
 const MAX_NODES = 8192;
 function dataMarker(plan:RegionHydrationPlanV2,id:string,side:"start"|"end"):string{
-  return plan.markerFormat==="compact-v1"
+  return plan.markerFormat!==undefined
     ? "z-d:"+id.slice(0,16)+":"+(side==="start"?"s":"e")
     : "zaakiy-d2:"+id+":"+side;
 }
 function keyedMarker(plan:RegionHydrationPlanV2,id:string,key:string,side:"start"|"end"):string{
-  return plan.markerFormat==="compact-v1"
+  return plan.markerFormat!==undefined
     ? "z-k:"+key+":"+(side==="start"?"s":"e")
     : "zaakiy-k2:"+id+":"+key+":"+side;
 }
 
 function getBudgets(plan:RegionHydrationPlanV2){
-  if(plan.markerFormat!==undefined && plan.markerFormat!=="compact-v1")
+  if(plan.markerFormat!==undefined && plan.markerFormat!=="compact-v1" && plan.markerFormat!=="compact-v2")
     mismatch("unsupported hydration marker format");
-  if(plan.markerFormat==="compact-v1" && !plan.limits)
+  if(plan.markerFormat!==undefined && !plan.limits)
     mismatch("compact markers require an approved large-list plan");
   if(plan.limits===undefined) return {maxRows:4096,maxNodes:MAX_NODES};
   const limits=plan.limits;
@@ -80,6 +80,15 @@ type ComponentNode = Extract<RegionNodeV2, {kind:"component"}>;
 type ConditionalNode = Extract<RegionNodeV2, {kind:"conditional"}>;
 type KeyedNode = Extract<RegionNodeV2, {kind:"keyed"}>;
 type DataNode = Extract<RegionNodeV2, {kind:"data"}>;
+type ElementNode = Extract<RegionNodeV2, {kind:"element"}>;
+// compact-v2 uses the verified native element as the boundary for a sole
+// item-derived scalar. Exclude parser-sensitive/raw-text elements.
+function scalarChild(plan:RegionHydrationPlanV2,spec:ElementNode):DataNode|undefined {
+  if(plan.markerFormat!=="compact-v2" || spec.children.length!==1 ||
+      !/^(?:li|span|p|div|button|h[1-6])$/.test(spec.tag)) return undefined;
+  const child=spec.children[0];
+  return child?.kind==="data" && child.source==="item" ? child : undefined;
+}
 
 function mismatch(reason: string): never { throw new TypeError("Region hydration mismatch: " + reason); }
 function textOf(value: unknown): string {
@@ -143,7 +152,7 @@ function attributes(element: Element, values: readonly string[]): void {
 interface Slot {
   readonly spec: DataNode;
   text: Text | null;
-  readonly end: Comment;
+  readonly anchor: Comment | Element;
   item: unknown;
 }
 interface ComponentScope {
@@ -239,7 +248,17 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
               });
             }
           }
-          if (scan(element,element.firstChild,null,spec.children,item,target,depth+1) !== null)
+          const scalar=scalarChild(plan,spec);
+          if(scalar){
+            if(++budget>limits.maxNodes || depth+1>64 || !ID.test(scalar.id))
+              mismatch("scalar region budget or identity");
+            const expected=textOf(own(item,scalar.path));
+            const first=element.firstChild;
+            if(first && (first.nodeType!==3 || first.nextSibling || first.nodeValue!==expected))
+              mismatch("scalar native text");
+            if(!first && expected) mismatch("missing scalar native text");
+            target.slots.push({spec:scalar,text:first as Text|null,anchor:element,item});
+          }else if (scan(element,element.firstChild,null,spec.children,item,target,depth+1) !== null)
             mismatch("unlisted native children");
           cursor=element.nextSibling;
           break;
@@ -267,7 +286,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
           if (!cursor || cursor === end || cursor.nodeType !== 8 ||
               cursor.nodeValue !== dataMarker(plan,spec.id,"end"))
             mismatch("dynamic text end");
-          target.slots.push({spec,text,end:cursor as Comment,item});
+          target.slots.push({spec,text,anchor:cursor as Comment,item});
           cursor=cursor.nextSibling;
           break;
         }
@@ -429,8 +448,9 @@ export function hydrateRegionPage(
   const attachSlots=(owner:OwnerScope,slots:readonly Slot[]):void=>{
     for (const slot of slots) {
       if (!slot.text) {
-        slot.text=slot.end.ownerDocument.createTextNode("");
-        slot.end.parentNode!.insertBefore(slot.text,slot.end);
+        slot.text=slot.anchor.ownerDocument.createTextNode("");
+        if(slot.anchor.nodeType===8) slot.anchor.parentNode!.insertBefore(slot.text,slot.anchor);
+        else slot.anchor.appendChild(slot.text);
         inserted.push(slot.text);
       }
       bindText(owner,slot.text,()=>slot.spec.source==="props"
@@ -482,7 +502,12 @@ export function hydrateRegionPage(
             if(!parsed) mismatch("invalid compiled attribute");
             setAttribute(el,parsed[1]!,decodeAttr(parsed[2]!));
           }
-          el.appendChild(draw(spec.children,row,depth+1));
+          const scalar=scalarChild(plan,spec);
+          if(scalar){
+            if(++nodes>limits.maxNodes || depth+1>64 || !ID.test(scalar.id)) mismatch("scalar region budget or identity");
+            const value=textOf(own(row,scalar.path));
+            if(value) el.appendChild(doc.createTextNode(value));
+          }else el.appendChild(draw(spec.children,row,depth+1));
           fragment.appendChild(el);
         } else if(spec.kind==="component"){
           fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":start"));
