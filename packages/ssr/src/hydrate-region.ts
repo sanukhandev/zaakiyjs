@@ -125,6 +125,10 @@ function decodeAttr(value: string): string {
 }
 function attributes(element: Element, values: readonly string[]): void {
   if (!Array.isArray(values)) mismatch("invalid static attributes");
+  if (values.length === 0) {
+    if (element.attributes.length !== 0) mismatch("unexpected native attributes");
+    return;
+  }
   const names = new Set<string>();
   for (const raw of values) {
     if (typeof raw !== "string") mismatch("invalid static attribute");
@@ -340,15 +344,22 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
   return tree;
 }
 
-function allElements(target:Zone, output:Map<string,Element>):void {
+type DiscoveredEvent = {
+  readonly event: Zone["compiledEvents"][number];
+  readonly item: () => unknown;
+};
+/** Preserve the existing zone order and validate every identity before resolving callbacks. */
+function discoverBindings(target:Zone, output:Map<string,Element>, events:DiscoveredEvent[]):void {
   for (const [id,node] of target.elements) {
     if (output.has(id)) mismatch("duplicate element ID");
     output.set(id,node);
   }
-  for (const component of target.components) allElements(component.child,output);
-  for (const conditional of target.conditions) allElements(conditional.child,output);
+  for (const event of target.compiledEvents)
+    events.push({event,item:()=>target.item.value});
+  for (const component of target.components) discoverBindings(component.child,output,events);
+  for (const conditional of target.conditions) discoverBindings(conditional.child,output,events);
   for (const keyed of target.keyed)
-    for (const row of keyed.rows) allElements(row.child,output);
+    for (const row of keyed.rows) discoverBindings(row.child,output,events);
 }
 /** Adopt exactly matching server markup; a mismatched region is never replaced. */
 export function hydrateRegionPage(
@@ -369,17 +380,9 @@ export function hydrateRegionPage(
     mismatch("build/route/marker identity");
   const tree=inspect(container,plan,bindings.read);
   const targetElements=new Map<string,Element>();
-  allElements(tree,targetElements);
+  const compiledEvents:DiscoveredEvent[]=[];
+  discoverBindings(tree,targetElements,compiledEvents);
   const events=[...(bindings.events??[])];
-  const compiledEvents:Array<{event:Zone["compiledEvents"][number];item:()=>unknown}> = [];
-  const collectEvents=(target:Zone):void=>{
-    for(const event of target.compiledEvents)
-      compiledEvents.push({event,item:()=>target.item.value});
-    for(const comp of target.components) collectEvents(comp.child);
-    for(const condition of target.conditions) collectEvents(condition.child);
-    for(const list of target.keyed) for(const row of list.rows) collectEvents(row.child);
-  };
-  collectEvents(tree);
   if(compiledEvents.length && typeof bindings.resolveEvent!=="function")
     mismatch("compiler event resolver required");
   for(const {event,item} of compiledEvents){
@@ -406,11 +409,12 @@ export function hydrateRegionPage(
   const read=bindings.read;
   const attachElements=(owner:OwnerScope,target:Zone):void=>{
     for(const [id,node] of target.elements){
-      for(const event of eventMap.get(id)??[])
+      const explicit=eventMap.get(id);
+      if(explicit) for(const event of explicit)
         listen(owner,node,event.name,event.handler,event.options);
       for(const descriptor of target.compiledEvents){
         if(descriptor.elementId!==id ||
-            eventMap.get(id)?.some(event=>event.name===descriptor.name)) continue;
+            explicit?.some(event=>event.name===descriptor.name)) continue;
         const handler=bindings.resolveEvent?.(descriptor.path,()=>target.item.value);
         if(typeof handler!=="function") mismatch("missing compiled event handler");
         listen(owner,node,descriptor.name,handler);
