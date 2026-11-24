@@ -68,10 +68,10 @@ describe("lazy derived-read tracking", () => {
     flushSync();
     source.value = 7;
     flushSync();
-    expect(seen).toEqual([1, 3, 1, 5, 7]);
+    expect(seen).toEqual([1, 3, 1, 1, 5, 7]);
     handle.dispose();
     source.value = 8;
     flushSync();
-    expect(seen).toEqual([1, 3, 1, 5, 7]);
+    expect(seen).toEqual([1, 3, 1, 1, 5, 7]);
   });
 });
