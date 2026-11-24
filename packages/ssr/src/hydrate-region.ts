@@ -3,7 +3,8 @@
  * The v2 path reuses the existing DOM keyed/conditional reconciler and owner
  * lifecycle; it does not ship a TSX interpreter or a virtual DOM.
  */
-import { bindText, listen, setText, setAttribute, bindConditionalRegion, bindKeyedRegion } from "@zaakiyjs/dom/compiler";
+import { bindText, listen, setText, setAttribute, bindConditionalRegion, bindKeyedRegion, bindFlatKeyedRegion } from "@zaakiyjs/dom/compiler";
+import type { FlatKeyedRow } from "@zaakiyjs/dom/compiler";
 import { hydrate } from "@zaakiyjs/dom";
 import { signal, untrack } from "@zaakiyjs/signals";
 import type { WritableSignal } from "@zaakiyjs/signals";
@@ -19,7 +20,7 @@ export type RegionNodeV2 =
   | { readonly kind: "literal"; readonly value: string }
   | { readonly kind: "data"; readonly id: string; readonly source: "props" | "item"; readonly path: readonly string[] }
   | { readonly kind: "conditional"; readonly id: string; readonly path: readonly string[]; readonly source?: "props" | "item"; readonly yes: readonly RegionNodeV2[]; readonly no: readonly RegionNodeV2[] }
-  | { readonly kind: "keyed"; readonly id: string; readonly path: readonly string[]; readonly source?: "props" | "item"; readonly itemName: string; readonly key: string; readonly rows: readonly RegionNodeV2[] };
+  | { readonly kind: "keyed"; readonly id: string; readonly path: readonly string[]; readonly source?: "props" | "item"; readonly itemName: string; readonly key: string; readonly rows: readonly RegionNodeV2[]; readonly flat?: true };
 export interface RegionHydrationPlanV2 {
   readonly schema: "zaakiy.region-hydration/2";
   readonly routeId: string;
@@ -28,7 +29,7 @@ export interface RegionHydrationPlanV2 {
   readonly nodes: readonly RegionNodeV2[];
   readonly limits?: {readonly maxRows:10000;readonly maxNodes:50000;readonly maxHtmlBytes:8388608};
   /** Omission deliberately selects the original full-length v2 markers. */
-  readonly markerFormat?: "compact-v1" | "compact-v2";
+  readonly markerFormat?: "compact-v1" | "compact-v2" | "compact-v3";
 }
 export interface RegionHydrationEventV2 {
   /** Compiler element ID; keyed item elements use id:key. */
@@ -68,7 +69,7 @@ function keyedMarker(plan:RegionHydrationPlanV2,id:string,key:string,side:"start
 }
 
 function getBudgets(plan:RegionHydrationPlanV2){
-  if(plan.markerFormat!==undefined && plan.markerFormat!=="compact-v1" && plan.markerFormat!=="compact-v2")
+  if(plan.markerFormat!==undefined && plan.markerFormat!=="compact-v1" && plan.markerFormat!=="compact-v2" && plan.markerFormat!=="compact-v3")
     mismatch("unsupported hydration marker format");
   if(plan.markerFormat!==undefined && !plan.limits)
     mismatch("compact markers require an approved large-list plan");
@@ -88,7 +89,7 @@ type ElementNode = Extract<RegionNodeV2, {kind:"element"}>;
 // compact-v2 uses the verified native element as the boundary for a sole
 // item-derived scalar. Exclude parser-sensitive/raw-text elements.
 function scalarChild(plan:RegionHydrationPlanV2,spec:ElementNode):DataNode|undefined {
-  if(plan.markerFormat!=="compact-v2" || spec.children.length!==1 ||
+  if((plan.markerFormat!=="compact-v2" && plan.markerFormat!=="compact-v3") || spec.children.length!==1 ||
       !/^(?:li|span|p|div|button|h[1-6])$/.test(spec.tag)) return undefined;
   const child=spec.children[0];
   return child?.kind==="data" && child.source==="item" ? child : undefined;
@@ -153,6 +154,84 @@ function attributes(element: Element, values: readonly string[]): void {
   }
   if (element.attributes.length !== names.size) mismatch("unexpected native attributes");
 }
+/** Parse a repeated resource-free row definition once, never per native row. */
+interface FlatTemplate {
+  readonly tag:string;
+  readonly attrs:readonly (readonly [string,string])[];
+  readonly keyField:string;
+  readonly textField:string;
+}
+function safeField(field:unknown):field is string {
+  return typeof field==="string" && FIELD.test(field) && !DENIED.has(field);
+}
+function flatTemplate(plan:RegionHydrationPlanV2,spec:KeyedNode):FlatTemplate {
+  const leaf=spec.rows[0];
+  if(plan.markerFormat!=="compact-v3" || spec.flat!==true || spec.source==="item" ||
+      spec.rows.length!==1 || leaf?.kind!=="element" || !ID.test(leaf.id) ||
+      !Array.isArray(leaf.attrs) || !Array.isArray(leaf.children) ||
+      (leaf.events!==undefined && (!Array.isArray(leaf.events)||leaf.events.length!==0)) ||
+      !safeField(spec.key)) mismatch("invalid flat keyed template");
+  const child=scalarChild(plan,leaf);
+  if(!child || !ID.test(child.id) || !Array.isArray(child.path) ||
+      child.path.length!==1 || !safeField(child.path[0])) mismatch("invalid flat scalar field");
+  const attrs:[string,string][]=[];
+  const seen=new Set<string>(["data-zk"]);
+  for(const raw of leaf.attrs){
+    const parsed=typeof raw==="string"?ATTR.exec(raw):null;
+    if(!parsed || !/^(?:class|role|title|tabindex|data-[a-z0-9_-]+|aria-[a-z0-9_-]+)$/.test(parsed[1]!) ||
+       seen.has(parsed[1]!)) mismatch("invalid flat static attribute");
+    const value=decodeAttr(parsed[2]!);
+    if(encoded(value)!==parsed[2]) mismatch("invalid flat attribute encoding");
+    seen.add(parsed[1]!);attrs.push([parsed[1]!,value]);
+  }
+  return {tag:leaf.tag,attrs,keyField:spec.key,textField:child.path[0]!};
+}
+function describeFlat(template:FlatTemplate,item:unknown):{key:string;value:string}{
+  if(!item || typeof item!=="object" || Array.isArray(item)) mismatch("invalid flat row data");
+  const proto=Object.getPrototypeOf(item);
+  if(proto!==Object.prototype && proto!==null) mismatch("nonplain flat row data");
+  const readField=(field:string):unknown=>{
+    const descriptor=Object.getOwnPropertyDescriptor(item,field);
+    if(!descriptor)return null;
+    if(!Object.hasOwn(descriptor,"value"))mismatch("getter in flat row data");
+    return descriptor.value;
+  };
+  const raw=readField(template.keyField);
+  if(typeof raw!=="string" && typeof raw!=="number")mismatch("invalid keyed identity");
+  const key=String(raw);
+  if(!SAFE_KEY.test(key))mismatch("unsafe keyed identity");
+  return {key,value:textOf(readField(template.textField))};
+}
+function createFlat(doc:Document,template:FlatTemplate,key:string,value:string):Element{
+  const node=doc.createElement(template.tag);
+  for(const [name,attr] of template.attrs)setAttribute(node,name,attr);
+  setAttribute(node,"data-zk",key);
+  if(value)node.appendChild(doc.createTextNode(value));
+  return node;
+}
+/** Compiler IDs in v3 are globally unique template identities. Validate once
+ * before any callback/attachment; row identity is then list scope plus key. */
+function validateFlatPlan(plan:RegionHydrationPlanV2):void{
+  const ids=new Set<string>();
+  let budget=0;
+  const visit=(nodes:readonly RegionNodeV2[],depth:number):void=>{
+    if(!Array.isArray(nodes)||depth>64)mismatch("invalid flat plan depth");
+    for(const node of nodes){
+      if(!node || ++budget>50000)mismatch("flat template budget");
+      if(node.kind!=="literal"){
+        if(!ID.test(node.id)||ids.has(node.id))mismatch("duplicate or invalid flat template identity");
+        ids.add(node.id);
+      }
+      if(node.kind==="element"||node.kind==="component")visit(node.children,depth+1);
+      else if(node.kind==="conditional"){visit(node.yes,depth+1);visit(node.no,depth+1);}
+      else if(node.kind==="keyed"){
+        if(node.flat!==undefined)flatTemplate(plan,node);
+        visit(node.rows,depth+1);
+      }else if(node.kind!=="literal"&&node.kind!=="data")mismatch("unsupported flat plan node");
+    }
+  };
+  visit(plan.nodes,0);
+}
 interface Slot {
   readonly spec: DataNode;
   text: Text | null;
@@ -185,6 +264,7 @@ interface Keyed {
   readonly start: Comment;
   readonly end: Comment;
   readonly rows: readonly Row[];
+  readonly flat?: {readonly template:FlatTemplate;readonly rows:readonly FlatKeyedRow<unknown>[]};
 }
 interface Zone {
   readonly key: string;
@@ -337,6 +417,33 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
           cursor=cursor.nextSibling;
           const rows:Row[]=[];
           const seen=new Set<string>();
+          if(spec.flat!==undefined){
+            const template=flatTemplate(plan,spec);
+            const nativeRows:FlatKeyedRow<unknown>[]=[];
+            for(const item of data){
+              if((budget+=2)>limits.maxNodes || depth+2>64)mismatch("flat row budget");
+              const {key,value}=describeFlat(template,item);
+              if(seen.has(key))mismatch("duplicate keyed identity");
+              seen.add(key);
+              if(!cursor||cursor===end||cursor.nodeType!==1)mismatch("flat native row");
+              const node=cursor as Element;
+              if(node.namespaceURI!=="http://www.w3.org/1999/xhtml"||node.localName!==template.tag||
+                 node.getAttribute("data-zk")!==key||node.attributes.length!==template.attrs.length+1)
+                mismatch("flat native identity or attributes");
+              for(const [name,expected] of template.attrs)
+                if(node.getAttribute(name)!==expected)mismatch("flat native attribute");
+              const first=node.firstChild;
+              if(first?(first.nodeType!==3||first.nextSibling!==null||first.nodeValue!==value):value!=="")
+                mismatch("flat native scalar text");
+              nativeRows.push({key,item,node,text:first as Text|null});
+              cursor=node.nextSibling;
+            }
+            if(!cursor||cursor===end||cursor.nodeType!==8||cursor.nodeValue!=="zaakiy-r2:"+spec.id+":end")
+              mismatch("flat list end");
+            target.keyed.push({spec,parent,start,end:cursor as Comment,rows,flat:{template,rows:nativeRows}});
+            cursor=cursor.nextSibling;
+            break;
+          }
           for (const item of data) {
             const key=rowKey(item,spec.key);
             if (seen.has(key)) mismatch("duplicate keyed identity");
@@ -407,6 +514,11 @@ export function hydrateRegionPage(
   if (bindings.signal?.aborted) mismatch("navigation canceled");
   if (!inspectHydration(container,envelope,manifest,routeId).compatible)
     mismatch("build/route/marker identity");
+  if(plan.markerFormat==="compact-v3"){
+    if(bindings.itemDataMode!=="snapshot" || (bindings.events?.length??0)!==0)
+      mismatch("compact-v3 requires immutable snapshots and compiler-declared events");
+    validateFlatPlan(plan);
+  }
   const tree=inspect(container,plan,bindings.read);
   const targetElements=new Map<string,Element>();
   const compiledEvents:DiscoveredEvent[]=[];
@@ -532,7 +644,14 @@ export function hydrateRegionPage(
             mismatch("invalid nested keyed data");
           const keys=new Set<string>();
           fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":start"));
+          const flat=spec.flat!==undefined?flatTemplate(plan,spec):undefined;
           for(const entry of rows){
+            if(flat){
+              if((nodes+=2)>limits.maxNodes||depth+2>64)mismatch("flat staged row budget");
+              const {key,value}=describeFlat(flat,entry);
+              if(keys.has(key))mismatch("duplicate nested keyed identity");
+              keys.add(key);fragment.appendChild(createFlat(doc,flat,key,value));continue;
+            }
             const rowKeyValue=rowKey(entry,spec.key);
             if(keys.has(rowKeyValue)) mismatch("duplicate nested keyed identity");
             keys.add(rowKeyValue);
@@ -598,6 +717,17 @@ export function hydrateRegionPage(
           adopt:child=>attachZone(child,condition.child)});
     }
     for (const list of target.keyed) {
+      if(list.flat){
+        const {template,rows}=list.flat;
+        bindFlatKeyedRegion(owner,{parent:list.start.parentNode!,start:list.start,end:list.end},
+          ()=>{
+            const items=read(list.spec.path);
+            if(!Array.isArray(items)||items.length>limits.maxRows)mismatch("unsafe flat collection");
+            return items as readonly unknown[];
+          },item=>describeFlat(template,item),
+          (key,value)=>createFlat(container.ownerDocument,template,key,value),rows);
+        continue;
+      }
       bindKeyedRegion(owner,{parent:list.start.parentNode!,start:list.start,end:list.end},
         ()=>{
           const rows=list.spec.source==="item" ? own(readItem(target),list.spec.path) : read(list.spec.path);
