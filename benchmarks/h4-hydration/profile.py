@@ -56,7 +56,10 @@ def main():
                             measures = {m["name"]: m["ms"] for m in data["measures"]}
                             if len(data["measures"]) != len(PHASES) or set(measures) != set(PHASES) or any(not math.isfinite(v) or v < 0 for v in measures.values()):
                                 raise AssertionError(f"Incomplete profile: {measures}")
-                            if data["attachment"]["adoptedRows"] != size or data["attachment"]["itemSlots"] != size or data["structural"]["visitedPlanNodes"] < size:
+                            if (data["attachment"]["adoptedRows"] != size or data["attachment"]["itemSlots"] != size
+                                    or data["attachment"]["snapshotTextBindings"] != size
+                                    or data["attachment"]["trackedTextBindings"] + size != data["attachment"]["slots"]
+                                    or data["structural"]["visitedPlanNodes"] < size):
                                 raise AssertionError(f"Invalid counters: {data}")
                             page.evaluate("() => {window.__h4.dispose();if(!window.__h4.verifyDisposed())throw Error('Profile disposal failed');}")
                             if iteration >= 2:
