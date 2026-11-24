@@ -15,9 +15,11 @@ const source=[
   '{props.shown ? <p>Visible</p> : <p>Hidden</p>}',
   '<ul>{props.rows.map(item=><li key={item.id} data-key="row">{item.label}</li>)}</ul></main>;}'
 ].join("\n");
+const requestedMarkerFormat=process.env.H4_MARKER_FORMAT??"compact-v3";
+if(!["compact-v2","compact-v3"].includes(requestedMarkerFormat))throw Error("Unsupported H4 requested format");
 const compiled=compileRegionServer({
   fileName:"benchmarks/h4-hydration/h4-benchmark.tsx",
-  source,routeId:"h4benchmark",hydrationScale:"large",hydrationMarkerFormat:"compact-v3"
+  source,routeId:"h4benchmark",hydrationScale:"large",hydrationMarkerFormat:requestedMarkerFormat
 });
 if(compiled.diagnostics.some(x=>x.severity==="error") ||
   !compiled.hydrationPlan || !compiled.js[0])
@@ -138,7 +140,7 @@ await writeFile(join(root,"zaakiy-module-attribution.json"),JSON.stringify({
   modules:attribution.sort((a,b)=>b.renderedBytes-a.renderedBytes || a.module.localeCompare(b.module))
 },null,2)+"\n");
 const variant={schema:"zaakiy.h4-reference/1",buildId:manifest.buildId,
-  markerFormat:plan.markerFormat??"standard",requestedItemDataMode:"snapshot",
+  markerFormat:plan.markerFormat??"standard",requestedMarkerFormat,requestedItemDataMode:"snapshot",
   moduleSha256:createHash("sha256").update(bytes).digest("hex"),
   clientSha256:createHash("sha256").update(await readFile(join(root,"zaakiyjs.js"))).digest("hex"),
   generatedCases:[],rejectedCases:[]};
