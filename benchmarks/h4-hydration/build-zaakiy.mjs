@@ -151,7 +151,7 @@ for(const size of [100,1000,10000]){
     const compact=sizeOf(html);
     const expanded=sizeOf(previousMarkerFormat(html));
     markerImpact[size]=["compact-v2","compact-v3"].includes(plan.markerFormat) ? {
-      compact,comparison:"Use the paired compact-v1 baseline; omitted scalar markers cannot be recovered by marker replacement alone."
+      compact,comparison:"Compare actual paired build HTML; omitted scalar and keyed markers cannot be recovered by marker replacement alone."
     } : {
       compact,unoptimizedV2Markers:expanded,
       savedRawBytes:expanded.raw-compact.raw,
@@ -209,7 +209,7 @@ const cleanFiles=async dir=>{
   for(const entry of await readdir(dir,{withFileTypes:true})){
     const file=join(dir,entry.name);
     if(entry.isDirectory())paths.push(...await cleanFiles(file));
-    else if(entry.isFile()&&/\\.(?:js|css)$/.test(entry.name))paths.push(file);
+    else if(entry.isFile()&&/\.(?:js|css)$/.test(entry.name))paths.push(file);
   }
   return paths.sort();
 };
