@@ -2,12 +2,12 @@
 
 Build-time Vite bridge for the ZaakiyJS native-DOM compiler and atomic-style engine.
 
-**Status: draft integration.** The M0 `@zaakiyjs/compiler`, `@zaakiyjs/styles`, and native-DOM packages are types-only on the branch's baseline. This package exports a working Vite plugin *adapter*, but a successful Zaakiy TSX application build is **not yet possible** and is **not claimed**. Missing executable exports fail loudly, with no JSX/esbuild/Tailwind fallback.
+**Status: implemented for the documented TSX subset; production certification remains open.** Compiler, Styles and direct-DOM integration now run through Vite and have generated-app/browser acceptance tests. General TSX SSR, state-preserving HMR, automatic Polyfill Zone transforms and independent release certification are not complete. Missing or unsupported executable exports fail loudly, with no React JSX or Tailwind fallback.
 
 ## Usage
 
 ```ts
-// vite.config.ts — once compiler, styles and DOM implementations have landed
+// vite.config.ts — opt-in source and emitted-JS compatibility analysis
 import { defineConfig } from "vite";
 import { zaakiyPlugin } from "@zaakiyjs/vite-plugin";
 
@@ -15,7 +15,7 @@ export default defineConfig({
   plugins: [
     zaakiyPlugin({
       configFile: "zaakiy.config.ts",
-      browserTargets: ["chrome >= 120", "firefox >= 120"]
+      compatibility: { mode: "strict", targets: { profile: "modern-2024" } }
     })
   ],
   build: { sourcemap: true }
@@ -53,6 +53,55 @@ Vite handles graph and chunk building. This plugin caches transformed files by e
 
 Compiler errors are fatal with original file/line/column; warnings are emitted to Vite. CSS source-map comments reference the generated map relative to the chosen CSS filename, including custom nested `assets/` paths. Invalid style metadata, stylesheet diagnostics, malformed source maps, and missing implementations are errors. Output is inspected for `@zaakiyjs/{ai,proxy,compiler,styles,vite-plugin}` imports, including bundle module identities. This is a defense-in-depth check, not a general data-flow or secret scanner. Never import secret-bearing config into browser application code.
 
+## Opt-in source-scoped strict compatibility gate
+
+`zaakiyPlugin({ compatibility: { mode: "strict", targets: {profile: "modern-2024"} } })` analyzes **TSX source files and final emitted JS chunks (including bundled runtime/dependency code)** during a production Vite build, rejects unsupported detected features, and emits a deterministic `compat-manifest.json` referenced by `zaakiy-assets.json`. This is syntactic source/output analysis only. It does **not** prove dynamic property names, shadowed global identifiers, runtime-generated code, Styles CSS features, externalized scripts/dependencies, or independent browser conformance for every requested target. The emitted manifest explicitly records these limits.
+
+Any selected downlevel syntax transform or scoped shim aborts the build with `ZV4004` rather than claiming it was applied. Source-analysis errors fail with `ZV4003`; invalid/conflicting target configuration fails with `ZV4001`. Existing `browserTargets` is still forwarded to the compiler and retains its previous unsupported-target diagnostic; configure **one** mechanism, never both. No compatibility runtime or TypeScript parser enters the browser bundle through this plugin.
+
+This capability is intentionally narrower than the final Polyfill Zone target. Full compiler/Vite graph lowering, source-map-preserving transforms, approved ponyfill wiring and browser-target certification are separate gates.
+
+### Opt-in approved syntax transforms
+
+The strict compatibility configuration can opt in to `syntaxTransforms: "approved-es2019"`. In this mode Rollup's `renderChunk` hook applies the approved TypeScript 5.9.3 ES2019 pass to emitted JavaScript **only when its pinned compatibility analysis requires it**. The returned v3 source map is composed by Rollup with the existing TSX compiler map. The final emitted JS is rescanned, so incompatible syntax or unapplied shims fail the build. The manifest still records planned source features and their transform strategy; a safe final bundle is required, not assumed.
+
+```ts
+zaakiyPlugin({
+  compatibility: {
+    mode: "strict",
+    targets: {browsers: ["safari >=13.1"]},
+    syntaxTransforms: "approved-es2019"
+  }
+})
+```
+
+This does not add unapproved global polyfills, CSS feature rewrites, or general browser API emulation. The default strict mode continues to reject a needed transform if the opt-in is absent. Actual browser conformance and source-map spot checks remain release gates.
+
+## Compatibility mode selection (off / auto / strict)
+
+The Vite integration now exposes the existing `@zaakiyjs/compat` policy modes:
+
+- **off:** explicitly turns off build-time compatibility analysis/rewrites. A disabled, versioned `compat-manifest.json` is emitted to avoid falsely claiming browser support. General compiler and browser-graph security checks remain active. `syntaxTransforms` is rejected in this mode.
+- **auto:** selects only the pinned, approved TypeScript ES2019 syntax lowering when demanded by declared browser targets, chains a version-3 source map, and rechecks emitted JavaScript. Unsupported web APIs or required unapproved shims **fail the build**, rather than shipping an incompatible asset.
+- **strict:** retains the existing conservative behavior. A needed syntax transform requires explicit `syntaxTransforms: "approved-es2019"`; all unresolved requirements fail.
+
+```ts
+zaakiyPlugin({
+  compatibility: {
+    mode: "auto",
+    targets: {browsers: ["safari >=13.1"]}
+  }
+})
+```
+
+The automatic transform covers only the currently approved JavaScript syntax subset. CSS receives detection and fail-closed target checks, **not rewriting**. This does **not** install global polyfills or certify dynamic APIs, external scripts, undetected CSS constructs or the real-browser target matrix. Read and retain the manifest limitations; publish only after independent browser verification.
+
+### Emitted CSS feature evidence
+
+In `auto` and `strict`, Vite also inspects **actual emitted CSS assets** and the generated Zaakiy stylesheet using pinned PostCSS 8.5.32. The bounded parser detects active `:has()` selectors, `@container` queries, nested rules and `@nest`, plus `color-mix()` declarations, without mistaking comments or quoted content for executable CSS. Those features feed the existing Compat target planner and appear as deterministic source-offset evidence in `compat-manifest.json`.
+
+Unsupported CSS on a declared browser fails with `ZV4003` in both `auto` and `strict`: **no automatic CSS fallback is implemented**. Malformed CSS fails with `ZV4011`; unsafe asset paths and oversized inputs fail with `ZV4010`. Explicit `off` performs no CSS feature scan and claims no browser support. CSS loaded from external URLs or injected at runtime is outside this analysis, and metadata alone is not actual browser certification.
+
 ## Verification
 
 ```sh
@@ -71,3 +120,11 @@ Release intent: independent minor bump via Changesets after the integration gate
 ## Integrated CI gate
 
 After merging Signals, Core, DOM and Compiler, the Vite bridge requires the real `@zaakiyjs/compiler.compile`, `@zaakiyjs/styles.compileStyles` and static token extraction in required CI. The Vite integration suite no longer skips positive TSX/CSS cases when upstream modules are contract-only. Any missing upstream executable API is a build/test failure; no React JSX or Tailwind fallback is permitted.
+
+## Opt-in IR v2 default component slots
+
+`zaakiyPlugin({ componentSlots: true })` selects compiler IR v2 for typed `<Panel><button>Open</button></Panel>` authoring with a `{props.children}` native slot outlet. This option participates in Vite's transform cache key. Without it, the compiler stays on frozen IR v1 and rejects component JSX children. Named slots and JSX-in-props are not enabled. See [ADR 0013](../../docs/adr/0013-component-slots-ir2.md).
+
+### Named JSX slots
+
+`zaakiyPlugin({ componentSlots: true })` also enables static JSX-valued named props paired with a compiler intrinsic `<Slot name="header" />`. The slot key is validated as a static identifier and each factory is caller-owned. This is not a general runtime JSX object tree, dynamic JSX expression lowering or SSR hydration.

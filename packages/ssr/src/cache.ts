@@ -9,6 +9,8 @@ export interface CacheIdentity {
   readonly partitionKey?: string;
   readonly tags: readonly string[];
   readonly ttlSeconds: number;
+  /** Lowercase response Vary dimensions explicitly represented in the caller-supplied key. */
+  readonly vary?: readonly string[];
 }
 interface Entry { readonly identity: CacheIdentity; readonly response: RenderResponseV1; readonly expiresAt: number; }
 const KEY = /^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,199}$/;
@@ -22,6 +24,12 @@ export class MemoryRenderCache {
       throw new TypeError("Invalid cache capacity");
   }
   private identityKey(key: string, identity: CacheIdentity): string {
+    const vary = identity.vary ?? [];
+    if (!Array.isArray(vary) || vary.length > 4 ||
+        vary.some(name => !["accept-language", "x-locale"].includes(name)) ||
+        new Set(vary).size !== vary.length) {
+      throw new TypeError("Invalid or unbounded cache Vary dimensions");
+    }
     if (!key || key.length > 512 ||
         !/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,199}$/.test(identity.routeId) ||
         !/^[a-f0-9]{64}$/.test(identity.buildId) ||
@@ -37,7 +45,7 @@ export class MemoryRenderCache {
     // JSON-array encoding avoids ambiguity from delimiter-bearing keys.
     return JSON.stringify([
       identity.buildId, identity.routeId, identity.scope, identity.partitionKey ?? "",
-      [...identity.tags].sort(), identity.ttlSeconds, key
+      [...identity.tags].sort(), [...vary].sort(), identity.ttlSeconds, key
     ]);
   }
   get(key: string, identity: CacheIdentity): RenderResponseV1 | undefined {
@@ -74,8 +82,12 @@ export class MemoryRenderCache {
       const controls = Object.entries(response.headers).reduce(
         (acc, [name, value]) => name.toLowerCase() === "cache-control" ? acc + "," + value : acc, ""
       );
+      const declaredVary = new Set(identity.vary ?? []);
+      // Never cache an HTTP response varying by request headers that the cache
+      // key does not represent. Vary:* and undeclared dimensions fail closed.
       const unsafeVary = Object.entries(response.headers).some(
-        ([name, value]) => name.toLowerCase() === "vary" && value.split(",").some(part => part.trim() === "*")
+        ([name, value]) => name.toLowerCase() === "vary" &&
+          value.split(",").some(part => !declaredVary.has(part.trim().toLowerCase()))
       );
       if (response.cache.scope !== identity.scope || response.status !== 200 ||
           Object.keys(response.headers).some(name => name.toLowerCase() === "set-cookie") ||

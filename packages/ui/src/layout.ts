@@ -1,10 +1,14 @@
 import type { ViewNode } from "@zaakiyjs/core";
+import type { JSXChild } from "@zaakiyjs/core/jsx-runtime";
+import { mountOwnedSlot, type OwnedNativeSlot } from "@zaakiyjs/dom/compiler";
 import { native, currentOwner, view, nonEmpty } from "./native.js";
 import type { UiSize } from "./recipes.js";
 
 export interface LayoutBaseProps {
-  /** Until Compiler slots land, text items are explicit data, not JSX children. */
-  readonly items: readonly string[];
+  /** Existing data-driven text items remain supported. */
+  readonly items?: readonly string[];
+  /** Compiler IR v2 native slot: caller-owned and mounted exactly once. */
+  readonly children?: JSXChild | OwnedNativeSlot;
   readonly id?: string;
   readonly class?: string;
   readonly "aria-label"?: string;
@@ -15,10 +19,15 @@ function layout(props:LayoutBaseProps, className:string, tag="div"):ViewNode {
   root.className=className+(props.class?" "+props.class:"");
   if(props.id)root.id=props.id;
   if(props["aria-label"])root.setAttribute("aria-label",props["aria-label"]);
-  for(const item of props.items){
+  for(const item of props.items ?? []){
     const child=native("div");
     child.textContent=item;
     root.appendChild(child);
+  }
+  if (props.children != null) {
+    // The compiler supplies a one-shot, caller-owned NativeSlot. The runtime
+    // rejects arbitrary JSX objects, strings and reused/disposed slots.
+    mountOwnedSlot(props.children as OwnedNativeSlot, root);
   }
   return view(root);
 }
@@ -54,6 +63,7 @@ export function AspectRatio(props:AspectRatioProps):ViewNode {
 }
 export interface CardProps {
   readonly title:string;readonly description?:string;readonly class?:string;
+  readonly children?: JSXChild | OwnedNativeSlot;
 }
 export function Card(props:CardProps):ViewNode {
   currentOwner();
@@ -62,5 +72,6 @@ export function Card(props:CardProps):ViewNode {
   const heading=native("h3");heading.textContent=props.title;
   article.appendChild(heading);
   if(props.description){const p=native("p");p.textContent=props.description;article.appendChild(p);}
+  if (props.children != null) mountOwnedSlot(props.children as OwnedNativeSlot, article);
   return view(article);
 }

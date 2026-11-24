@@ -145,13 +145,154 @@ describe("generators", () => {
     await generateFiles({...options, force: true});
     expect(await readFile(join(root, files[0] ?? ""), "utf8")).toContain("MyButtonProps");
   });
+  it("generates native-root page and layout files and supports CLI dry-run", async () => {
+    const page = generatorPlan("page", "SalesReports");
+    const layout = generatorPlan("layout", "Dashboard");
+    expect(page).toHaveLength(1);
+    expect(page[0]?.path).toBe("src/pages/SalesReportsPage.tsx");
+    expect(page[0]?.content).toContain("export function SalesReportsPage");
+    expect(page[0]?.content).toContain("<main><h1>{title}</h1></main>");
+    expect(layout).toHaveLength(1);
+    expect(layout[0]?.path).toBe("src/layouts/DashboardLayout.tsx");
+    expect(layout[0]?.content).toContain('id="dashboard-outlet"');
+    for (const output of [page[0]?.content ?? "", layout[0]?.content ?? ""]) {
+      expect(output).not.toMatch(/props\.children|dangerouslySetInnerHTML|innerHTML|<Slot/);
+    }
+    expect(generatorPlan("layout", "Dashboard")).toEqual(layout);
+    const root = await temp();
+    await writeFile(join(root, "package.json"), JSON.stringify({name: "generator-fixture", dependencies: {"@zaakiyjs/core": "workspace:^"}}));
+    const c = capture(root);
+    expect(await runCli(["g", "page", "SalesReports", "--dry-run"], c.io)).toBe(0);
+    expect(c.output().stdout).toContain("src/pages/SalesReportsPage.tsx");
+    await expect(stat(join(root, "src/pages/SalesReportsPage.tsx"))).rejects.toThrow();
+    expect(await runCli(["generate", "page", "SalesReports"], capture(root).io)).toBe(0);
+    expect(await runCli(["g", "layout", "Dashboard"], capture(root).io)).toBe(0);
+    expect(await readFile(join(root, "src/layouts/DashboardLayout.tsx"), "utf8")).toContain("dashboard-outlet");
+    expect(await generateFiles({type: "layout", name: "Dashboard", cwd: root, dryRun: false, force: false})).toEqual([]);
+    await expect(generateFiles({type: "layout", name: "Dashboard", cwd: root, path: "../outside", dryRun: false, force: false})).rejects.toThrow(CliError);
+  });
+  it("generates safe typed Store/Async/HTTP/Proxy adapters with exact package exports", async () => {
+    const examples = [
+      ["store", "Cart", "src/stores/createCartStore.ts", '@zaakiyjs/store', "createCartStore"],
+      ["resource", "Products", "src/resources/createProductsResource.ts", '@zaakiyjs/async', "createProductsResource"],
+      ["task", "SaveProduct", "src/tasks/createSaveProductTask.ts", '@zaakiyjs/async', "createSaveProductTask"],
+      ["interceptor", "Trace", "src/interceptors/createTraceInterceptor.ts", '@zaakiyjs/http', "createTraceInterceptor"],
+      ["proxy", "Gateway", "server/proxies/createGatewayProxy.ts", '@zaakiyjs/proxy', "createGatewayProxy"]
+    ] as const;
+    for (const [type, name, expectedPath, packageName, exportName] of examples) {
+      const plan = generatorPlan(type, name);
+      expect(plan).toHaveLength(1);
+      expect(plan[0]?.path).toBe(expectedPath);
+      expect(plan[0]?.content).toContain(packageName);
+      expect(plan[0]?.content).toContain("export function " + exportName);
+      expect(generatorPlan(type, name)).toEqual(plan);
+      expect(plan[0]?.content).not.toContain("new Function");
+      expect(plan[0]?.content).not.toContain("dangerouslySetInnerHTML");
+    }
+    expect(generatorPlan("resource", "Products")[0]?.content).toContain("signal: AbortSignal");
+    expect(generatorPlan("task", "SaveProduct")[0]?.content).toContain('concurrency: "latest"');
+    expect(generatorPlan("store", "Cart")[0]?.content).toContain("write.update");
+    expect(generatorPlan("proxy", "Gateway")[0]?.content).toContain('route.access !== "authenticated"');
+    expect(generatorPlan("proxy", "Gateway")[0]?.content).toContain("SERVER ONLY");
+    const root = await temp();
+    await writeFile(join(root, "package.json"), JSON.stringify({name: "generator-fixture", dependencies: {"@zaakiyjs/core": "workspace:^"}}));
+    for (const [type, name, expectedPath] of examples) {
+      const output = capture(root);
+      expect(await runCli(["g", type, name], output.io)).toBe(0);
+      expect(output.output().stdout).toContain(expectedPath);
+      expect(await readFile(join(root, expectedPath), "utf8")).toContain("export function ");
+    }
+    const bad = capture(root);
+    expect(await runCli(["g", "proxy", "Gateway", "--path", "../outside"], bad.io)).toBe(1);
+    expect(bad.output().stderr).toContain("UNSAFE_PATH");
+  });
   it("rejects unsupported generators and traversal/Windows names", () => {
-    expect(() => generatorPlan("proxy", "Api")).toThrow("not implemented");
-    expect(() => generatorPlan("page", "Home")).toThrow("not implemented");
+    expect(() => generatorPlan("unknown", "Api")).toThrow("Unknown generator");
     expect(() => safeRelativePath("..\\secrets")).toThrow(CliError);
     expect(() => safeRelativePath("C:\\secrets")).toThrow(CliError);
     expect(() => safeRelativePath("src\\CON\\Foo.ts")).toThrow(CliError);
     expect(safeRelativePath("src\\components\\Button.tsx")).toBe("src/components/Button.tsx");
+  });
+});
+describe("versioned SEO audit command", () => {
+  it("reports clean public SEO and rejects nonpublic indexability without changing input", async () => {
+    const root = await temp();
+    await writeFile(join(root, "package.json"), JSON.stringify({
+      name:"seo-fixture",dependencies:{"@zaakiyjs/core":"workspace:^"}
+    }));
+    const file = join(root, "seo.json");
+    const input = {resolution:{version:1,status:200,metadata:{
+      version:1,title:"Home",description:"Public page",canonical:"https://example.com/"
+    }},visibility:"public"};
+    await writeFile(file,JSON.stringify(input));
+    const before = await readFile(file,"utf8");
+    const passed = capture(root);
+    expect(await runCli(["seo","audit","seo.json","--json"],passed.io)).toBe(0);
+    const report = JSON.parse(passed.output().stdout) as {
+      ok:boolean;diagnostics:readonly {severity:string;code:string}[]
+    };
+    expect(report.ok).toBe(true);
+    expect(report.diagnostics.some(item=>item.severity==="error")).toBe(false);
+    expect(await readFile(file,"utf8")).toBe(before);
+    await writeFile(file,JSON.stringify({...input,visibility:"private"}));
+    const denied = capture(root);
+    expect(await runCli(["seo","audit","seo.json","--json"],denied.io)).toBe(1);
+    expect((JSON.parse(denied.output().stdout) as {ok:boolean}).ok).toBe(false);
+    expect(denied.output().stderr).toBe("");
+    const traversal = capture(root);
+    expect(await runCli(["seo","audit","../secrets.json"],traversal.io)).toBe(1);
+    expect(traversal.output().stderr).toContain("UNSAFE_PATH");
+    const unsupported = capture(root);
+    expect(await runCli(["seo","generate","site"],unsupported.io)).toBe(1);
+    expect(unsupported.output().stderr).toContain("SEO_UNAVAILABLE");
+  });
+});
+
+describe("built-bundle analyzer", () => {
+  it("reports deterministic JS/CSS bytes from the real Zaakiy manifest", async () => {
+    const root = await temp();
+    await mkdir(join(root, "dist", "assets"), {recursive: true});
+    await writeFile(join(root, "package.json"), JSON.stringify({
+      name: "bundle-fixture", dependencies: {"@zaakiyjs/core": "workspace:^"}
+    }));
+    await writeFile(join(root, "dist", "assets", "app.js"), 'export const count = 1;');
+    await writeFile(join(root, "dist", "assets", "app.css"), 'main { display: block; }');
+    const path = join(root, "dist", "zaakiy-assets.json");
+    const assets = [
+      {fileName: "assets/app.js", kind: "js"},
+      {fileName: "assets/app.css", kind: "css"},
+      {fileName: "zaakiy-assets.json", kind: "manifest"}
+    ];
+    await writeFile(path, JSON.stringify({schemaVersion: 1, assets}));
+    const capture1 = capture(root);
+    expect(await runCli(["analyze", "bundle", "--json"], capture1.io)).toBe(0);
+    const result = JSON.parse(capture1.output().stdout) as {
+      schemaVersion: number; totals: {js: {rawBytes: number; gzipBytes: number}; css: {rawBytes: number}};
+      files: Array<{fileName: string; sha256: string}>
+    };
+    expect(result.schemaVersion).toBe(1);
+    expect(result.totals.js.rawBytes).toBe('export const count = 1;'.length);
+    expect(result.totals.css.rawBytes).toBe('main { display: block; }'.length);
+    expect(result.files.map(item => item.fileName)).toEqual(["assets/app.css", "assets/app.js", "zaakiy-assets.json"]);
+    expect(result.files.every(item => /^[a-f0-9]{64}$/.test(item.sha256))).toBe(true);
+    expect(await runCli(["analyze", "bundle", "--json"], capture(root).io)).toBe(0);
+    await writeFile(path, JSON.stringify({schemaVersion: 1, assets: [...assets, {fileName: "assets/app.js", kind: "js"}]}));
+    const duplicate = capture(root);
+    expect(await runCli(["analyze", "bundle", "--json"], duplicate.io)).toBe(0);
+    expect((JSON.parse(duplicate.output().stdout) as {files: unknown[]}).files).toHaveLength(3);
+    await writeFile(path, JSON.stringify({schemaVersion: 1, assets: [...assets, {fileName: "assets/app.js", kind: "css"}]}));
+    const conflict = capture(root);
+    expect(await runCli(["analyze", "bundle"], conflict.io)).toBe(1);
+    expect(conflict.output().stderr).toContain("Conflicting bundle asset kinds");
+    await writeFile(path, JSON.stringify({schemaVersion: 1, assets}));
+    const bad = capture(root);
+    expect(await runCli(["analyze", "architecture"], bad.io)).toBe(1);
+    expect(bad.output().stderr).toContain("ANALYZE_UNAVAILABLE");
+    assets[0] = {fileName: "../outside.js", kind: "js"};
+    await writeFile(path, JSON.stringify({schemaVersion: 1, assets}));
+    const insecure = capture(root);
+    expect(await runCli(["analyze", "bundle"], insecure.io)).toBe(1);
+    expect(insecure.output().stderr).toContain("UNSAFE_PATH");
   });
 });
 describe("doctor and process delegation", () => {

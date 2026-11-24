@@ -2,7 +2,7 @@
  * Browser-facing compiler DOM ABI v1. This module never imports AST, IR, Vite or
  * the compiler package. All dynamic writes are bound to the supplied owner.
  */
-import { onCleanup, runWithOwner } from "@zaakiyjs/core";
+import { onCleanup, onMount, runWithOwner } from "@zaakiyjs/core";
 import type { OwnerScope } from "@zaakiyjs/core";
 import { effect } from "@zaakiyjs/signals";
 import type { BindingHandle, Namespace } from "./index.js";
@@ -246,6 +246,65 @@ export function bindStyle(
   return bind(owner, () => setStyle(node, name, read()));
 }
 
+/**
+ * Opt-in connected-node ref binding for compiler-generated native JSX.
+ * Unlike the frozen eager bindRef, this delivers after mount/connect. Reorders
+ * never re-deliver the callback; owner disposal delivers null exactly once.
+ */
+export function bindMountedRef<T extends Element>(
+  owner: OwnerScope, node: T, ref: (element: T | null) => void
+): BindingHandle {
+  if (owner.disposed) throw new Error("Cannot reference a disposed owner");
+  if (typeof ref !== "function") throw new TypeError("Native JSX ref must be a callback");
+  return runWithOwner(owner, () => {
+    let closed = false;
+    let delivered = false;
+    let observer: MutationObserver | undefined;
+    const deliver = (): void => {
+      if (closed || delivered || !node.isConnected) return;
+      observer?.disconnect();
+      observer = undefined;
+      delivered = true;
+      ref(node);
+    };
+    const handle: BindingHandle = {
+      dispose(): void {
+        if (closed) return;
+        closed = true;
+        observer?.disconnect();
+        observer = undefined;
+        if (delivered) {
+          delivered = false;
+          ref(null);
+        }
+      }
+    };
+    try {
+      onCleanup(() => handle.dispose());
+      onMount(() => {
+        if (closed) return;
+        deliver();
+        if (closed || delivered) return;
+        // A mount into a detached DocumentFragment is legal. Observe the
+        // document until the fragment is attached, without firing refs eagerly.
+        if (typeof MutationObserver === "undefined") {
+          throw new Error("Connected refs require MutationObserver for detached mounts");
+        }
+        observer = new MutationObserver(deliver);
+        observer.observe(node.ownerDocument, { childList: true, subtree: true });
+        deliver();
+      });
+    } catch (error) {
+      try { handle.dispose(); }
+      catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], "Mounted ref registration failed");
+      }
+      throw error;
+    }
+    return handle;
+  });
+}
+
 /** Ref callbacks run exactly once per mount, with null on cleanup. */
 export function bindRef<T extends Element>(
   owner: OwnerScope, node: T, ref: (value: T | null) => void
@@ -338,5 +397,8 @@ export function cloneStatic<T extends Node>(template: T): T {
 }
 
 /** Stable compiler-generated range/keyed ABI v1; no Node/compiler imports. */
-export { createRegion, bindConditionalRegion, bindKeyedRegion } from "./regions.js";
+export { createRegion, bindConditionalRegion, bindExitAwareConditionalRegion, bindKeyedRegion } from "./regions.js";
+export type { ExitAwareConditionalOptions } from "./regions.js";
+export { createOwnedNativeSlot, mountOwnedSlot } from "./slots.js";
+export type { OwnedNativeSlot } from "./slots.js";
 export type { DomRegion, KeyedView } from "./regions.js";

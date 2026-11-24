@@ -7,7 +7,8 @@
   "files": ["dist", "README.md", "CHANGELOG.md"],
   "exports": {
     ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-    "./route": { "types": "./dist/route.d.ts", "import": "./dist/route.js" }
+    "./route": { "types": "./dist/route.d.ts", "import": "./dist/route.js" },
+    "./dom": { "types": "./dist/dom-regions.d.ts", "import": "./dist/dom-regions.js" }
   },
   "types": "./dist/index.d.ts",
   "main": "./dist/index.js",
@@ -19,6 +20,6 @@
     "pack:check": "npm pack --dry-run --json"
   },
   "publishConfig": { "access": "public" },
-  "dependencies": { "@zaakiyjs/core": "workspace:^", "@zaakiyjs/signals": "workspace:^" },
+  "dependencies": { "@zaakiyjs/core": "workspace:^", "@zaakiyjs/dom": "workspace:^", "@zaakiyjs/signals": "workspace:^" },
   "devDependencies": { "jsdom": "^26.1.0" }
 }

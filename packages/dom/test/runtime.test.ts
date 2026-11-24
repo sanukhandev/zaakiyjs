@@ -5,13 +5,292 @@ import { signal, flushSync } from "@zaakiyjs/signals";
 import { createOwner, disposeOwner, initializeOwnedComponent, mountOwner, onCleanup, onMount } from "@zaakiyjs/core";
 import { mount } from "../src/index.js";
 import {
-  bindAttribute, bindClass, bindProperty, bindRef, bindStyle, bindText,
+  bindAttribute, bindClass, bindMountedRef, bindProperty, bindRef, bindStyle, bindText,
   cloneStatic, createElement, createText, listen, listenStable, setAttribute,
   setProperty, setStyle
 } from "../src/compiler.js";
-import { bindConditionalRegion, bindKeyedRegion, createRegion } from "../src/compiler.js";
+import { bindConditionalRegion, bindExitAwareConditionalRegion, bindKeyedRegion, createOwnedNativeSlot, mountOwnedSlot, createRegion } from "../src/compiler.js";
 
 afterEach(() => { document.body.replaceChildren(); });
+
+describe("connected native JSX ref lifecycle", () => {
+  it("waits for a detached mount to connect before invoking its callback", async () => {
+    const host = document.createElement("div");
+    const events: Array<HTMLButtonElement | null> = [];
+    const button = document.createElement("button");
+    const app = mount(owner => {
+      bindMountedRef(owner, button, value => { events.push(value); });
+      return button;
+    }, host);
+    expect(events).toEqual([]);
+    document.body.append(host);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(events).toEqual([button]);
+    host.remove();
+    app.dispose();
+    app.dispose();
+    expect(events).toEqual([button, null]);
+  });
+
+  it("disconnects a pending ref on disposal without a late attachment", async () => {
+    const host = document.createElement("div");
+    const callback = vi.fn();
+    const app = mount(owner => {
+      const button = document.createElement("button");
+      bindMountedRef(owner, button, callback);
+      return button;
+    }, host);
+    app.dispose();
+    document.body.append(host);
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(callback).not.toHaveBeenCalled();
+    expect(host.childNodes).toHaveLength(0);
+  });
+
+  it("rolls back mount ownership and DOM if a connected ref callback throws", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const events: string[] = [];
+    expect(() => mount(owner => {
+      const button = document.createElement("button");
+      bindMountedRef(owner, button, value => {
+        events.push(value ? "attach" : "detach");
+        if (value) throw new Error("ref failed");
+      });
+      return button;
+    }, host)).toThrow("ref failed");
+    expect(events).toEqual(["attach", "detach"]);
+    expect(host.childNodes).toHaveLength(0);
+  });
+});
+
+
+describe("opt-in exit-aware conditional DOM regions", () => {
+  it("retains the same node across exit/reentry and ignores stale completion", async () => {
+    const owner = createOwner();
+    const host = document.createElement("section");
+    document.body.append(host);
+    const region = createRegion(host);
+    const visible = signal(true);
+    const exits: AbortSignal[] = [];
+    const finish: Array<() => void> = [];
+    let mounts = 0;
+    let cleanups = 0;
+    bindExitAwareConditionalRegion(owner, region, () => visible.value, () => {
+      mounts++;
+      onCleanup(() => { cleanups++; });
+      const button = document.createElement("button");
+      button.textContent = "Keep focus";
+      return button;
+    }, (_node, abort) => {
+      exits.push(abort);
+      return new Promise<void>(resolve => { finish.push(resolve); });
+    });
+    mountOwner(owner);
+    const button = host.querySelector("button");
+    expect(button).not.toBeNull();
+    button!.focus();
+    visible.value = false;
+    flushSync();
+    expect(host.querySelector("button")).toBe(button);
+    expect(cleanups).toBe(0);
+    expect(exits[0]?.aborted).toBe(false);
+    visible.value = true;
+    flushSync();
+    expect(exits[0]?.aborted).toBe(true);
+    expect(host.querySelector("button")).toBe(button);
+    expect(document.activeElement).toBe(button);
+    expect(mounts).toBe(1);
+    finish[0]!();
+    await Promise.resolve();
+    expect(host.querySelector("button")).toBe(button);
+    visible.value = false;
+    flushSync();
+    expect(host.querySelector("button")).toBe(button);
+    finish[1]!();
+    await Promise.resolve();
+    expect(host.querySelector("button")).toBeNull();
+    expect(cleanups).toBe(1);
+    disposeOwner(owner);
+    expect(cleanups).toBe(1);
+  });
+
+  it("aborts pending exits and removes owner/DOM synchronously on parent disposal", async () => {
+    const owner = createOwner();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const region = createRegion(host);
+    const visible = signal(true);
+    const finished: Array<() => void> = [];
+    const signals: AbortSignal[] = [];
+    let cleanups = 0;
+    bindExitAwareConditionalRegion(owner, region, () => visible.value, () => {
+      onCleanup(() => { cleanups++; });
+      return document.createElement("span");
+    }, (_, signal) => {
+      signals.push(signal);
+      return new Promise<void>(resolve => { finished.push(resolve); });
+    });
+    mountOwner(owner);
+    visible.value = false;
+    flushSync();
+    expect(host.querySelector("span")).not.toBeNull();
+    disposeOwner(owner);
+    expect(signals[0]?.aborted).toBe(true);
+    expect(host.querySelector("span")).toBeNull();
+    expect(cleanups).toBe(1);
+    finished[0]!();
+    await Promise.resolve();
+    expect(cleanups).toBe(1);
+  });
+
+  it("bounds uncooperative exits without retaining owned nodes indefinitely", () => {
+    vi.useFakeTimers();
+    try {
+      const owner = createOwner();
+      const host = document.createElement("div");
+      document.body.append(host);
+      const visible = signal(true);
+      const aborts: AbortSignal[] = [];
+      bindExitAwareConditionalRegion(owner, createRegion(host), () => visible.value,
+        () => document.createElement("p"), (_node, signal) => {
+          aborts.push(signal);
+          return new Promise<void>(() => undefined);
+        }, { maxExitMs: 20 });
+      mountOwner(owner);
+      visible.value = false;
+      flushSync();
+      expect(host.querySelector("p")).not.toBeNull();
+      vi.advanceTimersByTime(21);
+      expect(aborts[0]?.aborted).toBe(true);
+      expect(host.querySelector("p")).toBeNull();
+      disposeOwner(owner);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("fails closed on rejected exits and unsupported node factories", async () => {
+    const owner = createOwner();
+    const host = document.createElement("div");
+    document.body.append(host);
+    const visible = signal(true);
+    const failures: unknown[] = [];
+    bindExitAwareConditionalRegion(owner, createRegion(host), () => visible.value,
+      () => document.createElement("button"),
+      () => Promise.reject(new Error("animation failed")),
+      { onExitError: error => failures.push(error) });
+    mountOwner(owner);
+    visible.value = false;
+    flushSync();
+    await Promise.resolve();
+    expect(failures).toHaveLength(1);
+    expect(host.querySelector("button")).toBeNull();
+    disposeOwner(owner);
+    const brokenOwner = createOwner();
+    expect(() => bindExitAwareConditionalRegion(brokenOwner, createRegion(host),
+      () => true, () => document.createTextNode("unsupported") as unknown as Element,
+      () => undefined)).toThrow(/one native Element/);
+    disposeOwner(brokenOwner);
+  });
+});
+
+
+describe("opt-in native slot ownership and portaled placement", () => {
+  it("accepts only branded single-use native child handles in compiler outlets", () => {
+    const owner = createOwner();
+    const host = document.createElement("section");
+    const slot = createOwnedNativeSlot(owner, () => document.createElement("button"));
+    expect(() => mountOwnedSlot({ mount() { /* untrusted fake */ } }, host)).toThrow(/owned native slot/);
+    expect(host.childNodes).toHaveLength(0);
+    mountOwnedSlot(slot, host);
+    expect(host.querySelector("button")).not.toBeNull();
+    expect(() => mountOwnedSlot(slot, host)).toThrow(/only once/);
+    disposeOwner(owner);
+    expect(() => mountOwnedSlot(slot, host)).toThrow(/owned native slot/);
+    expect(host.childNodes).toHaveLength(0);
+  });
+
+  it("creates a child once and tears down only its native range on parent disposal", () => {
+    const owner = createOwner();
+    const host = document.createElement("section");
+    const sibling = document.createElement("aside");
+    host.append(sibling);
+    document.body.append(host);
+    const order: string[] = [];
+    let called = 0;
+    const slot = createOwnedNativeSlot(owner, scope => {
+      called++;
+      onMount(() => order.push("mounted"));
+      onCleanup(() => order.push("cleanup"));
+      const fragment = document.createDocumentFragment();
+      fragment.append(document.createElement("strong"), document.createTextNode("second"));
+      expect(scope.parent).toBe(owner);
+      return fragment;
+    });
+    slot.mount(host, sibling);
+    mountOwner(owner);
+    expect(order).toEqual(["mounted"]);
+    expect(called).toBe(1);
+    expect(host.querySelector("strong")).not.toBeNull();
+    expect(host.lastChild).toBe(sibling);
+    expect(() => slot.mount(host)).toThrow(/only once/);
+    disposeOwner(owner);
+    expect(order).toEqual(["mounted", "cleanup"]);
+    expect(slot.disposed).toBe(true);
+    expect(host.childNodes).toHaveLength(1);
+    expect(host.firstChild).toBe(sibling);
+    slot.dispose();
+    expect(order).toHaveLength(2);
+  });
+
+  it("keeps lexical ownership even if a slot is placed in a portal host", () => {
+    const owner = createOwner();
+    const portal = document.createElement("aside");
+    document.body.append(portal);
+    mountOwner(owner);
+    const events: string[] = [];
+    const slot = createOwnedNativeSlot(owner, scope => {
+      expect(scope.parent).toBe(owner);
+      onMount(() => events.push("mounted"));
+      onCleanup(() => events.push("disposed"));
+      const button = document.createElement("button");
+      button.textContent = "Owned";
+      return button;
+    });
+    slot.mount(portal);
+    expect(events).toEqual(["mounted"]);
+    expect(portal.querySelector("button")?.textContent).toBe("Owned");
+    disposeOwner(owner);
+    expect(events).toEqual(["mounted", "disposed"]);
+    expect(portal.childNodes).toHaveLength(0);
+  });
+
+  it("rolls back a failing slot factory without touching unrelated siblings", () => {
+    const owner = createOwner();
+    const host = document.createElement("div");
+    const keep = document.createElement("p");
+    host.append(keep);
+    const slot = createOwnedNativeSlot(owner, () => {
+      onCleanup(() => { /* owner must still unwind */ });
+      throw new Error("slot creation failed");
+    });
+    expect(() => slot.mount(host)).toThrow("slot creation failed");
+    expect(slot.disposed).toBe(true);
+    expect([...host.childNodes]).toEqual([keep]);
+    expect(() => slot.mount(host)).toThrow(/disposed/);
+    disposeOwner(owner);
+  });
+
+  it("does not mount a slot after owner disposal", () => {
+    const owner = createOwner();
+    const slot = createOwnedNativeSlot(owner, () => document.createElement("div"));
+    disposeOwner(owner);
+    const host = document.createElement("div");
+    expect(() => slot.mount(host)).toThrow(/disposed/);
+    expect(host.childNodes).toHaveLength(0);
+  });
+});
 
 describe("compiler-lowered native DOM runtime", () => {
   it("preserves user-edited input when a keyed item object changes but bound value is equal", () => {
@@ -582,5 +861,77 @@ describe("compiler-lowered native DOM runtime", () => {
     }).toThrow();
     expect(parent.querySelectorAll("input")).toHaveLength(3);
     disposeOwner(owner);
+  });
+});
+
+describe("large keyed list production reordering", () => {
+  it("preserves exact node identities, focus, owner state and cleanup in a heavily reordered list", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const owner = createOwner();
+    const values = signal<readonly number[]>(Array.from({ length: 128 }, (_, index) => index));
+    let creations = 0;
+    let cleanups = 0;
+    bindKeyedRegion(owner, createRegion(host), () => values.value, item => item,
+      (item) => {
+        creations++;
+        onCleanup(() => { cleanups++; });
+        const button = document.createElement("button");
+        button.textContent = String(item);
+        return { node: button };
+      });
+    mountOwner(owner);
+    const originals = new Map([...host.querySelectorAll("button")].map(button => [button.textContent, button]));
+    const focused = originals.get("64")!;
+    focused.focus();
+    values.value = [...values.value].reverse();
+    flushSync();
+    const reordered = [...host.querySelectorAll("button")];
+    expect(reordered.map(node => node.textContent)).toEqual(
+      Array.from({ length: 128 }, (_, index) => String(127 - index))
+    );
+    for (const [key, node] of originals) expect(reordered.find(item => item.textContent === key)).toBe(node);
+    expect(document.activeElement).toBe(focused);
+    expect(creations).toBe(128);
+    expect(cleanups).toBe(0);
+    values.value = [...values.value].reverse();
+    flushSync();
+    expect([...host.querySelectorAll("button")].map(node => node.textContent)).toEqual(
+      Array.from({ length: 128 }, (_, index) => String(index))
+    );
+    disposeOwner(owner);
+    expect(cleanups).toBe(128);
+    expect(host.querySelectorAll("button")).toHaveLength(0);
+  });
+});
+
+describe("batched keyed moves preserve editable selection", () => {
+  it("restores focus, selection range, and direction after 96 native input rows are permuted", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const owner = createOwner();
+    const items = signal<readonly number[]>(Array.from({ length: 96 }, (_, index) => index));
+    bindKeyedRegion(owner, createRegion(host), () => items.value, item => item,
+      item => {
+        const input = document.createElement("input");
+        input.type = "text";
+        input.value = "entry " + item;
+        input.setAttribute("data-row", String(item));
+        return { node: input };
+      });
+    mountOwner(owner);
+    const focused = host.querySelector('input[data-row="48"]') as HTMLInputElement;
+    focused.focus();
+    focused.setSelectionRange(2, 5, "backward");
+    items.value = [...items.value].reverse();
+    flushSync();
+    expect(document.activeElement).toBe(focused);
+    expect(focused.selectionStart).toBe(2);
+    expect(focused.selectionEnd).toBe(5);
+    expect(focused.selectionDirection).toBe("backward");
+    expect(host.querySelectorAll("input")).toHaveLength(96);
+    expect(host.querySelector('input[data-row="48"]')).toBe(focused);
+    disposeOwner(owner);
+    expect(host.querySelectorAll("input")).toHaveLength(0);
   });
 });

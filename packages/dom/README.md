@@ -62,3 +62,18 @@ Production bundle size and memory-leak benchmarks require dedicated reproducible
 The public browser subpath `@zaakiyjs/dom/compiler` now exports `createRegion`, `bindConditionalRegion`, and `bindKeyedRegion` alongside the primitive binding operations. The conditional helper supports an optional alternate branch factory; each active branch receives a scoped child owner and deterministic cleanup. The keyed helper preserves stable node/focus identity and rejects duplicate primitive keys before DOM mutation. Replacing an item with the same key requires an explicit `KeyedView.update(next)` callback so stale content cannot be silently retained.
 
 See [ADR 0004](../../docs/adr/0004-dom-region-abi.md) for the frozen protocol and its restrictions. Compiler support for every TSX syntax form is a **separate acceptance gate**; the public ABI alone does not establish complete `<Show>`/`<For>` compilation or SSR/hydration.
+
+
+### Opt-in exit-aware conditional region
+
+The compiler-runtime subpath also exports `bindExitAwareConditionalRegion(owner, region, when, create, exit, options)` as an **additive integration hook**. A single native Element remains mounted and its child owner stays live while a Promise-based exit animation completes. Re-entering cancels that exit via AbortSignal and reuses the node. A pending exit is bounded (default 5 seconds, maximum 30 seconds) and parent disposal aborts and tears down synchronously. Rejected exit hooks fail closed with optional isolated diagnostic reporting.
+
+This is intentionally separate from the frozen immediate-disposal `bindConditionalRegion`; existing compiled TSX output is unchanged. It is not an automatic JSX `<Show>` exit animation, a keyed-region exit protocol or a fragment/portal handoff. Motion may call its standard browser `animateElement` from the exit callback and honor the supplied AbortSignal; the DOM runtime does not import Motion.
+
+### Native slot ownership precursor
+
+`createOwnedNativeSlot(owner, factory)` is available from `@zaakiyjs/dom/compiler`. It creates a lazy single-use factory for native Nodes or DocumentFragments, anchors the inserted range, and disposes child owner and DOM range atomically on parent disposal. The logical owner remains unchanged if the host is inside a portal. Repeated mount and invalid node factories fail closed. This is a **manual compiler-integration primitive**, not automatic JSX `<Component>children</Component>` lowering. See [ADR 0011](../../docs/adr/0011-native-slot-ownership.md); issue #37 remains open.
+
+## Compiler-generated default JSX child outlet (IR v2)
+
+The additive `mountOwnedSlot(value, host)` helper accepts only branded handles created by `createOwnedNativeSlot`. The optional compiler mode `componentSlots: true` turns direct JSX children into a caller-owner-scoped factory, and a callee's `{props.children}` inside a native element into the corresponding outlet call. Owner disposal removes the exact anchored child range. This is not named slot compilation, general child arrays or hydration. See [ADR 0013](../../docs/adr/0013-component-slots-ir2.md).

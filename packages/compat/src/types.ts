@@ -35,6 +35,8 @@ export interface CompatIRNode {
   readonly whenFalse?: readonly CompatIRNode[];
   readonly body?: readonly CompatIRNode[];
   readonly props?: readonly CompatIRNode[];
+  /** IR v2 component named slots; v1 nodes omit this field. */
+  readonly slots?: readonly { readonly name: string; readonly children: readonly CompatIRNode[] }[];
 }
 export interface CompatIRDocument {
   readonly irVersion: number;

@@ -31,8 +31,10 @@
     "access": "public"
   },
   "dependencies": {
+    "@zaakiyjs/compat": "workspace:^",
     "@zaakiyjs/compiler": "workspace:^",
-    "@zaakiyjs/styles": "workspace:^"
+    "@zaakiyjs/styles": "workspace:^",
+    "postcss": "8.5.32"
   },
   "peerDependencies": {
     "vite": "^6.0.0 || ^7.0.0"

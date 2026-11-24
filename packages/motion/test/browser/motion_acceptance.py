@@ -90,6 +90,42 @@ CASES = [
       if(p.phase.value !== "exited") throw new Error("presence leaked on dispose");
       el.remove(); return true;
     }"""),
+    ("dom-conditional-exit-reentry", """async () => {
+      const m=window.motionQA, owner=m.createOwner();
+      const host=document.createElement("div");document.body.append(host);
+      const region=m.createRegion(host), visible=m.signal(true);
+      let calls=0;
+      const binding=m.bindMotionConditionalRegion(owner,region,()=>visible.value,()=>{
+        calls++;const button=document.createElement("button");button.textContent="Preserved";return button;
+      },{exit:{keyframes:[{opacity:1},{opacity:0}],duration:120,reducedMotion:"force"},maxExitMs:500});
+      const button=host.querySelector("button");
+      if(!button) throw Error("region did not create native button");
+      button.focus();
+      visible.value=false;m.flushSync();
+      if(host.querySelector("button")!==button)throw Error("exit removed native node too early");
+      visible.value=true;m.flushSync();
+      if(host.querySelector("button")!==button||document.activeElement!==button||calls!==1)
+        throw Error("reentry replaced focused element or reinitialized owner");
+      await new Promise(r=>setTimeout(r,160));
+      if(host.querySelector("button")!==button||button.getAnimations().length)
+        throw Error("stale completed animation removed/retained node");
+      binding.dispose();m.disposeOwner(owner);host.remove();return true;
+    }"""),
+    ("dom-conditional-parent-disposal", """async () => {
+      const m=window.motionQA,owner=m.createOwner();
+      const host=document.createElement("div");document.body.append(host);
+      const region=m.createRegion(host), visible=m.signal(true);
+      const binding=m.bindMotionConditionalRegion(owner,region,()=>visible.value,()=>{
+        const button=document.createElement("button");button.textContent="Disposable";return button;
+      },{exit:{keyframes:[{opacity:1},{opacity:0}],duration:2000,reducedMotion:"force"},maxExitMs:2500});
+      const button=host.querySelector("button");
+      visible.value=false;m.flushSync();
+      if(host.querySelector("button")!==button)throw Error("pending exit missing");
+      m.disposeOwner(owner);
+      if(host.querySelector("button")!==null||button.getAnimations().length)
+        throw Error("owner disposal retained native node or WAAPI timeline");
+      binding.dispose();host.remove();return true;
+    }"""),
     ("spring-rest", """async () => {
       const m = window.motionQA, owner = m.createOwner();
       let last = 0, count = 0;

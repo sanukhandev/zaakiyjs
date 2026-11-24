@@ -67,6 +67,8 @@ These are exported public symbols detected in `src/index.ts` at the source revis
 - `ReadonlySignal`
 - `Show`
 - `ShowProps`
+- `Slot`
+- `SlotProps`
 - `ViewNode`
 - `WritableSignal`
 - `activateOwner`

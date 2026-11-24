@@ -79,6 +79,12 @@ importers:
         version: link:../signals
 
 
+  packages/image:
+    devDependencies:
+      '@types/node':
+        specifier: 22.15.30
+        version: 22.15.30
+
   packages/http:
     devDependencies:
       '@zaakiyjs/async':
@@ -96,6 +102,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@zaakiyjs/seo':
+        specifier: workspace:^
+        version: link:../seo
       '@zaakiyjs/core':
         specifier: workspace:^
         version: link:../core
@@ -127,6 +136,10 @@ importers:
       typescript:
         specifier: 5.9.3
         version: 5.9.3
+    devDependencies:
+      '@types/node':
+        specifier: 22.15.30
+        version: 22.15.30
 
   packages/core:
     dependencies:
@@ -152,6 +165,9 @@ importers:
       '@zaakiyjs/core':
         specifier: workspace:^
         version: link:../core
+      '@zaakiyjs/dom':
+        specifier: workspace:^
+        version: link:../dom
       '@zaakiyjs/signals':
         specifier: workspace:^
         version: link:../signals
@@ -247,6 +263,9 @@ importers:
       '@zaakiyjs/core':
         specifier: workspace:^
         version: link:../core
+      '@zaakiyjs/dom':
+        specifier: workspace:^
+        version: link:../dom
       '@zaakiyjs/router':
         specifier: workspace:^
         version: link:../router
@@ -308,6 +327,12 @@ importers:
 
   packages/vite-plugin:
     dependencies:
+      postcss:
+        specifier: 8.5.32
+        version: 8.5.32
+      '@zaakiyjs/compat':
+        specifier: workspace:^
+        version: link:../compat
       '@zaakiyjs/compiler':
         specifier: workspace:^
         version: link:../compiler

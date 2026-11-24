@@ -1,0 +1,60 @@
+name: B7 Signals Tracking Performance
+
+on:
+  pull_request:
+    paths:
+      - 'packages/signals/**'
+      - 'benchmarks/microbench-signals-tracking.mjs'
+      - 'benchmarks/report-signals-tracking.mjs'
+      - '.github/workflows/b7-signals-tracking.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tracking:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout frozen consolidated B0-B5 baseline
+        uses: actions/checkout@v4
+        with:
+          ref: 54b130ed57632be777e264ba255cef8cb8e5b2c1
+          path: .benchmark-b5
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Candidate build and signal regression tests
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec vitest run packages/signals/test
+          pnpm exec eslint benchmarks/microbench-signals-tracking.mjs benchmarks/report-signals-tracking.mjs
+      - name: Build frozen B0-B5 baseline
+        run: |
+          pnpm --dir .benchmark-b5 install --frozen-lockfile
+          pnpm --dir .benchmark-b5 build
+      - name: Run identical direct and computed signal workloads
+        run: |
+          mkdir -p benchmark-artifacts
+          node benchmarks/microbench-signals-tracking.mjs .benchmark-b5 benchmark-artifacts/signals-tracking-frozen.json
+          node benchmarks/microbench-signals-tracking.mjs . benchmark-artifacts/signals-tracking-candidate.json
+          node benchmarks/report-signals-tracking.mjs
+          cat benchmark-artifacts/signals-tracking-report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload raw evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b7-signals-tracking
+          path: benchmark-artifacts/
+          if-no-files-found: warn

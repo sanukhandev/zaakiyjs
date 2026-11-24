@@ -7,8 +7,12 @@ import {
   type ViteDevServer
 } from "vite";
 import type { ExtractedStyleToken, StyleConfig } from "@zaakiyjs/styles";
+import { createCompilerSession, type CompilerSession } from "@zaakiyjs/compiler";
+import { analyzeCompatibility, serializeManifest, transformEmittedJavaScriptWithMap } from "@zaakiyjs/compat";
 import type { CompilerDiagnostic } from "@zaakiyjs/compiler";
 import { cssSourceMapComment, portableSourceFile } from "./asset-paths.js";
+import { equalStyleInputs } from "./style-inputs.js";
+import { detectEmittedCssFeatures } from "./compat-css.js";
 import type { ZaakiyAssetManifest, ZaakiyViteOptions, GeneratedAssetRecord } from "./index.js";
 import {
   assertBrowserOutput,
@@ -104,6 +108,8 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
   );
   const modules = new Map<string, CompiledModule>();
   const revisions = new Map<string, number>();
+  // Weak keys avoid retaining old ModuleNodes after Vite graph invalidation.
+  const dependencyCodeHashes = new WeakMap<object, { code: string; hash: string }>();
   let resolved: ResolvedConfig | undefined;
   let server: ViteDevServer | undefined;
   let configPath: string | undefined;
@@ -113,6 +119,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
   let lastStyleKey = "";
   let configRevision = 0;
   let buildMode = false;
+  let compilerSession: CompilerSession | undefined;
 
   function isTsx(id: string): boolean {
     const file = simpleFile(id);
@@ -133,7 +140,12 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         const id = dependency.file ? simpleFile(dependency.file) : dependency.id;
         if (id && !visited.has(dependency.url)) {
           const content = dependency.transformResult?.code ?? dependency.ssrTransformResult?.code ?? "";
-          stamp.push(id + ":" + (revisions.get(id) ?? 0) + ":" + stableHash(content));
+          const previousHash = dependencyCodeHashes.get(dependency);
+          const hash = previousHash?.code === content ? previousHash.hash : stableHash(content);
+          if (!previousHash || previousHash.code !== content) {
+            dependencyCodeHashes.set(dependency, { code: content, hash });
+          }
+          stamp.push(id + ":" + (revisions.get(id) ?? 0) + ":" + hash);
           walk(dependency);
         }
       }
@@ -231,12 +243,33 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
     async configResolved(config) {
       resolved = config;
       buildMode = config.command === "build";
+      if (options.compatibility && options.browserTargets?.length) {
+        throw new Error("ZV4001: Use compatibility.targets OR legacy browserTargets, not both.");
+      }
+      if (options.compatibility) {
+        if (options.compatibility.mode === "off" && options.compatibility.syntaxTransforms) {
+          throw new Error("ZV4001: Compatibility mode off cannot request syntax transforms.");
+        }
+        // Validate target syntax early; never wait until output emission to fail.
+        try {
+          analyzeCompatibility({mode: options.compatibility.mode, targets: options.compatibility.targets});
+        } catch (error) {
+          throw new Error("ZV4001: Invalid strict compatibility target configuration: " +
+            (error instanceof Error ? error.message : "unknown error"));
+        }
+      }
+      compilerSession?.dispose();
+      compilerSession = createCompilerSession(config.root);
       await loadBrand();
     },
 
     configureServer(devServer) {
       server = devServer;
       if (configPath) devServer.watcher.add(configPath);
+      devServer.httpServer?.once("close", () => {
+        compilerSession?.dispose();
+        compilerSession = undefined;
+      });
     },
 
     resolveId(source, importer, opts) {
@@ -285,6 +318,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       const key = JSON.stringify([
         file, source, configRevision,
         styleFingerprint(brand, options.browserTargets ?? []),
+        options.componentSlots === true ? "component-slots-ir2" : "ir1",
         graphStamp(file)
       ]);
       const previous = modules.get(file);
@@ -296,8 +330,9 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         fileName: file,
         source,
         rootDir: resolved?.root,
-        targetBrowsers: options.browserTargets
-      });
+        targetBrowsers: options.browserTargets,
+        componentSlots: options.componentSlots === true
+      }, compilerSession);
       for (const diagnostic of output.diagnostics) {
         const error = diagnosticError(diagnostic, file);
         if (diagnostic.severity === "error") this.error(error);
@@ -339,10 +374,16 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       };
       modules.set(file, record);
       try {
-        if (!buildMode) {
+        if (!buildMode && (!previous || !equalStyleInputs(previous, record))) {
+          const previousCss = css;
+          const previousMap = compiledCssMap;
           await collectCss(false);
-          const styleModule = server?.moduleGraph.getModuleById(INTERNAL_CSS_ID);
-          if (styleModule && server) server.moduleGraph.invalidateModule(styleModule);
+          // Do not invalidate the stylesheet when TSX produced identical CSS
+          // and mapping; this also avoids needless dependent browser updates.
+          if (previousCss !== css || previousMap !== compiledCssMap) {
+            const styleModule = server?.moduleGraph.getModuleById(INTERNAL_CSS_ID);
+            if (styleModule && server) server.moduleGraph.invalidateModule(styleModule);
+          }
         }
       } catch (error) {
         modules.delete(file);
@@ -353,6 +394,7 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
 
     async handleHotUpdate(ctx) {
       const file = simpleFile(ctx.file);
+      compilerSession?.invalidate(file);
       bump(file);
       if (configPath && file === configPath) {
         await loadBrand();
@@ -362,15 +404,54 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
         ctx.server.ws.send({ type: "full-reload", path: "*" });
         return [];
       }
-      if (isTsx(file) || evictDependents(file, ctx.server)) {
+      if (isTsx(file)) {
+        // Preserve the previous CSS contribution until the new TSX transform
+        // replaces it. Source bytes/revision still invalidate the JS cache.
+        // This lets a JavaScript-only edit skip global CSS regeneration, while
+        // a style-token edit regenerates CSS with exact source positions.
+        // Owner-safe stateful HMR is not implemented: reload remains required.
+        ctx.server.ws.send({ type: "full-reload", path: "*" });
+        return [];
+      }
+      if (evictDependents(file, ctx.server)) {
         modules.delete(file);
         lastStyleKey = "";
-        // No owner-compatible HMR ABI exists yet. A full document reload is the
-        // only defensible way to guarantee disposal of all previous owners.
         ctx.server.ws.send({ type: "full-reload", path: "*" });
         return [];
       }
       return undefined;
+    },
+
+    closeBundle() {
+      compilerSession?.dispose();
+      compilerSession = undefined;
+    },
+
+    renderChunk(code, chunk) {
+      if (!buildMode || !options.compatibility || options.compatibility.mode === "off" ||
+          (options.compatibility.mode !== "auto" && options.compatibility.syntaxTransforms !== "approved-es2019")) return null;
+      const targets = options.compatibility.targets;
+      const input = analyzeCompatibility({
+        mode: "strict", targets, sources: [{fileName: chunk.fileName, source: code}]
+      });
+      if (!input.ok) {
+        this.error("ZV4003: Strict compatibility rejected the final JS chunk " + chunk.fileName);
+      }
+      if (input.manifest.shims.length) {
+        this.error("ZV4004: A required shim cannot be introduced implicitly into the browser runtime.");
+      }
+      if (!input.manifest.transforms.length) return null;
+      const result = transformEmittedJavaScriptWithMap({
+        fileName: chunk.fileName, code, manifest: input.manifest
+      });
+      if (!result.map) this.error("ZV4006: Approved transform omitted its composable source map.");
+      const checked = analyzeCompatibility({
+        mode: "strict", targets, sources: [{fileName: chunk.fileName, source: result.code}]
+      });
+      if (!checked.ok || checked.manifest.transforms.length || checked.manifest.shims.length) {
+        this.error("ZV4006: Emitted JavaScript still requires unsupported compatibility work.");
+      }
+      return result;
     },
 
     async generateBundle(_output, bundle) {
@@ -388,6 +469,73 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
           source: compiledCssMap
         });
       }
+      // This is a deliberately source-scoped strict gate. Runtime dependencies and CSS
+      // are not yet exhaustively analyzed; the emitted manifest declares that boundary.
+      // Never claim that an approved transform or shim has run when it has not.
+      if (options.compatibility) {
+        const sourceFiles = [...modules.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([file, compiled]) => {
+          const relative = portableSourceFile(file, resolved?.root ?? "");
+          if (!relative) this.error("ZV4002: Cannot report source outside the configured Vite project root.");
+          return { fileName: relative, source: compiled.source };
+        });
+        // Inspect the actual emitted JavaScript too: it contains bundled runtime and
+        // dependency syntax absent from the TSX source scan. No source maps are rewritten.
+        const bundledJs = Object.values(bundle).filter(
+          entry => entry.type === "chunk"
+        ).map(entry => {
+          if (!/^(?:[A-Za-z0-9_-]+\/)*[A-Za-z0-9_.-]+\.[cm]?js$/.test(entry.fileName)) {
+            this.error("ZV4005: Unsafe or unsupported emitted JS chunk filename.");
+          }
+          return { fileName: entry.fileName, source: entry.code };
+        }).sort((a, b) => a.fileName.localeCompare(b.fileName));
+        const mode = options.compatibility.mode;
+        // Analyze the actual emitted CSS (not TSX string approximations).
+        // The Zaakiy stylesheet is emitted by this hook and must be added
+        // separately from Rollup's already materialized output assets.
+        const cssFeatures = options.compatibility.mode === "off" ? [] :
+          [...Object.values(bundle).flatMap(entry =>
+            entry.type === "asset" && entry.fileName.endsWith(".css") ? [{
+              fileName: entry.fileName,
+              content: typeof entry.source === "string" ? entry.source :
+                new TextDecoder().decode(entry.source)
+            }] : []
+          ), {fileName: cssOutputFile, content: css}]
+            .sort((a, b) => a.fileName.localeCompare(b.fileName))
+            .flatMap(entry => detectEmittedCssFeatures(entry.content, entry.fileName));
+        // Explicit off: do not claim to have analyzed or adapted browser output.
+        // A manifest documents that no compatibility guarantee is active.
+        const result = analyzeCompatibility({
+          mode,
+          targets: options.compatibility.targets,
+          sources: mode === "off" ? [] : [...sourceFiles, ...bundledJs],
+          cssFeatures
+        });
+        if (!result.ok || (mode === "auto" && result.manifest.unsupportedFeatures.length > 0)) {
+          const fatal = result.manifest.diagnostics.filter(item => item.severity === "error");
+          this.error("ZV4003: Strict compatibility analysis failed: " +
+            fatal.slice(0, 5).map(item => item.code + " " + item.message).join("; "));
+        }
+        const hasApprovedTransform = mode === "auto" || options.compatibility.syntaxTransforms === "approved-es2019";
+        if (result.manifest.shims.length || (result.manifest.transforms.length && !hasApprovedTransform)) {
+          this.error("ZV4004: Compatibility transformations or scoped shims are required but " +
+            "the active Vite compiler pipeline has not certified their application and source maps.");
+        }
+        if (mode !== "off" && hasApprovedTransform) {
+          // All final chunks must be compatible after renderChunk, regardless of
+          // whether Rollup/esbuild or the approved TypeScript pass did the lowering.
+          const emitted = analyzeCompatibility({
+            mode: "strict", targets: options.compatibility.targets, sources: bundledJs
+          });
+          if (!emitted.ok || emitted.manifest.transforms.length || emitted.manifest.shims.length) {
+            this.error("ZV4006: Final emitted JavaScript is not compatible with the declared targets.");
+          }
+          if (result.manifest.transforms.some(item => item.id !== "typescript-5.9.3-es2019")) {
+            this.error("ZV4006: An unapproved syntax transform was requested.");
+          }
+        }
+        this.emitFile({ type: "asset", fileName: "compat-manifest.json",
+          source: serializeManifest(result.manifest) });
+      }
       const assets: GeneratedAssetRecord[] = Object.values(bundle)
         .map((entry): GeneratedAssetRecord | null => {
           if (entry.type === "chunk") {
@@ -397,7 +545,10 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
               // A source fixture nested under packages/vite-plugin/test is app code.
               const packageSource = /(?:^|\/)packages\/(?:compiler|styles|ai|proxy|vite-plugin)\/(?:src|dist)(?:\/|$)/;
               const installedPackage = /(?:^|\/)node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?@zaakiyjs\/(?:compiler|styles|ai|proxy|vite-plugin)(?:\/|$)/;
-              if (packageSource.test(id) || installedPackage.test(id)) {
+              const compatSource = /(?:^|\/)packages\/compat\/(?:src|dist)\/(?!abort\.(?:ts|js|d\.ts)$)/;
+              const compatInstalled = /(?:^|\/)node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?@zaakiyjs\/compat\/(?!dist\/abort\.js$)/;
+              if (packageSource.test(id) || installedPackage.test(id) ||
+                  compatSource.test(id) || compatInstalled.test(id)) {
                 this.error("ZV3002: Build-only package entered browser chunk " + entry.fileName + ": " + mod);
               }
             }
@@ -422,10 +573,25 @@ export function zaakiyPlugin(options: ZaakiyViteOptions = {}): Plugin {
       if (compiledCssMap && resolved?.build.sourcemap) {
         assets.push({ fileName: cssOutputFile + ".map", kind: "map" });
       }
+      if (options.compatibility) assets.push({ fileName: "compat-manifest.json", kind: "manifest" });
       assets.push({ fileName: MANIFEST_FILE, kind: "manifest" });
+      // Generated stylesheet records can occur both in Rollup bundle entries and
+      // explicit plugin emissions. A manifest must refer to each output file once.
+      const uniqueAssets = new Map<string, GeneratedAssetRecord>();
+      for (const asset of assets) {
+        const previous = uniqueAssets.get(asset.fileName);
+        if (previous && (previous.kind !== asset.kind ||
+          (previous.sourceFile !== undefined && asset.sourceFile !== undefined &&
+            previous.sourceFile !== asset.sourceFile))) {
+          this.error("ZV2014: Conflicting asset metadata for " + asset.fileName);
+        }
+        if (!previous || (previous.sourceFile === undefined && asset.sourceFile !== undefined)) {
+          uniqueAssets.set(asset.fileName, asset);
+        }
+      }
       const manifest: ZaakiyAssetManifest = {
         schemaVersion: 1,
-        assets: assets.sort((a, b) => a.fileName.localeCompare(b.fileName))
+        assets: [...uniqueAssets.values()].sort((a, b) => a.fileName.localeCompare(b.fileName))
       };
       this.emitFile({ type: "asset", fileName: MANIFEST_FILE, source: JSON.stringify(manifest, null, 2) + "\n" });
     }

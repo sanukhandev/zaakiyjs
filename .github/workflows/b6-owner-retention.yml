@@ -1,0 +1,61 @@
+name: B6 Owner and Effect Retention
+
+on:
+  pull_request:
+    paths:
+      - 'packages/core/**'
+      - 'packages/signals/**'
+      - 'benchmarks/microbench-owner-retention.mjs'
+      - 'benchmarks/report-owner-retention.mjs'
+      - '.github/workflows/b6-owner-retention.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  owner-retention:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Checkout immutable hardening reference
+        uses: actions/checkout@v4
+        with:
+          ref: 04f453c18b31c7f900d77b037b0548f8888826f1
+          path: .benchmark-hardening
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - name: Build and test candidate
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          pnpm exec vitest run packages/core/test/ownership.test.ts
+          pnpm exec eslint benchmarks/microbench-owner-retention.mjs benchmarks/report-owner-retention.mjs
+      - name: Build frozen reference
+        run: |
+          pnpm --dir .benchmark-hardening install --frozen-lockfile
+          pnpm --dir .benchmark-hardening build
+      - name: Compare isolated GC-assisted lifecycle workloads
+        run: |
+          mkdir -p benchmark-artifacts
+          node --expose-gc benchmarks/microbench-owner-retention.mjs .benchmark-hardening benchmark-artifacts/owner-retention-hardening.json
+          node --expose-gc benchmarks/microbench-owner-retention.mjs . benchmark-artifacts/owner-retention-candidate.json
+          node benchmarks/report-owner-retention.mjs
+          cat benchmark-artifacts/owner-retention-comparison.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Archive raw lifecycle and heap samples
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b6-owner-retention-evidence
+          path: benchmark-artifacts/
+          if-no-files-found: warn

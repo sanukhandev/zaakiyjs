@@ -25,6 +25,51 @@ afterEach(() => document.body.replaceChildren());
 
 describe("generated TypeScript/TSX DOM integration", () => {
   it.skipIf(typeof compile !== "function")(
+    "compiles independent reactive CSS properties with safe native DOM writes and owner cleanup",
+    async () => {
+      const folder = mkdtempSync(join(packageRoot, "test", ".generated-style-"));
+      try {
+        const fileName = join(folder, "style.tsx");
+        const source = [
+          'import { signal } from "@zaakiyjs/signals";',
+          "export function Styled() {",
+          "  const enabled = signal(true);",
+          '  return <main style={{ color: enabled.value ? "red" : "blue", opacity: enabled.value ? 1 : 0.5 }}>',
+          '    <button type="button" onClick={() => enabled.value = !enabled.value}>Toggle</button>',
+          "  </main>;",
+          "}"
+        ].join("\n");
+        const compiled = compile!({fileName, source});
+        expect(compiled.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+        expect(compiled.js).toHaveLength(1);
+        const path = join(folder, "style.mjs");
+        writeFileSync(path, compiled.js[0]!.code);
+        const mod = await import(pathToFileURL(path).href) as {Styled: () => Node};
+        const host = document.createElement("div");
+        document.body.append(host);
+        const mounted = mount(() => mod.Styled(), host);
+        const main = host.querySelector("main");
+        const button = host.querySelector("button");
+        expect(main?.style.getPropertyValue("color")).toBe("red");
+        expect(main?.style.getPropertyValue("opacity")).toBe("1");
+        const elementsBefore = [...host.querySelectorAll("*")];
+        button!.click();
+        flushSync();
+        expect(main?.style.getPropertyValue("color")).toBe("blue");
+        expect(main?.style.getPropertyValue("opacity")).toBe("0.5");
+        expect([...host.querySelectorAll("*")]).toEqual(elementsBefore);
+        button!.click();
+        flushSync();
+        expect(main?.style.getPropertyValue("color")).toBe("red");
+        mounted.dispose();
+        expect(host.childNodes).toHaveLength(0);
+      } finally {
+        rmSync(folder, {recursive: true, force: true});
+      }
+    }
+  );
+
+  it.skipIf(typeof compile !== "function")(
     "compiles an executable Counter and mutates only its bound text",
     async () => {
       const folder = mkdtempSync(join(packageRoot, "test", ".generated-"));

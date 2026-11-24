@@ -1,12 +1,54 @@
 ---
-title: "@zaakiyjs/analytics (planned)"
-description: "P3 analytics contract: typed events, Web Vitals and consent-controlled delivery"
+title: "@zaakiyjs/analytics"
+description: "Implemented source package: typed events, Web Vitals and consent-controlled delivery"
 sidebar_position: 23
 ---
 
-# @zaakiyjs/analytics — design contract
+# @zaakiyjs/analytics — source implementation
 
-> **Status: Not an implemented package on the documented main revision.** The frozen [Analytics v1 design](../../contracts/16-analytics.md) describes intended interfaces and gates; no public runtime import or provider is asserted.
+> **Status: Implemented source package on main after PR #56.** Runtime exports are available in the monorepo; external npm publication remains gated. The [Analytics v1 contract](../../contracts/16-analytics.md) defines its privacy boundaries.
+
+## Public API index
+
+- `createAnalytics`
+- `createMemoryProvider`
+- `createHttpProvider`
+- `EventValue`
+- `EventMetadata`
+- `EventMap`
+- `EventSchema`
+- `EventSchemas`
+- `ConsentCapabilityV1`
+- `ConsentReader`
+- `ConsentPurposeV1`
+- `ConsentSnapshotV1`
+- `ConsentDecisionV1`
+- `ConsentGrantV1`
+- `AnalyticsBaseV1`
+- `AnalyticsEventV1`
+- `ConversionEventV1`
+- `PageviewEventV1`
+- `WebVitalEventV1`
+- `AnalyticsRecordV1`
+- `AnalyticsRecord`
+- `EventCategory`
+- `WebVitalNameV1`
+- `WebVitalRatingV1`
+- `AnalyticsIdentityV1`
+- `AnalyticsProviderV1`
+- `AnalyticsProvider`
+- `ProviderDefinition`
+- `AnalyticsPolicyV1`
+- `AnalyticsClientV1`
+- `TrackResultV1`
+- `AnalyticsDiagnostics`
+- `IdentityPolicy`
+- `AnalyticsOptions`
+- `PageviewInput`
+- `ConversionInput`
+- `Analytics`
+- `MemoryProvider`
+- `HttpProviderOptions`
 
 ## Problem and intended use
 
@@ -14,7 +56,7 @@ Offer optional product analytics without importing a tracking provider into bare
 
 Use cases include explicit business events, validated conversion goals, committed route pageviews and opted-in Web Vitals measurements.
 
-## Proposed event model
+## Event model
 
 | Event kind | Frozen payload intent | Critical rules |
 | --- | --- | --- |
@@ -25,7 +67,7 @@ Use cases include explicit business events, validated conversion goals, committe
 | Provider | `AnalyticsProviderV1` | Explicit async start/send/flush/dispose using AbortSignal |
 | Client | `AnalyticsClientV1` | Accepted/blocked/sampled-out/invalid outcomes |
 
-All names are currently **design contract types**, not verified installed runtime exports.
+These event types and provider interfaces are exported by the source package; npm registry availability is not implied.
 
 ## Intended usage lifecycle
 

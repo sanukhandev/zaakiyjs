@@ -391,6 +391,65 @@ function originalLineAt(map: { mappings: string }, generatedLine: number, genera
     expect(originalLineAt(map, bindRow, generatedRows[bindRow]?.indexOf("__zBindText(") ?? 0)).toBe(4);
   });
 
+  it("lowers finite literal-only spread attributes without allocating a runtime prop object", () => {
+    const source = 'function App() { return <main>' +
+      '<label {...{ htmlFor: "email", title: "Safe", "data-testid": "field-label", "aria-hidden": false }}>Email</label>' +
+      '<input {...{ id: "email", type: "text", disabled: false, tabIndex: 2 }} />' +
+      '</main>; }';
+    const compiled = compile({fileName, source});
+    expect(compiled.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(compiled.irVersion).toBe(1);
+    expect(compiled.js[0]?.code).not.toContain("data-testid:");
+    const {elements} = execute(source, "App");
+    const label = elements.find(element => element.tag === "label");
+    const input = elements.find(element => element.tag === "input");
+    expect(label?.attributes.for).toBe("email");
+    expect(label?.attributes.title).toBe("Safe");
+    expect(label?.attributes["aria-hidden"]).toBe("false");
+    expect(label?.attributes["data-testid"]).toBe("field-label");
+    expect(input?.attributes.id).toBe("email");
+    expect(input?.attributes.type).toBe("text");
+    expect(input?.properties.disabled).toBe(false);
+    expect(input?.attributes.tabIndex).toBe("2");
+    const again = compile({fileName, source});
+    expect(again.js[0]?.code).toBe(compiled.js[0]?.code);
+  });
+
+  it("supports typed component literal prop spread without changing owner/component instantiation", () => {
+    const source = [
+      'function Card(props:{label:string; active:boolean}) {',
+      ' return <strong title={props.label}>{props.active ? "Active" : "Inactive"}</strong>;',
+      '}',
+      'function App() { return <main><Card {...{ label: "Verified", active: true }}/></main>; }'
+    ].join("\n");
+    const compiled = compile({fileName, source});
+    expect(compiled.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    const {elements} = execute(source, "App");
+    const card = elements.find(item => item.tag === "strong");
+    expect(card?.attributes.title).toBe("Verified");
+    expect(card?.children.map(child => "kind" in child ? child.data : "")).toEqual(["Active"]);
+  });
+
+  it("rejects dynamic or unsafe spread keys, values and duplicates before generating JS", () => {
+    const scenarios: Array<{source: string; diagnostic: string}> = [
+      {source: 'function App(){const props={id:"x"}; return <div {...props}/>;}', diagnostic: "ZC1002"},
+      {source: 'function App(){return <div {...{onClick: () => alert(1)}}/>;}', diagnostic: "ZC2511"},
+      {source: 'function App(){return <a {...{href: "javascript:alert(1)"}}/>;}', diagnostic: "ZC2511"},
+      {source: 'function App(){return <div {...{class: "bg-danger"}}/>;}', diagnostic: "ZC2511"},
+      {source: 'function App(){return <div {...{srcdoc: "<svg>"}}/>;}', diagnostic: "ZC2511"},
+      {source: 'function App(){return <div {...{["id"]: "x"}}/>;}', diagnostic: "ZC2510"},
+      {source: 'function readId(){return "x";} function App(){return <div {...{id: readId()}}/>;}', diagnostic: "ZC2513"},
+      {source: 'function App(){return <div {...{id: "a"}} id="b"/>;}', diagnostic: "ZC2512"},
+      {source: 'function App(){return <div {...{id: "a"}} {...{id: "b"}}/>;}', diagnostic: "ZC2512"},
+      {source: 'function App(){return <div {...{id: {toString(){return "x";}}}}/>;}', diagnostic: "ZC2513"}
+    ];
+    for(const scenario of scenarios) {
+      const result = compile({fileName, source:scenario.source});
+      expect(result.js, scenario.source).toHaveLength(0);
+      expect(result.diagnostics.some(d=>d.code===scenario.diagnostic), scenario.source).toBe(true);
+    }
+  });
+
   it("issues source-positioned diagnostics for unsupported JSX and dangerous sinks", () => {
     const source = "function App() { const props = { id: 'x' }; return <div {...props} />; }";
     const result = compile({ fileName, source });
@@ -440,6 +499,43 @@ function originalLineAt(map: { mappings: string }, generatedLine: number, genera
       'function App(){ return <div style="color: red">unsafe</div>; }' });
     expect(result.js).toEqual([]);
     expect(result.diagnostics.some(d => d.code === "ZC2204")).toBe(true);
+  });
+
+  it("lowers finite style objects to independent DOM properties with no raw style sink", () => {
+    const source = [
+      signalDecl,
+      "function App() { const active = signal(true);",
+      'return <section style={{ color: active.value ? "red" : "blue", opacity: active.value ? 1 : 0.5, "background-color": "black" }}>Safe</section>;',
+      "}"
+    ].join("\n");
+    const result = compile({fileName, source});
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    const js = result.js[0]?.code ?? "";
+    expect(js).toContain("bindStyle");
+    expect(js).toContain("setStyle");
+    expect(js).toContain('"background-color"');
+    expect(js).not.toContain('setAttribute(__z_');
+    const ir = parseToIR({fileName, source}).document;
+    const root = ir.nodes[0];
+    expect(root?.kind).toBe("StaticElement");
+    if (root?.kind === "StaticElement") {
+      expect(root.children.filter(n => n.kind === "PropertyBinding" && n.target === "style")).toHaveLength(3);
+    }
+  });
+
+  it("rejects unbounded, computed, duplicate and spread style names", () => {
+    const cases = [
+      'const s = {color:"red"}; function App(){ return <div style={s}/>; }',
+      'function App(){ return <div style={{...{color:"red"}}}/>; }',
+      'function App(){ return <div style={{["color"]:"red"}}/>; }',
+      'function App(){ return <div style={{color:"red",color:"blue"}}/>; }',
+      'function App(){ return <div style={{constructor:"evil"}}/>; }'
+    ];
+    for (const source of cases) {
+      const result = compile({fileName,source});
+      expect(result.js).toEqual([]);
+      expect(result.diagnostics.some(d => d.code === "ZC2204" || d.code === "ZC2214")).toBe(true);
+    }
   });
 
   it("tracks aliased signal reads and nested signal props, without reinitializing components", () => {
@@ -509,7 +605,8 @@ function originalLineAt(map: { mappings: string }, generatedLine: number, genera
     }));
     expect(first).toEqual(second);
     expect(hash(first.js[0]?.code ?? "")).toBe(hash(second.js[0]?.code ?? ""));
-    expect(validateIR({ irVersion: 2, sourceFile: fileName, nodes: [] })[0]?.code).toBe("ZC3002");
+    expect(validateIR({ irVersion: 2, sourceFile: fileName, nodes: [] })).toEqual([]);
+    expect(validateIR({ irVersion: 3, sourceFile: fileName, nodes: [] })[0]?.code).toBe("ZC3002");
     expect(parseToIR(request).document.irVersion).toBe(1);
   });
 });
@@ -749,5 +846,106 @@ describe("signal-aware component-root keyed templates", () => {
     const result = compile({fileName,source});
     expect(result.js).toEqual([]);
     expect(result.diagnostics.some(d=>d.code==="ZC2206")).toBe(true);
+  });
+});
+
+
+describe("native label attribute lowering", () => {
+  it("emits the HTML for attribute for intrinsic labels", () => {
+    const result = execute('function App() { return <main><label htmlFor="email">Email</label><input id="email" /></main>; }', "App");
+    const label = result.elements.find(element => element.tag === "label");
+    expect(label?.attributes.for).toBe("email");
+    expect(label?.attributes.htmlFor).toBeUndefined();
+  });
+
+  it("preserves htmlFor on custom component props", () => {
+    const result = execute('function Field(props: { htmlFor: string }) { return <label htmlFor={props.htmlFor}>Email</label>; } function App() { return <main><Field htmlFor="email" /></main>; }', "App");
+    const label = result.elements.find(element => element.tag === "label");
+    expect(label?.attributes.for).toBe("email");
+  });
+});
+
+describe("connected native JSX refs", () => {
+  it("lowers stable native callbacks with opt-in DOM import and no IR version bump", () => {
+    const source = [
+      "function App() {",
+      "const attach = (_el: HTMLButtonElement | null) => {};",
+      "return <main><button ref={attach} type=\"button\">Open</button></main>;",
+      "}"
+    ].join("\n");
+    const result = compile({ fileName, source });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.irVersion).toBe(1);
+    expect(result.js[0]?.code).toContain('bindMountedRef');
+  });
+
+  it("keeps the previous DOM import surface unchanged for JSX without refs", () => {
+    const result = compile({ fileName, source: 'function App() { return <button>Open</button>; }' });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.js[0]?.code).not.toContain("bindMountedRef");
+  });
+
+  it("rejects string refs, component refs and reactive callback replacement", () => {
+    const stringRef = compile({ fileName, source: 'function App() { return <button ref="id" />; }' });
+    expect(stringRef.js).toEqual([]);
+    expect(stringRef.diagnostics.some(d => d.code === "ZC2211")).toBe(true);
+    const componentRef = compile({ fileName, source: 'function Widget() { return <button />; } function App() { return <Widget ref={() => {}} />; }' });
+    expect(componentRef.js).toEqual([]);
+    expect(componentRef.diagnostics.some(d => d.code === "ZC1003")).toBe(true);
+    const reactiveRef = compile({ fileName, source: [
+      'declare function signal<T>(initial: T): {value: T};',
+      'const cb = signal<(node: HTMLButtonElement | null) => void>(() => {});',
+      'function App() { return <button ref={cb.value} />; }'
+    ].join("\n") });
+    expect(reactiveRef.js).toEqual([]);
+    expect(reactiveRef.diagnostics.some(d => d.code === "ZC2211")).toBe(true);
+  });
+});
+
+describe("finite class variants and reactive DOM attributes", () => {
+  it("binds finite class variants and extracts every CSS candidate", () => {
+    const source = [
+      signalDecl,
+      'function App() { const active = signal(true);',
+      'return <div class={active.value ? "pill active" : "pill inactive"}',
+      'aria-label={active.value ? "On" : "Off"} data-state={active.value ? "on" : "off"} />; }'
+    ].join("\n");
+    const result = compile({ fileName, source });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    const tokens = result.manifest?.styleTokens as Array<{ token: string; offset: number }>;
+    expect(tokens.map(x => x.token)).toEqual(["active", "inactive", "pill"]);
+    for (const item of tokens) {
+      expect(source.slice(item.offset, item.offset + item.token.length)).toBe(item.token);
+    }
+    expect(result.js[0]?.code).toContain("bindClass");
+    expect(result.js[0]?.code).toContain("bindAttribute");
+  });
+
+  it("rejects unbounded class strings and reactive URL sinks", () => {
+    const classes = compile({ fileName, source: [
+      signalDecl, 'function App() { const cls = signal("unknown");',
+      'return <div class={cls.value} />; }'
+    ].join("\n") });
+    expect(classes.js).toEqual([]);
+    expect(classes.diagnostics.some(d => d.code === "ZC2212")).toBe(true);
+    const urls = compile({ fileName, source: [
+      signalDecl, 'function App() { const href = signal("https://site.test");',
+      'return <a href={href.value}>Link</a>; }'
+    ].join("\n") });
+    expect(urls.js).toEqual([]);
+    expect(urls.diagnostics.some(d => d.code === "ZC1005")).toBe(true);
+  });
+
+  it("deduplicates class tokens and retains IR v1", () => {
+    const source = [
+      signalDecl, 'function App() { const active = signal(true);',
+      'return <div class={active.value ? "pill" : "pill"} />; }'
+    ].join("\n");
+    const result = compile({ fileName, source });
+    expect(result.diagnostics.filter(d => d.severity === "error")).toEqual([]);
+    expect(result.irVersion).toBe(1);
+    const tokens = result.manifest?.styleTokens as Array<{ token: string; offset: number }>;
+    expect(tokens.map(x => x.token)).toEqual(["pill"]);
+    expect(source.slice(tokens[0]!.offset, tokens[0]!.offset + 4)).toBe("pill");
   });
 });

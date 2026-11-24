@@ -1,3 +1,4 @@
+import type { TargetConfiguration } from "@zaakiyjs/compat";
 /** Build-time Vite integration. The executable compiler/style engines are separate packages. */
 export const foundationStatus = { package: "@zaakiyjs/vite-plugin", implemented: true } as const;
 
@@ -7,6 +8,18 @@ export interface ZaakiyViteOptions {
   readonly exclude?: readonly string[];
   readonly cssVirtualId?: string;
   readonly browserTargets?: readonly string[];
+  /** Opt-in TSX-source and final-JS browser feature analysis; emits compat-manifest.json.
+   * This is NOT full CSS/dynamic-API certification and will reject transforms/shims
+   * until verified source maps and runtime integration are implemented.
+   */
+  readonly compatibility?: {
+    readonly mode: "off" | "auto" | "strict";
+    readonly targets: TargetConfiguration;
+    /** Strict opt-in: TypeScript 5.9.3 ES2019 transform with chained maps. Auto selects this approved transform when needed; off never transforms. */
+    readonly syntaxTransforms?: "approved-es2019";
+  };
+  /** Explicit IR v2 opt-in for compiled default component children slots. */
+  readonly componentSlots?: boolean;
   /** Relative file path for the single generated CSS asset, under assets/. */
   readonly cssFileName?: string;
 }

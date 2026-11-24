@@ -98,3 +98,7 @@ function Tasks() {
 ```
 
 These exported functions are **compile-time intrinsics**, not runtime JSX components; direct invocation intentionally throws. The compiler lowers to DOM ABI v1 `ConditionalBlock`/`KeyedLoop`, preserving per-item owner and signal identity. A single native child/root is required for the restricted M1 authoring slice. `by` accepts an inline arrow or named function reference returning a primitive key. Use a wrapping native element around nested regions. See [ADR 0005](../../docs/adr/0005-tsx-control-flow-intrinsics.md) for diagnostics, unsupported syntax and browser gates.
+
+## Compile-time named slot marker
+
+`Slot` is a compile-only Core intrinsic under opted-in IR v2. `<Slot name="header" />` mounts a caller-owned native factory into a native parent. A caller supplies `header={<h2>Title</h2>}` and the prop is typed as `JSXChild`. Slot names are static and allowlisted; arbitrary JSX expressions in unrelated props are still forbidden. Uncompiled calls to `Slot` throw (ADR 0013).

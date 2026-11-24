@@ -26,3 +26,15 @@ export function For<Item, Key extends PropertyKey>(_props: ForProps<Item, Key>):
   void _props;
   throw new Error("ZaakiyJS <For> must be transformed by @zaakiyjs/compiler.");
 }
+
+
+/** Explicit named native child outlet. Only available in opt-in compiler IR v2. */
+export interface SlotProps {
+  /** Static name, e.g. "header"; compiled as a one-shot caller-owned native slot. */
+  readonly name: string;
+}
+
+export function Slot(_props: SlotProps): ViewNode {
+  void _props;
+  throw new Error("ZaakiyJS <Slot> must be transformed by the IR v2 compiler.");
+}

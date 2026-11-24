@@ -71,3 +71,17 @@ Reduced-motion defaults to `respect`; `disable` skips and `force` overrides. The
 - Not certified: all 33 prescribed browser scenarios, heap/bundle/frame timing, production CSP/AXE, first-publication scope ownership and npm release.
 
 The package is opt-in and browser-global-free at import; there are no runtime dependencies besides `@zaakiyjs/core`.
+
+## Opt-in native DOM conditional exit bridge
+
+Use `bindMotionConditionalRegion` from `@zaakiyjs/motion/dom` to animate an existing `@zaakiyjs/dom/compiler` conditional region without introducing Motion into the mandatory DOM runtime. The DOM layer retains the same native Element and owner during an exit, cancels a pending transition on reentry, and disposes deterministically on parent unmount or timeout.
+
+```ts
+import {bindMotionConditionalRegion} from "@zaakiyjs/motion/dom";
+const binding = bindMotionConditionalRegion(owner, region, () => visible.value, createPanel, {
+  exit: {keyframes: [{opacity: 1}, {opacity: 0}], duration: 180},
+  maxExitMs: 500
+});
+```
+
+Exit timing is explicitly bounded; AbortSignal is owned by the DOM region, not caller-overridable. Reduced-motion behavior is delegated to the native Motion controller. This manual additive bridge does not automatically lower `<Show>`/`<For>`, keyed/portal exits, route transitions or SSR hydration.
