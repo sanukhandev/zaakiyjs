@@ -76,7 +76,7 @@ await writeFile(client,[
   'const before=performance.now();',
   'let actions=0;let handle;',
   'try{handle=hydrateRegionPage(host,plan,envelope,manifest,"h4benchmark",{',
-  '  read:path=>state.value[path[0]],',
+  '  itemDataMode:"snapshot",read:path=>state.value[path[0]],',
   '  resolveEvent:path=>{if(path.join(".")!=="onCount")throw Error("Unexpected event");',
   '    return ()=>{actions++;state.value={...state.value,count:state.value.count+1};};}});',
   '  const hydrationMs=performance.now()-before;',
@@ -101,7 +101,7 @@ await writeFile(client,[
   '      if(handle){handle.dispose();handle=undefined;}',
   '      const ownerRefs=[];let leakedEvents=0;let wrongRoots=0;',
   '      const baseline=host.childNodes[1];',
-  '      const attach={read:path=>state.value[path[0]],resolveEvent:path=>{',
+  '      const attach={itemDataMode:"snapshot",read:path=>state.value[path[0]],resolveEvent:path=>{',
   '        if(path.join(".")!=="onCount")throw Error("Unexpected event");',
   '        return ()=>{actions++;};}};',
   '      for(let i=0;i<cycles;i++){',
@@ -124,7 +124,7 @@ await build({configFile:false,root:resolve("."),publicDir:false,logLevel:"warn",
     for(const [file,chunk] of Object.entries(bundle)){
       if(chunk.type!=="chunk")continue;
       for(const [id,info] of Object.entries(chunk.modules)){
-        attribution.push({file,module:id.startsWith("\\0")?id:relative(resolve("."),id),
+        attribution.push({file,module:id.charCodeAt(0)===0?id:relative(resolve("."),id),
           renderedBytes:info.renderedLength,originalBytes:info.originalLength});
       }
     }
@@ -138,6 +138,7 @@ await writeFile(join(root,"zaakiy-module-attribution.json"),JSON.stringify({
   modules:attribution.sort((a,b)=>b.renderedBytes-a.renderedBytes || a.module.localeCompare(b.module))
 },null,2)+"\n");
 const variant={schema:"zaakiy.h4-reference/1",buildId:manifest.buildId,
+  markerFormat:plan.markerFormat??"standard",requestedItemDataMode:"snapshot",
   moduleSha256:createHash("sha256").update(bytes).digest("hex"),
   clientSha256:createHash("sha256").update(await readFile(join(root,"zaakiyjs.js"))).digest("hex"),
   generatedCases:[],rejectedCases:[]};
