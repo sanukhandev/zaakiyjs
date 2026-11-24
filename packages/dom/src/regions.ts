@@ -320,6 +320,7 @@ function removeEntry<Key, Item>(entry: RecordEntry<Key, Item>, removeMarkup = tr
 
 function moveRange(parent: Node, start: Node, end: Node, before: Node): void {
   if (end.nextSibling === before) return;
+  if (start === end) { parent.insertBefore(start, before); return; }
   const doc = parent.ownerDocument ?? (parent as Document);
   const fragment = doc.createDocumentFragment();
   let cursor: Node | null = start;
@@ -338,8 +339,9 @@ function moveRange(parent: Node, start: Node, end: Node, before: Node): void {
  * Only used when most neighbor relationships have changed; small/local moves
  * still use precise range operations with no unrelated childList mutations.
  */
-function moveManyRanges<Key, Item>(
-  parent: Node, before: Node, entries: readonly RecordEntry<Key, Item>[]
+interface NativeRange { readonly start: Node; readonly end: Node; }
+function moveManyRanges(
+  parent: Node, before: Node, entries: readonly NativeRange[]
 ): void {
   const doc = parent.ownerDocument ?? (parent as Document);
   for (const entry of entries) {
@@ -366,12 +368,12 @@ function moveManyRanges<Key, Item>(
  * Compute a longest increasing subsequence of current DOM indices, then move
  * only non-LIS keyed ranges from right to left. O(n log n) planning.
  */
-function moveMinimumRanges<Key, Item>(
-  region: DomRegion, ordered: readonly RecordEntry<Key, Item>[]
+function moveMinimumRanges(
+  region: DomRegion, ordered: readonly NativeRange[]
 ): void {
-  const byStart = new Map<Node, RecordEntry<Key, Item>>();
+  const byStart = new Map<Node, NativeRange>();
   for (const entry of ordered) byStart.set(entry.start, entry);
-  const indices = new Map<RecordEntry<Key, Item>, number>();
+  const indices = new Map<NativeRange, number>();
   let node = region.start.nextSibling;
   while (node && node !== region.end) {
     const entry = byStart.get(node);
@@ -653,23 +655,103 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
       // Coalesce severely permuted lists into one native insertion. For local
       // changes retain exact per-range placement, preserving the zero-unrelated-
       // mutations invariant and avoiding work on already sorted siblings.
-      let disruptedNeighbors = 0;
-      for (let i = 0; i + 1 < ordered.length; i++) {
-        if (ordered[i]!.end.nextSibling !== ordered[i + 1]!.start) disruptedNeighbors++;
-      }
-      if (ordered.length === 0 ||
-          (disruptedNeighbors === 0 && ordered[0]?.start.previousSibling === region.start &&
-           ordered[ordered.length - 1]?.end.nextSibling === region.end)) {
-        // Updating one item or appending to an already sorted list moves nothing.
-      } else if (ordered.length >= 64 && disruptedNeighbors * 2 > ordered.length) {
-        moveManyRanges(region.parent, region.end, ordered);
-      } else {
-        moveMinimumRanges(region, ordered);
-      }
+      placeRanges(region, ordered);
       committedOrder = ordered;
     } finally {
       restoreFocus(focused);
     }
     lastOrder = committedOrder;
   }, clear);
+}
+
+function placeRanges(region: DomRegion, ordered: readonly NativeRange[]): void {
+  let disruptedNeighbors = 0;
+  for (let i = 0; i + 1 < ordered.length; i++) {
+    if (ordered[i]!.end.nextSibling !== ordered[i + 1]!.start) disruptedNeighbors++;
+  }
+  if (ordered.length === 0 ||
+      (disruptedNeighbors === 0 && ordered[0]?.start.previousSibling === region.start &&
+       ordered[ordered.length - 1]?.end.nextSibling === region.end)) {
+    // Updating one item or appending to an already sorted list moves nothing.
+  } else if (ordered.length >= 64 && disruptedNeighbors * 2 > ordered.length) {
+    moveManyRanges(region.parent, region.end, ordered);
+  } else {
+    moveMinimumRanges(region, ordered);
+  }
+}
+
+/** Compiler-proven native scalar row. No row can own a callback, listener or effect. */
+export interface FlatKeyedRow<Item> {
+  readonly key: string;
+  item: Item;
+  readonly node: Element;
+  text: Text | null;
+}
+/** Additive specialized hydration primitive; not part of the frozen v1 ABI.
+ * One list owner/effect, no row owners. The snapshot contract forbids reactive
+ * descriptors, mutable keys and in-place item mutation.
+ */
+export function bindFlatKeyedRegion<Item>(
+  owner: OwnerScope, region: DomRegion, read: () => readonly Item[],
+  describe: (item: Item) => {key:string;value:string},
+  create: (key:string,value:string) => Element,
+  initial: readonly FlatKeyedRow<Item>[]
+): BindingHandle {
+  let order = initial;
+  let records: Map<string, FlatKeyedRow<Item>> | undefined;
+  let first = true;
+  const validateOrder = (): void => {
+    if (region.start.parentNode!==region.parent || region.end.parentNode!==region.parent)
+      throw new TypeError("Detached flat keyed region");
+    let cursor=region.start.nextSibling;
+    for (const row of order) {
+      if (cursor!==row.node || row.node.parentNode!==region.parent ||
+          row.node.getAttribute("data-zk")!==row.key ||
+          (row.text ? row.node.firstChild!==row.text || row.text.nextSibling!==null : row.node.firstChild!==null))
+        throw new TypeError("Flat keyed region layout mismatch");
+      cursor=row.node.nextSibling;
+    }
+    if (cursor!==region.end) throw new TypeError("Unexpected native flat keyed nodes");
+  };
+  validateOrder();
+  return ownEffect(owner,()=>{
+    const items=read();
+    if (!Array.isArray(items)) throw new TypeError("Flat keyed collection must be an array");
+    if (items.length===order.length && items.every((item,i)=>Object.is(item,order[i]!.item))) {
+      first=false;
+      return;
+    }
+    if(first) throw new TypeError("Flat keyed snapshot changed during hydration preflight");
+    validateOrder();
+    records??=new Map(order.map(row=>[row.key,row]));
+    const next=new Map<string,FlatKeyedRow<Item>>();
+    const ordered:FlatKeyedRow<Item>[]=[];
+    const changes:{row:FlatKeyedRow<Item>;item:Item;value:string}[]=[];
+    // All scalar/key validation and detached creation happens before any DOM write.
+    for(const item of items){
+      const {key,value}=untrack(()=>describe(item));
+      if(next.has(key))throw new Error("Duplicate key in ZaakiyJS keyed region: "+key);
+      let row=records.get(key);
+      if(!row){
+        const node=untrack(()=>create(key,value));
+        if(node.parentNode || node.getAttribute("data-zk")!==key)
+          throw new TypeError("Invalid flat keyed row factory");
+        row={key,item,node,text:node.firstChild as Text|null};
+      }else if(!Object.is(row.item,item))changes.push({row,item,value});
+      ordered.push(row);next.set(key,row);
+    }
+    const focused=captureFocus(region.parent);
+    try{
+      for(const {row,item,value} of changes){
+        if(row.text){if(row.text.data!==value)row.text.data=value;}
+        else if(value){row.text=row.node.ownerDocument.createTextNode(value);row.node.appendChild(row.text);}
+        row.item=item;
+      }
+      for(const row of order)if(!next.has(row.key))region.parent.removeChild(row.node);
+      for(const row of ordered)if(!row.node.parentNode)region.parent.insertBefore(row.node,region.end);
+      placeRanges(region,ordered.map(row=>({start:row.node,end:row.node})));
+      order=ordered;
+      records=next;
+    }finally{restoreFocus(focused);}
+  },()=>{order=[];records?.clear();records=undefined;});
 }
