@@ -234,6 +234,42 @@ describe("H4 compiler-region client adoption", () => {
     })).toThrow(/resolver/);
     expect(container.innerHTML).toBe(original);
   });
+  it("preserves tracked descriptor reads by default for item text", () => {
+    const container=fixture();
+    const label=signal("Alpha");
+    const item=new Proxy({id:"a",label:"Alpha"},{
+      getOwnPropertyDescriptor(target,key){
+        const descriptor=Reflect.getOwnPropertyDescriptor(target,key);
+        return key==="label" && descriptor ? {...descriptor,value:label.value} : descriptor;
+      }
+    });
+    const data={...state(),rows:[item,{id:"b",label:"Beta"}]};
+    const handle=hydrateRegionPage(container,plan,envelope,manifest,routeId,{
+      read:path=>data[path[0] as keyof typeof data]
+    });
+    try{
+      const first=container.querySelector("button")!;
+      flushSync(()=>{label.value="Alpha updated";});
+      expect(first.textContent).toBe("Alpha updated");
+    }finally{handle.dispose();}
+  });
+  it("supports explicit immutable item snapshots with direct keyed text updates", () => {
+    const container=fixture();
+    const app=signal(state());
+    const handle=hydrateRegionPage(container,plan,envelope,manifest,routeId,{
+      read:path=>app.value[path[0] as keyof ReturnType<typeof state>],
+      itemDataMode:"snapshot"
+    });
+    try{
+      const first=container.querySelector("button")!;
+      const text=Array.from(first.childNodes).find(node=>node.nodeType===3);
+      flushSync(()=>{app.value={...app.value,rows:[{id:"a",label:"New"},app.value.rows[1]!]};});
+      expect(container.querySelector("button")).toBe(first);
+      expect(first.textContent).toBe("New");
+      expect(Array.from(first.childNodes).find(node=>node.nodeType===3)).toBe(text);
+    }finally{handle.dispose();}
+  });
+
   it("adopts opt-in markerless scalar rows and retains text identity on updates", () => {
     const container=fixture();
     const compact:RegionHydrationPlanV2={
