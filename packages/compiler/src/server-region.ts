@@ -25,7 +25,7 @@ export interface RegionHydrationPlanV2 {
   /** Optional explicit compiler-selected limits; standard plan omits this field. */
   readonly limits?: {readonly maxRows:10000;readonly maxNodes:50000;readonly maxHtmlBytes:8388608};
   /** Selected v2-only marker layout. Omission preserves prior long markers. */
-  readonly markerFormat?: "compact-v1";
+  readonly markerFormat?: "compact-v1" | "compact-v2";
 }
 export interface RegionServerRequest extends CompileRequest {
   readonly routeId: string;
@@ -33,6 +33,8 @@ export interface RegionServerRequest extends CompileRequest {
   readonly entryComponent?: string;
   /** Explicit large-list tier; standard remains 4,096 rows and 8,192 nodes. */
   readonly hydrationScale?: "standard" | "large";
+  /** Opt-in markerless scalar layout, valid only for the large-list tier. */
+  readonly hydrationMarkerFormat?: "compact-v1" | "compact-v2";
   /** Trusted build-time import sources; verified by SHA-256 and never executed. */
   readonly componentModules?: readonly {
     readonly specifier:string;readonly fileName:string;
@@ -74,6 +76,10 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
   if(request.hydrationScale !== undefined && !["standard","large"].includes(request.hydrationScale))
     return reject("Unknown H4 hydration scale");
   const large=request.hydrationScale==="large";
+  if(request.hydrationMarkerFormat!==undefined && (!large ||
+      !["compact-v1","compact-v2"].includes(request.hydrationMarkerFormat)))
+    return reject("H4 marker format requires the approved large-list tier");
+  const markerFormat=large ? request.hydrationMarkerFormat??"compact-v1" : undefined;
   const limits=large?{maxRows:10000 as const,maxNodes:50000 as const,maxHtmlBytes:8388608 as const}:undefined;
   const ir = optimizeIR(parseToIR(request).document);
   const sourceFile = ts.createSourceFile(request.fileName,request.source,
@@ -375,11 +381,11 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       };
       inspectMarkers(nodes);
     }
-    const templateDigest = hash(JSON.stringify(limits ? {nodes,limits,markerFormat:"compact-v1"} : nodes));
+    const templateDigest = hash(JSON.stringify(limits ? {nodes,limits,markerFormat} : nodes));
     const markerId = hash("zaakiy-region-root:" + request.routeId + ":" + templateDigest).slice(0, 32);
     const hydrationPlan: RegionHydrationPlanV2 = {
       schema: "zaakiy.region-hydration/2", routeId: request.routeId, markerId, templateDigest, nodes,
-      ...(limits ? {limits,markerFormat:"compact-v1" as const}: {})
+      ...(limits && markerFormat ? {limits,markerFormat}: {})
     };
     // Only compiler-validated data literals are embedded. The code has no
     // TSX evaluator, dynamic import, arbitrary JavaScript or client dependency.
@@ -408,7 +414,13 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " if (node.kind === 'literal') result += escape(node.value);",
       " else if (node.kind === 'data') result += '<!--' + dataMarker(node.id,'start') + '-->' + text(own(node.source === 'item' ? item : props, node.path)) + '<!--' + dataMarker(node.id,'end') + '-->';",
       " else if (node.kind === 'element') { result += '<' + node.tag + node.attrs.join('') + '>';",
-      " if (node.children.length) result += draw(node.children,props,item,budget,depth+1);",
+      ...(markerFormat==="compact-v2" ? [
+        " const child = node.children.length===1 ? node.children[0] : null;",
+        " if (child && child.kind==='data' && child.source==='item' && /^(?:li|span|p|div|button|h[1-6])$/.test(node.tag)) {",
+        " if (++budget.count > " + String(limits?.maxNodes??8192) + " || depth+1>64) throw new RangeError('H4 scalar bound');",
+        " result += text(own(item,child.path));",
+        " } else if (node.children.length) result += draw(node.children,props,item,budget,depth+1);"
+      ] : [" if (node.children.length) result += draw(node.children,props,item,budget,depth+1);"]),
       " if (!" + JSON.stringify([...SSR_VOID_TAGS]) + ".includes(node.tag)) result += '</' + node.tag + '>'; }",
       " else if (node.kind === 'component') { result += '<!--zaakiy-r2:' + node.id + ':start-->';",
       " result += draw(node.children,props,item,budget,depth+1);",
