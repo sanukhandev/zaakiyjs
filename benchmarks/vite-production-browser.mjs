@@ -4,6 +4,7 @@
  */
 import {createServer} from "node:http";
 import {spawn} from "node:child_process";
+import {setTimeout,clearTimeout} from "node:timers";
 import {existsSync} from "node:fs";
 import {mkdtemp,rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
