@@ -30,10 +30,16 @@ jobs:
         include:
           - label: main
             ref: b0da54d2bdfb9c984cf0409755fafc98b940f183
+            format: compact-v2
           - label: pr99
             ref: afb71fd8e9f175271e832fac34c776c2570c51ed
+            format: compact-v2
+          - label: prior
+            ref: 185478cc8f5361b8cec780c42b5d7d7ffd89b991
+            format: compact-v2
           - label: candidate
             ref: ${{ github.sha }}
+            format: compact-v3
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,6 +70,7 @@ jobs:
         working-directory: source
         env:
           H4_SITE: ${{ github.workspace }}/paired-site
+          H4_MARKER_FORMAT: ${{ matrix.format }}
           NODE_ENV: production
         run: node benchmarks/h4-hydration/build-zaakiy.mjs
       - name: Record build provenance and compressed assets
@@ -154,11 +161,15 @@ jobs:
           path: paired-sites/pr99
       - uses: actions/download-artifact@v4
         with:
+          name: paired-site-prior-${{ github.sha }}
+          path: paired-sites/prior
+      - uses: actions/download-artifact@v4
+        with:
           name: paired-site-candidate-${{ github.sha }}
           path: paired-sites/candidate
       - name: Install pinned real browsers
         run: bash scripts/ci/install-playwright-browsers.sh
-      - name: Compare all three builds in alternating blocks on one worker
+      - name: Compare all four builds in alternating blocks on one worker
         run: |
           mkdir -p benchmark-artifacts/paired
           uname -a > benchmark-artifacts/paired/runner.txt
