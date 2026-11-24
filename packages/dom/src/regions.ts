@@ -537,39 +537,46 @@ export function bindKeyedRegion<Key extends PropertyKey, Item>(
   }
   return ownEffect(owner, () => {
     const items = read();
-    const next = new Map<Key, Item>();
+    // A validated identical snapshot needs no new Map, no second key walk,
+    // and no DOM work. Call keyOf exactly once per item, in source order.
+    let next: Map<Key, Item> | undefined;
+    let prefix = 0;
+    const seedPrefix = (): Map<Key, Item> => {
+      const seeded = new Map<Key, Item>();
+      for (let i = 0; i < prefix; i++) {
+        const record = lastOrder![i]!;
+        seeded.set(record.key, record.item);
+      }
+      return seeded;
+    };
     for (const item of items) {
       const key = untrack(() => keyOf(item));
       if (typeof key !== "string" && typeof key !== "number" && typeof key !== "symbol") {
         throw new TypeError("Keyed region requires a stable string, number or symbol key");
       }
+      if (!next) {
+        const former = lastOrder?.[prefix];
+        if (former && Object.is(former.key, key) && Object.is(former.item, item) &&
+            records.get(key) === former) {
+          prefix++;
+          continue;
+        }
+        next = seedPrefix();
+      }
       if (next.has(key)) throw new Error("Duplicate key in ZaakiyJS keyed region: " + String(key));
       next.set(key, item);
     }
+    if (!next) {
+      if (lastOrder && prefix === lastOrder.length) return;
+      next = seedPrefix();
+    }
 
-    // A stable key must not silently retain stale DOM when the object behind
-    // that key is replaced. Validate before mutating the existing region.
+    // Validate replacements before mutating the existing region.
     for (const [key, item] of next) {
       const previous = records.get(key);
       if (previous && !Object.is(previous.item, item) && !previous.view.update) {
         throw new Error("Changed keyed item requires a view.update handler for key: " + String(key));
       }
-    }
-
-    // All keys were validated before checking the fast path. A new array with
-    // unchanged keys and item identities has no work for retained views.
-    if (lastOrder && next.size === lastOrder.length) {
-      let unchanged = true;
-      let index = 0;
-      for (const [key, item] of next) {
-        const former = lastOrder[index++];
-        if (!former || !Object.is(former.key, key) || !Object.is(former.item, item) ||
-            records.get(key) !== former) {
-          unchanged = false;
-          break;
-        }
-      }
-      if (unchanged) return;
     }
 
     const focused = captureFocus(region.parent);
