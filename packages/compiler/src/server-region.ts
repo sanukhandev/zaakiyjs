@@ -15,7 +15,7 @@ type RegionNode =
   | { readonly kind: "literal"; readonly value: string }
   | { readonly kind: "data"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item" }
   | { readonly kind: "conditional"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item"; readonly yes: readonly RegionNode[]; readonly no: readonly RegionNode[] }
-  | { readonly kind: "keyed"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item"; readonly itemName: string; readonly key: string; readonly rows: readonly RegionNode[] };
+  | { readonly kind: "keyed"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item"; readonly itemName: string; readonly key: string; readonly rows: readonly RegionNode[]; readonly flat?: true };
 export interface RegionHydrationPlanV2 {
   readonly schema: "zaakiy.region-hydration/2";
   readonly routeId: string;
@@ -25,7 +25,7 @@ export interface RegionHydrationPlanV2 {
   /** Optional explicit compiler-selected limits; standard plan omits this field. */
   readonly limits?: {readonly maxRows:10000;readonly maxNodes:50000;readonly maxHtmlBytes:8388608};
   /** Selected v2-only marker layout. Omission preserves prior long markers. */
-  readonly markerFormat?: "compact-v1" | "compact-v2";
+  readonly markerFormat?: "compact-v1" | "compact-v2" | "compact-v3";
 }
 export interface RegionServerRequest extends CompileRequest {
   readonly routeId: string;
@@ -34,7 +34,7 @@ export interface RegionServerRequest extends CompileRequest {
   /** Explicit large-list tier; standard remains 4,096 rows and 8,192 nodes. */
   readonly hydrationScale?: "standard" | "large";
   /** Opt-in markerless scalar layout, valid only for the large-list tier. */
-  readonly hydrationMarkerFormat?: "compact-v1" | "compact-v2";
+  readonly hydrationMarkerFormat?: "compact-v1" | "compact-v2" | "compact-v3";
   /** Trusted build-time import sources; verified by SHA-256 and never executed. */
   readonly componentModules?: readonly {
     readonly specifier:string;readonly fileName:string;
@@ -77,7 +77,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     return reject("Unknown H4 hydration scale");
   const large=request.hydrationScale==="large";
   if(request.hydrationMarkerFormat!==undefined && (!large ||
-      !["compact-v1","compact-v2"].includes(request.hydrationMarkerFormat)))
+      !["compact-v1","compact-v2","compact-v3"].includes(request.hydrationMarkerFormat)))
     return reject("H4 marker format requires the approved large-list tier");
   const markerFormat=large ? request.hydrationMarkerFormat??"compact-v1" : undefined;
   const limits=large?{maxRows:10000 as const,maxNodes:50000 as const,maxHtmlBytes:8388608 as const}:undefined;
@@ -319,8 +319,16 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           if (rows.length !== 1 || rows[0]?.kind !== "element")
             throw new TypeError("H4 keyed row must have exactly one native root");
           const collection=resolve(node.collection.source,itemName,aliases);
+          const row=rows[0];
+          const child=row.children[0];
+          const flat=markerFormat==="compact-v3" && collection.source==="props" &&
+            !itemName && !row.events?.length && /^(?:li|span|p|div|button|h[1-6])$/.test(row.tag) &&
+            row.attrs.every(attr=>/^ (?:class|role|title|tabindex|data-[a-z0-9_-]+|aria-[a-z0-9_-]+)="[^"]*"$/.test(attr) &&
+              !attr.startsWith(' data-zk="')) &&
+            row.children.length===1 && child?.kind==="data" && child.source==="item" &&
+            child.path.length===1;
           output.push({ kind: "keyed", id, path: collection.path,source:collection.source,
-            itemName: node.itemParameter, key: key[0]!, rows });
+            itemName: node.itemParameter, key: key[0]!, rows, ...(flat?{flat:true as const}:{}) });
           break;
         }
         case "ComponentCall": {
@@ -414,7 +422,7 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " if (node.kind === 'literal') result += escape(node.value);",
       " else if (node.kind === 'data') result += '<!--' + dataMarker(node.id,'start') + '-->' + text(own(node.source === 'item' ? item : props, node.path)) + '<!--' + dataMarker(node.id,'end') + '-->';",
       " else if (node.kind === 'element') { result += '<' + node.tag + node.attrs.join('') + '>';",
-      ...(markerFormat==="compact-v2" ? [
+      ...(markerFormat==="compact-v2" || markerFormat==="compact-v3" ? [
         " const child = node.children.length===1 ? node.children[0] : null;",
         " if (child && child.kind==='data' && child.source==='item' && /^(?:li|span|p|div|button|h[1-6])$/.test(node.tag)) {",
         " if (++budget.count > " + String(limits?.maxNodes??8192) + " || depth+1>64) throw new RangeError('H4 scalar bound');",
@@ -434,7 +442,12 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " for (const row of rows) { const key = own(row,[node.key]);",
       " if (typeof key !== 'string' && typeof key !== 'number') throw new TypeError('H4 key type');",
       " const name = String(key); if (!/^[A-Za-z0-9_.:]{1,64}$/.test(name) || keys.has(name)) throw new TypeError('H4 duplicate/unsafe key');",
-      " keys.add(name); result += '<!--' + keyedMarker(node.id,name,'start') + '-->';",
+      " keys.add(name);",
+      ...(markerFormat==="compact-v3" ? [
+        " if (node.flat) { const leaf=node.rows[0]; if ((budget.count+=2)>"+String(limits?.maxNodes??8192)+" || depth+2>64) throw new RangeError('H4 flat row bound');",
+        " result += '<'+leaf.tag+leaf.attrs.join('')+' data-zk=\\\"'+name+'\\\">'+text(own(row,leaf.children[0].path))+'</'+leaf.tag+'>'; continue; }"
+      ]:[]),
+      " result += '<!--' + keyedMarker(node.id,name,'start') + '-->';",
       " result += draw(node.rows, props, row, budget, depth+1);",
       " result += '<!--' + keyedMarker(node.id,name,'end') + '-->'; }",
       " result += '<!--zaakiy-r2:' + node.id + ':end-->'; }",
