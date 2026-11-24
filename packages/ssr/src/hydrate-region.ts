@@ -175,7 +175,8 @@ interface Keyed {
 }
 interface Zone {
   readonly key: string;
-  readonly item: WritableSignal<unknown>;
+  itemValue: unknown;
+  itemSignal?: WritableSignal<unknown>;
   readonly elements: Map<string, Element>;
   readonly slots: Slot[];
   readonly compiledEvents: {readonly elementId:string;readonly name:string;readonly path:readonly string[]}[];
@@ -184,7 +185,11 @@ interface Zone {
   readonly keyed: Keyed[];
 }
 function zone(key = "", item:unknown=null): Zone {
-  return {key,item:signal(item), elements:new Map(),slots:[],compiledEvents:[],components:[],conditions:[],keyed:[]};
+  return {key,itemValue:item, elements:new Map(),slots:[],compiledEvents:[],components:[],conditions:[],keyed:[]};
+}
+/** Only region predicates, nested lists and event closures need a reactive item cell. */
+function readItem(target:Zone):unknown {
+  return (target.itemSignal ??= signal(target.itemValue)).value;
 }
 function scopedKey(parent:string, key:string):string {
   return parent ? parent.length+"_"+parent+"_"+key : key;
@@ -355,7 +360,7 @@ function discoverBindings(target:Zone, output:Map<string,Element>, events:Discov
     output.set(id,node);
   }
   for (const event of target.compiledEvents)
-    events.push({event,item:()=>target.item.value});
+    events.push({event,item:()=>readItem(target)});
   for (const component of target.components) discoverBindings(component.child,output,events);
   for (const conditional of target.conditions) discoverBindings(conditional.child,output,events);
   for (const keyed of target.keyed)
@@ -415,7 +420,7 @@ export function hydrateRegionPage(
       for(const descriptor of target.compiledEvents){
         if(descriptor.elementId!==id ||
             explicit?.some(event=>event.name===descriptor.name)) continue;
-        const handler=bindings.resolveEvent?.(descriptor.path,()=>target.item.value);
+        const handler=bindings.resolveEvent?.(descriptor.path,()=>readItem(target));
         if(typeof handler!=="function") mismatch("missing compiled event handler");
         listen(owner,node,descriptor.name,handler);
       }
@@ -433,11 +438,13 @@ export function hydrateRegionPage(
     }
   };
   const updateSlots=(target:Zone,item:unknown):void=>{
-    target.item.value=item;
-    const changes=target.slots.filter(slot=>slot.spec.source==="item").map(slot=>({
-      slot,value:textOf(own(item,slot.spec.path))
-    }));
-    for(const change of changes){
+    target.itemValue=item;
+    if(target.itemSignal) target.itemSignal.value=item;
+    let changes:{slot:Slot;value:string}[]|undefined;
+    for(const slot of target.slots) {
+      if(slot.spec.source==="item") (changes??=[]).push({slot,value:textOf(own(item,slot.spec.path))});
+    }
+    if(changes) for(const change of changes){
       change.slot.item=item;
       if(change.slot.text) setText(change.slot.text,change.value);
     }
@@ -550,16 +557,16 @@ export function hydrateRegionPage(
     for (const condition of target.conditions) {
       bindConditionalRegion(owner,
         {parent:condition.start.parentNode!,start:condition.start,end:condition.end},
-        ()=>Boolean(condition.spec.source==="item" ? own(target.item.value,condition.spec.path) : read(condition.spec.path)),
-        child=>buildBranch(condition.spec.yes,child,target.item.value,target.key),
-        child=>buildBranch(condition.spec.no,child,target.item.value,target.key),
+        ()=>Boolean(condition.spec.source==="item" ? own(readItem(target),condition.spec.path) : read(condition.spec.path)),
+        child=>buildBranch(condition.spec.yes,child,readItem(target),target.key),
+        child=>buildBranch(condition.spec.no,child,readItem(target),target.key),
         {initialBranch:condition.shown,preserveMarkupOnDispose:true,
           adopt:child=>attachZone(child,condition.child)});
     }
     for (const list of target.keyed) {
       bindKeyedRegion(owner,{parent:list.start.parentNode!,start:list.start,end:list.end},
         ()=>{
-          const rows=list.spec.source==="item" ? own(target.item.value,list.spec.path) : read(list.spec.path);
+          const rows=list.spec.source==="item" ? own(readItem(target),list.spec.path) : read(list.spec.path);
           if (!Array.isArray(rows) || rows.length>limits.maxRows)
             return mismatch("keyed collection changed to unsafe data");
           return rows as readonly unknown[];
