@@ -8,7 +8,7 @@ from pathlib import Path
 
 ENGINES = ("chromium", "firefox", "webkit")
 SIZES = (1000, 10000)
-PAIRS = (("main", "pr99"), ("pr99", "prior"), ("prior", "candidate"), ("pr99", "candidate"), ("main", "candidate"))
+PAIRS = (("main", "pr99"), ("pr99", "prior"), ("prior", "flat"), ("flat", "candidate"), ("prior", "candidate"), ("pr99", "candidate"), ("main", "candidate"))
 
 def main():
     parser = argparse.ArgumentParser()
