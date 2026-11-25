@@ -39,6 +39,24 @@ describe("H4 compiler-backed region SSR target", () => {
     expect(()=>largeModule.render(context(10001))).toThrow();
   });
 
+  it("emits deterministic flat-v3 client entrypoints and falls back for scoped rows",()=>{
+    const request={fileName,routeId:"products",hydrationScale:"large" as const,hydrationMarkerFormat:"compact-v3" as const};
+    const source='function Page(props:{rows:{id:string;label:string}[];count:number;shown:boolean;onClick:()=>void}){return <main><button onClick={props.onClick}>{props.count}</button>{props.shown?<p>Visible</p>:<p>Hidden</p>}<ul>{props.rows.map(item=><li key={item.id}>{item.label}</li>)}</ul></main>;}';
+    const result=compileRegionServer({...request,source});
+    expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    expect(result.clientCapability).toBe("flat-v3");
+    expect(result.clientHydration?.fileName).toBe(fileName.replace(/\.tsx$/,"")+".region.client.js");
+    expect(result.clientHydration?.code).toContain('from "@zaakiyjs/ssr/client/flat"');
+    expect(result.clientHydration?.code).toContain("export function hydrateCompiledRegion");
+    expect(compileRegionServer({...request,source}).clientHydration).toEqual(result.clientHydration);
+    const complex=source.replace('<li key={item.id}>','<li key={item.id} onClick={props.onClick}>');
+    const fallback=compileRegionServer({...request,source:complex});
+    expect(fallback.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    expect(fallback.clientCapability).toBe("generic");
+    expect(fallback.clientHydration?.code).toContain('from "@zaakiyjs/ssr/client"');
+    expect(compileRegionServer({...request,source,hydrationMarkerFormat:"compact-v2"}).clientCapability).toBe("generic");
+  });
+
   it("specializes opt-in compact-v2 sole item scalars without changing legacy plans",async()=>{
     const source='function Page(props:{rows:{id:string;label:string}[]}){return <main><ul>{props.rows.map(item=><li key={item.id}>{item.label}</li>)}</ul></main>;}';
     const v1=compileRegionServer({fileName,routeId:"products",source,hydrationScale:"large"});
