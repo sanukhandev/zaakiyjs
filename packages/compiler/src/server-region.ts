@@ -491,11 +491,11 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
     const specialized=markerFormat==="compact-v3"&&nodes.length===1&&nodes[0]?.kind==="element"&&supportsFlatClient(nodes);
     const clientCapability=specialized?"flat-v3":"generic";
     const clientHydration={
-      fileName:request.fileName.replace(/\\.[cm]?tsx?$/i,"")+".region.client.js",
+      fileName:request.fileName.replace(/\.[cm]?tsx?$/i,"")+".region.client.js",
       code:"import {"+(specialized?"hydrateFlatPage":"hydrateRegionPage")+" as hydrate} from "+
-        JSON.stringify(specialized?"@zaakiyjs/ssr/client/flat":"@zaakiyjs/ssr/client")+";\\n"+
-        "const plan="+JSON.stringify(hydrationPlan)+";\\n"+
-        "export function hydrateCompiledRegion(container,envelope,manifest,bindings){return hydrate(container,plan,envelope,manifest,plan.routeId,bindings); }\\n"
+        JSON.stringify(specialized?"@zaakiyjs/ssr/client/flat":"@zaakiyjs/ssr/client")+";\n"+
+        "const plan="+JSON.stringify(hydrationPlan)+";\n"+
+        "export function hydrateCompiledRegion(container,envelope,manifest,bindings){return hydrate(container,plan,envelope,manifest,plan.routeId,bindings); }\n"
     };
     return { diagnostics: base.diagnostics, hydrationPlan,clientEvents,clientHydration,clientCapability,
       js: [{ fileName: request.fileName.replace(/\.[cm]?tsx?$/i, "") + ".region.server.js", code }] };
