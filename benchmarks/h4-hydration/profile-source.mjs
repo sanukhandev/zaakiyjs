@@ -52,3 +52,25 @@ replace('    const handle=hydrate(container.childNodes[1]!,owner=>attachZone(own
     performance.mark("h4/attachment-counters",{detail:profileCounts});`);
 await writeFile(path,source);
 console.log("H4 profiling instrumented disposable source checkout; never publish this build.");
+
+// The compiler-selected flat entry has its own phases. Keep the generic
+// instrumentation for fallback diagnostics, but measure the actual selected path.
+const flatPath="packages/ssr/src/hydrate-flat.ts";
+let flat=await readFile(flatPath,"utf8");
+const replaceFlat=(before,after)=>{
+  if(flat.split(before).length!==2)throw Error("Flat profile anchor changed: "+before);
+  flat=flat.replace(before,after);
+};
+replaceFlat('bindings:RegionHydrationBindingsV2):HydrationMountHandle{',
+  'bindings:RegionHydrationBindingsV2):HydrationMountHandle{\n  performance.mark("h4/start");');
+replaceFlat('  const root=container.childNodes[1];',
+  '  performance.mark("h4/protocol-end");\n  performance.measure("h4/protocol","h4/start","h4/protocol-end");\n  const root=container.childNodes[1];');
+replaceFlat('  if(events.length>4096||events.length&&typeof bindings.resolveEvent!=="function")',
+  '  performance.mark("h4/inspection-end");\n  performance.measure("h4/structural-inspection","h4/protocol-end","h4/inspection-end");\n  performance.mark("h4/structural-counters",{detail:{visitedPlanNodes:budget}});\n  performance.mark("h4/discovery-end");\n  performance.measure("h4/binding-discovery","h4/inspection-end","h4/discovery-end");\n  if(events.length>4096||events.length&&typeof bindings.resolveEvent!=="function")');
+replaceFlat('  const inserted:Text[]=[];',
+  '  performance.mark("h4/events-end");\n  performance.measure("h4/event-validation","h4/discovery-end","h4/events-end");\n  const inserted:Text[]=[];');
+replaceFlat('    const handle=hydrate(root,owner=>{',
+  '    performance.mark("h4/setup-end");\n    performance.measure("h4/attachment-setup","h4/events-end","h4/setup-end");\n    const handle=hydrate(root,owner=>{\n      performance.mark("h4/attach-start");\n      performance.measure("h4/root-owner","h4/setup-end","h4/attach-start");');
+replaceFlat('      for(const seed of lists)bindList(owner,seed,read,limits.maxRows,doc);\n    });',
+  '      for(const seed of lists)bindList(owner,seed,read,limits.maxRows,doc);\n      performance.mark("h4/attach-end");\n      performance.measure("h4/attachment","h4/attach-start","h4/attach-end");\n    });\n    performance.mark("h4/activated");\n    performance.measure("h4/mount-activation","h4/attach-end","h4/activated");\n    performance.measure("h4/total","h4/start","h4/activated");\n    const flatRows=lists.reduce((sum,list)=>sum+list.rows.length,0);\n    performance.mark("h4/attachment-counters",{detail:{slots:slots.length+flatRows,itemSlots:flatRows,trackedTextBindings:slots.length,snapshotTextBindings:flatRows,createdTextNodes:inserted.length,listeners:handlers.length,components:0,conditions:conditions.length,keyedLists:lists.length,adoptedRows:flatRows,flatRows,rowOwners:0}});');
+await writeFile(flatPath,flat);
