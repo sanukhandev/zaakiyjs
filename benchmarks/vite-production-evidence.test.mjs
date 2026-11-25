@@ -77,7 +77,7 @@ test("rejects incomplete instrumentation and forged byte accounting",()=>{
   const a=report("assets/index-aaa.js","old");
   for(const change of [
     r=>{r.transformCalls.pop();},
-    r=>{r.samples_ms[0]=0;},
+    r=>{r.samples_ms[3]=20;},
     r=>{r.appJsCssGzipBytes++;},
     r=>{r.browser.status="failed";}
   ]){
