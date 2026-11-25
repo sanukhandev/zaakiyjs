@@ -700,11 +700,15 @@ export function bindFlatKeyedRegion<Item>(
   let order = initial;
   let records: Map<string, FlatKeyedRow<Item>> | undefined;
   let first = true;
-  const validateOrder = (): void => {
+  const validateOrder = (snapshot?: readonly Item[]): void => {
+    if(snapshot && snapshot.length!==order.length) throw new TypeError("Flat keyed snapshot changed during hydration preflight");
     if (region.start.parentNode!==region.parent || region.end.parentNode!==region.parent)
       throw new TypeError("Detached flat keyed region");
     let cursor=region.start.nextSibling;
-    for (const row of order) {
+    for (let i=0;i<order.length;i++) {
+      const row=order[i]!;
+      if(snapshot && (!Object.hasOwn(snapshot,i)||!Object.is(snapshot[i],row.item)))
+        throw new TypeError("Flat keyed snapshot changed during hydration preflight");
       if (cursor!==row.node || row.node.parentNode!==region.parent ||
           row.node.getAttribute("data-zk")!==row.key ||
           (row.text ? row.node.firstChild!==row.text || row.text.nextSibling!==null : row.node.firstChild!==null))
@@ -713,16 +717,17 @@ export function bindFlatKeyedRegion<Item>(
     }
     if (cursor!==region.end) throw new TypeError("Unexpected native flat keyed nodes");
   };
-  validateOrder();
   return ownEffect(owner,()=>{
     const items=read();
     if (!Array.isArray(items)) throw new TypeError("Flat keyed collection must be an array");
+    // The final native-layout and snapshot check runs together, after read().
+    // A callback cannot invalidate an earlier DOM proof before attachment.
+    if(first){validateOrder(items);first=false;return;}
     let equal=items.length===order.length;
     if(equal) for(let i=0;i<items.length;i++) {
       if(!Object.hasOwn(items,i)||!Object.is(items[i],order[i]!.item)){equal=false;break;}
     }
-    if(equal){first=false;return;}
-    if(first) throw new TypeError("Flat keyed snapshot changed during hydration preflight");
+    if(equal)return;
     validateOrder();
     records??=new Map(order.map(row=>[row.key,row]));
     const next=new Map<string,FlatKeyedRow<Item>>();
