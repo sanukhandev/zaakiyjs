@@ -60,9 +60,20 @@ const envelope={schema:"zaakiy.hydration/1",buildId:manifest.buildId,
   routeId:"h4benchmark",domAbiVersion:1,payload:null,
   boundaries:[{markerId:plan.markerId,templateDigest:plan.templateDigest}]};
 await mkdir(fixtureDir,{recursive:true});
+const generatedClient=compiled.clientHydration;
+const capability=compiled.clientCapability??"generic-legacy";
+if(generatedClient)await writeFile(join(fixtureDir,"compiled-region.mjs"),generatedClient.code);
+const clientImport=generatedClient
+  ? 'import {hydrateCompiledRegion as compiledHydrate} from "./compiled-region.mjs";'
+  : 'import {hydrateRegionPage as legacyHydrate} from "@zaakiyjs/ssr/client";';
+const attachAdapter=generatedClient
+  ? 'const hydrateRegionPage=(host,_plan,envelope,manifest,_route,bindings)=>compiledHydrate(host,envelope,manifest,bindings);'
+  : 'const hydrateRegionPage=legacyHydrate;';
+const clientAliases={"@zaakiyjs/ssr/client/flat":resolve("packages/ssr/dist/hydrate-flat.js"),
+  "@zaakiyjs/ssr/client":resolve("packages/ssr/dist/client.js")};
 const client=join(fixtureDir,"zaakiy-client.mjs");
 await writeFile(client,[
-  'import {hydrateRegionPage} from "@zaakiyjs/ssr/client";',
+  clientImport,attachAdapter,
   'import {signal,flushSync} from "@zaakiyjs/signals";',
   'const plan='+JSON.stringify(plan)+';',
   'const manifest='+JSON.stringify(manifest)+';',
@@ -131,7 +142,7 @@ await build({configFile:false,root:resolve("."),publicDir:false,logLevel:"warn",
       }
     }
   }}],
-  resolve:{alias:{"@zaakiyjs/ssr/client":resolve("packages/ssr/dist/client.js")}},
+  resolve:{alias:clientAliases},
   build:{outDir:root,emptyOutDir:false,minify:"esbuild",
     lib:{entry:client,formats:["es"],fileName:"zaakiyjs"}}});
 await writeFile(join(root,"zaakiy-module-attribution.json"),JSON.stringify({
@@ -139,7 +150,15 @@ await writeFile(join(root,"zaakiy-module-attribution.json"),JSON.stringify({
   metric:"Rollup rendered module lengths before final chunk compression; not additive gzip attribution",
   modules:attribution.sort((a,b)=>b.renderedBytes-a.renderedBytes || a.module.localeCompare(b.module))
 },null,2)+"\n");
-const variant={schema:"zaakiy.h4-reference/1",buildId:manifest.buildId,
+function assertSpecializedBundle(modules){
+  if(capability!=="flat-v3")return;
+  const retained=modules.filter(m=>m.renderedBytes>0);
+  if(!retained.some(m=>m.module.endsWith("/hydrate-flat.js")) ||
+    retained.some(m=>m.module.endsWith("/hydrate-region.js")))
+    throw Error("Specialized bundle retained generic hydration or omitted flat entry");
+}
+assertSpecializedBundle(attribution);
+const variant={schema:"zaakiy.h4-reference/1",buildId:manifest.buildId,clientCapability:capability,
   markerFormat:plan.markerFormat??"standard",requestedMarkerFormat,requestedItemDataMode:"snapshot",
   moduleSha256:createHash("sha256").update(bytes).digest("hex"),
   clientSha256:createHash("sha256").update(await readFile(join(root,"zaakiyjs.js"))).digest("hex"),
@@ -178,7 +197,7 @@ variant.markerImpact=markerImpact;
 // MutationObserver, WeakRef, test assertion or stress instrumentation.
 const cleanClient=join(fixtureDir,"zaakiy-clean.mjs");
 await writeFile(cleanClient,[
-  'import {hydrateRegionPage} from "@zaakiyjs/ssr/client";',
+  clientImport,attachAdapter,
   'import {signal,flushSync} from "@zaakiyjs/signals";',
   'const plan='+JSON.stringify(plan)+';',
   'const manifest='+JSON.stringify(manifest)+';',
@@ -203,9 +222,10 @@ await build({configFile:false,root:resolve("."),publicDir:false,logLevel:"warn",
         cleanAttribution.push({file,module:id.charCodeAt(0)===0?id:relative(resolve("."),id),
           renderedBytes:info.renderedLength,originalBytes:info.originalLength});
   }}],
-  resolve:{alias:{"@zaakiyjs/ssr/client":resolve("packages/ssr/dist/client.js")}},
+  resolve:{alias:clientAliases},
   build:{outDir:cleanDir,emptyOutDir:true,minify:"esbuild",
     rollupOptions:{input:cleanClient,output:{entryFileNames:"app.js",chunkFileNames:"assets/[name]-[hash].js"}}}});
+assertSpecializedBundle(cleanAttribution);
 const cleanFiles=async dir=>{
   const paths=[];
   for(const entry of await readdir(dir,{withFileTypes:true})){
