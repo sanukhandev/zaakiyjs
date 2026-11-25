@@ -1,5 +1,6 @@
 /** Shared validated region metadata and scalar primitives. No generic attachment engine. */
 import {setAttribute} from "@zaakiyjs/dom/compiler";
+import type {FlatKeyedRow} from "@zaakiyjs/dom/compiler";
 import type {RegionNodeV2,RegionHydrationPlanV2} from "./hydrate-region.js";
 
 export const ID = /^[a-f0-9]{32}$/;
@@ -186,4 +187,31 @@ export function validateFlatPlan(plan:RegionHydrationPlanV2):void{
     }
   };
   visit(plan.nodes,0);
+}
+
+/** Verify every native scalar row. Shared by specialized and generic entrypoints. */
+export function inspectFlatRows(template:FlatTemplate,data:readonly unknown[],
+  begin:Node|null,end:Node|null):{rows:FlatKeyedRow<unknown>[];cursor:Node|null}{
+  const rows:FlatKeyedRow<unknown>[]=[];
+  const seen=new Set<string>();
+  let cursor=begin;
+  const attrCount=template.attrs.length+1;
+  for(const item of data){
+    const {key,value}=describeFlat(template,item);
+    if(seen.has(key))mismatch("duplicate keyed identity");
+    seen.add(key);
+    if(!cursor||cursor===end||cursor.nodeType!==1)mismatch("flat native row");
+    const node=cursor as Element;
+    if(node.namespaceURI!=="http://www.w3.org/1999/xhtml"||node.localName!==template.tag||
+       node.getAttribute("data-zk")!==key||node.attributes.length!==attrCount)
+      mismatch("flat native identity or attributes");
+    for(const [name,expected] of template.attrs)
+      if(node.getAttribute(name)!==expected)mismatch("flat native attribute");
+    const first=node.firstChild;
+    if(first?(first.nodeType!==3||first.nextSibling!==null||first.nodeValue!==value):value!=="")
+      mismatch("flat native scalar text");
+    rows.push({key,item,node,text:first as Text|null});
+    cursor=node.nextSibling;
+  }
+  return {rows,cursor};
 }
