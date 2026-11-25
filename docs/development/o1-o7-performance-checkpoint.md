@@ -123,3 +123,37 @@ The previous CI helper lint issues were corrected with explicit Node timer
 imports and JSON-only evidence cloning. All exact-head results still need
 review. No target attainment, merge, release or general runtime equivalence
 is claimed before CI evidence.
+
+
+## Final bounded optimization and runtime freeze
+
+This candidate is the end of the discretionary runtime optimization program.
+The compiler emits a deterministic static browser entry and selects the
+restricted flat-v3 runtime only for eligible templates. Existing marker
+formats, generic fallback and public hydration API are retained. Shared
+validation code verifies every row; the final native layout and snapshot
+check runs together after the reactive read, rather than trusting an
+unchecked adoption flag. Initial flat-list callbacks capture the collection
+path rather than the preflight list descriptor. The specialized entry clears
+its temporary attachment arrays after adoption.
+
+The H4 production and clean application fixtures use the actual generated
+client. Rollup attribution must prove the flat client module is retained and
+the generic hydrate-region module is absent for the specialized fixture.
+Diagnostic builds profile the selected entry. The paired gate compares five
+pinned versions: main, PR99, compact-v2 at 185478c, compact-v3 at 78c1e3c,
+and the final candidate (4,500 measured samples). The incorrect nested
+manifest lookup and the percentile-insensitive Vite negative test have been
+corrected. The original historical fixtures, exact source identity, full
+browser behavior, strict reproducibility and raw measurements remain required.
+
+Runtime scope is frozen at this checkpoint for UAT and beta certification.
+Only confirmed correctness, security, compatibility or certification blockers
+may reopen the runtime; no further speculative optimizations or new marker
+formats. Final metrics remain goals, not conditions for fabricating results.
+Report any missed size or latency target transparently, investigate persistent
+performance regressions, and make a reviewed beta scope decision after all
+required checks. Full H4 fixture size and clean application bundle size remain
+separate. The CSR 8 KiB target is still unverified; this round does not add a
+new minifier or change the general CSR compiler. No merge, tag, npm publish,
+or production readiness claim until exact-head evidence is reviewed.
