@@ -725,9 +725,10 @@ export function hydrateRegionPage(
     for (const list of target.keyed) {
       if(list.flat){
         const {template,rows}=list.flat;
+        const path=list.spec.path;
         bindFlatKeyedRegion(owner,{parent:list.start.parentNode!,start:list.start,end:list.end},
           ()=>{
-            const items=read(list.spec.path);
+            const items=read(path);
             if(!Array.isArray(items)||items.length>limits.maxRows)mismatch("unsafe flat collection");
             return items as readonly unknown[];
           },item=>describeFlat(template,item),
