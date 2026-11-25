@@ -47,9 +47,9 @@ function validateCapabilities(plan:RegionHydrationPlanV2):void{
         if(typeof node.value!=="string")mismatch("specialized literal");
       }else if(!staticOnly&&node.kind==="data"&&node.source==="props"&&pathValid(node.path)){
         continue;
-      }else if(!staticOnly&&node.kind==="conditional"&&node.source!=="item"&&pathValid(node.path)){
+      }else if(!staticOnly&&node.kind==="conditional"&&(node.source===undefined||node.source==="props")&&pathValid(node.path)){
         visit(node.yes,true);visit(node.no,true);
-      }else if(!staticOnly&&node.kind==="keyed"&&node.flat===true&&node.source!=="item"){
+      }else if(!staticOnly&&node.kind==="keyed"&&node.flat===true&&(node.source===undefined||node.source==="props")){
         continue; // validateFlatPlan already validates the complete flat template.
       }else mismatch("unsupported specialized capability");
     }
