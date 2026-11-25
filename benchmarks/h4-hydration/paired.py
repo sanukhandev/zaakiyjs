@@ -36,7 +36,7 @@ def main():
         if manifest.get("schema") != "zaakiy.h4-paired-build/1" or manifest.get("commit") != expected[label]:
             raise AssertionError(f"Unexpected build identity for {label}: {manifest}")
         expected_format={"main":"compact-v1","pr99":"compact-v1","prior":"compact-v2","candidate":"compact-v3"}[label]
-        if manifest["build"]["markerFormat"] != expected_format:
+        if manifest["variants"]["zaakiyjs"]["build"]["markerFormat"] != expected_format:
             raise AssertionError(f"Unexpected marker format for {label}")
         variants[label] = manifest
     if len({v["node"] for v in variants.values()}) != 1:
