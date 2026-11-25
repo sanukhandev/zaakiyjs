@@ -49,7 +49,7 @@ export interface RegionHydrationBindingsV2 {
    * Default attachment retains tracked reads for backward compatibility. */
   readonly itemDataMode?: "snapshot";
 }
-import {ID, HASH, FIELD, ATTR, EVENT, DENIED, dataMarker, keyedMarker, getBudgets, scalarChild, mismatch, textOf, own, rowKey, decodeAttr, attributes, flatTemplate, describeFlat, createFlat, validateFlatPlan} from "./region-validation.js";
+import {ID, HASH, FIELD, ATTR, EVENT, DENIED, dataMarker, keyedMarker, getBudgets, scalarChild, mismatch, textOf, own, rowKey, decodeAttr, attributes, flatTemplate, describeFlat, createFlat, validateFlatPlan, inspectFlatRows} from "./region-validation.js";
 import type {ComponentNode, ConditionalNode, KeyedNode, DataNode, FlatTemplate} from "./region-validation.js";
 
 interface Slot {
@@ -239,25 +239,10 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
           const seen=new Set<string>();
           if(spec.flat!==undefined){
             const template=flatTemplate(plan,spec);
-            const nativeRows:FlatKeyedRow<unknown>[]=[];
-            for(const item of data){
-              if((budget+=2)>limits.maxNodes || depth+2>64)mismatch("flat row budget");
-              const {key,value}=describeFlat(template,item);
-              if(seen.has(key))mismatch("duplicate keyed identity");
-              seen.add(key);
-              if(!cursor||cursor===end||cursor.nodeType!==1)mismatch("flat native row");
-              const node=cursor as Element;
-              if(node.namespaceURI!=="http://www.w3.org/1999/xhtml"||node.localName!==template.tag||
-                 node.getAttribute("data-zk")!==key||node.attributes.length!==template.attrs.length+1)
-                mismatch("flat native identity or attributes");
-              for(const [name,expected] of template.attrs)
-                if(node.getAttribute(name)!==expected)mismatch("flat native attribute");
-              const first=node.firstChild;
-              if(first?(first.nodeType!==3||first.nextSibling!==null||first.nodeValue!==value):value!=="")
-                mismatch("flat native scalar text");
-              nativeRows.push({key,item,node,text:first as Text|null});
-              cursor=node.nextSibling;
-            }
+            if((budget+=2*data.length)>limits.maxNodes || (data.length>0 && depth+2>64))mismatch("flat row budget");
+            const verified=inspectFlatRows(template,data,cursor,end);
+            const nativeRows=verified.rows;
+            cursor=verified.cursor;
             if(!cursor||cursor===end||cursor.nodeType!==8||cursor.nodeValue!=="zaakiy-r2:"+spec.id+":end")
               mismatch("flat list end");
             target.keyed.push({spec,parent,start,end:cursor as Comment,rows,flat:{template,rows:nativeRows}});
