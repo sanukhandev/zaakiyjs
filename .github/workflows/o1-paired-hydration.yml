@@ -37,6 +37,9 @@ jobs:
           - label: prior
             ref: 185478cc8f5361b8cec780c42b5d7d7ffd89b991
             format: compact-v2
+          - label: flat
+            ref: 78c1e3c6307c3315d4b3386c08638138b7874b26
+            format: compact-v3
           - label: candidate
             ref: ${{ github.sha }}
             format: compact-v3
@@ -165,11 +168,15 @@ jobs:
           path: paired-sites/prior
       - uses: actions/download-artifact@v4
         with:
+          name: paired-site-flat-${{ github.sha }}
+          path: paired-sites/flat
+      - uses: actions/download-artifact@v4
+        with:
           name: paired-site-candidate-${{ github.sha }}
           path: paired-sites/candidate
       - name: Install pinned real browsers
         run: bash scripts/ci/install-playwright-browsers.sh
-      - name: Compare all four builds in alternating blocks on one worker
+      - name: Compare all five builds in alternating blocks on one worker
         run: |
           mkdir -p benchmark-artifacts/paired
           uname -a > benchmark-artifacts/paired/runner.txt
