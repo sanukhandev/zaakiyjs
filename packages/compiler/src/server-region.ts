@@ -47,6 +47,25 @@ export interface RegionServerCompileResult {
   readonly hydrationPlan?: RegionHydrationPlanV2;
   /** Trusted build-generated browser module; never included in SSR HTML. */
   readonly clientEvents?: readonly GeneratedAsset[];
+  /** Compiler-selected static client module. Existing plan API stays supported. */
+  readonly clientHydration?: GeneratedAsset;
+  readonly clientCapability?: "flat-v3" | "generic";
+}
+// Restricted capability mirrors the browser entry's fail-closed contract.
+const FLAT_CLIENT_TAG=/^(?:main|div|section|article|header|footer|nav|aside|p|span|strong|em|small|h[1-6]|ul|ol|li|dl|dt|dd|label|button|input|br|hr)$/;
+const FLAT_CLIENT_ATTR=/^ (?:class|role|title|tabindex|type|name|value|placeholder|id|for|data-[a-z0-9_-]+|aria-[a-z0-9_-]+)="[^"]*"$/;
+function supportsFlatClient(nodes:readonly RegionNode[],staticOnly=false):boolean{
+  return nodes.every(node=>{
+    if(node.kind==="literal")return true;
+    if(node.kind==="element")return FLAT_CLIENT_TAG.test(node.tag)&&
+      node.attrs.every(attr=>FLAT_CLIENT_ATTR.test(attr))&&
+      (!staticOnly||!node.events?.length)&&supportsFlatClient(node.children,staticOnly);
+    if(staticOnly)return false;
+    if(node.kind==="data")return node.source==="props";
+    if(node.kind==="conditional")return node.source==="props"&&
+      supportsFlatClient(node.yes,true)&&supportsFlatClient(node.no,true);
+    return node.kind==="keyed"&&node.flat===true&&node.source==="props";
+  });
 }
 const hash = (value: string): string => createHash("sha256").update(value).digest("hex");
 const ROUTE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$/;
@@ -469,7 +488,16 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           ")return "+handler.body+";").join("")+
         "return undefined;};}\n"
     }] : [];
-    return { diagnostics: base.diagnostics, hydrationPlan,clientEvents,
+    const specialized=markerFormat==="compact-v3"&&nodes.length===1&&nodes[0]?.kind==="element"&&supportsFlatClient(nodes);
+    const clientCapability=specialized?"flat-v3":"generic";
+    const clientHydration={
+      fileName:request.fileName.replace(/\\.[cm]?tsx?$/i,"")+".region.client.js",
+      code:"import {"+(specialized?"hydrateFlatPage":"hydrateRegionPage")+" as hydrate} from "+
+        JSON.stringify(specialized?"@zaakiyjs/ssr/client/flat":"@zaakiyjs/ssr/client")+";\\n"+
+        "const plan="+JSON.stringify(hydrationPlan)+";\\n"+
+        "export function hydrateCompiledRegion(container,envelope,manifest,bindings){return hydrate(container,plan,envelope,manifest,plan.routeId,bindings); }\\n"
+    };
+    return { diagnostics: base.diagnostics, hydrationPlan,clientEvents,clientHydration,clientCapability,
       js: [{ fileName: request.fileName.replace(/\.[cm]?tsx?$/i, "") + ".region.server.js", code }] };
   } catch (error) {
     return reject(error instanceof Error ? error.message : "Unsafe H4 region source", root.span);
