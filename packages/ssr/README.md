@@ -135,3 +135,23 @@ compiler-declared events on other elements continue to work. Use the older
 formats for external row events or reactive proxy item data. Deploy matching
 compiler, server and client artifacts. See the compact-v3 ADR. This is a
 restricted additive optimization, not a general hydration API replacement.
+
+
+### Compiler-selected browser entry (final optimization candidate)
+
+`compileRegionServer` additionally returns `clientHydration` (a generated JS
+asset) and `clientCapability` (`"flat-v3"` or `"generic"`). Bundle the
+asset with the application, and call its `hydrateCompiledRegion(container,
+envelope, manifest, bindings)` export with the matching build artifacts.
+For compact-v3, pass the explicit `itemDataMode: "snapshot"` contract.
+The generated module imports only the selected entry. The flat entry supports
+safe static native elements, props scalar text, compiled events outside
+rows, static conditional branches and resource-free flat lists. Complex or
+legacy templates select the generic entry. Unsupported plans passed directly
+to the specialized entry are rejected; there is no runtime fallback that
+silently hides mismatches. Existing `hydrateRegionPage` callers remain valid.
+Do not construct generated code from network data or execute it dynamically.
+Both paths share strict scalar, marker and row checks. The final layout and
+snapshot check runs after reading the reactive collection, without a bypass
+flag. Production bundles must exclude the generic attachment module when
+the compiler selects the specialized entry.
