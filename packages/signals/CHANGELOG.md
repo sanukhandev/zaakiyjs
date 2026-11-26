@@ -1,7 +1,7 @@
 # @zaakiyjs/signals 0.1.0-beta.0
 
 - Initial public prerelease
-- Source: d1441051bec503b311ff3e8cc6d77615be385900
+- Source: 45b950be3dfa6803d2ff58044c2bcd534955921c
 
 # @zaakiyjs/signals changelog
 
