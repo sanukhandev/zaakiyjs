@@ -97,6 +97,20 @@ function drain(): void {
   if (errors.length > 1) throw new AggregateError(errors, "Multiple reactive effect failures");
 }
 
+/**
+ * Snapshot fan-out only when multiple observers may mutate subscriptions
+ * during invalidation. Most targeted DOM bindings have a single subscriber.
+ * The zero/one cases avoid an array allocation on each signal write.
+ */
+function invalidateObservers(observers: ReadonlySet<Observer>): void {
+  if (observers.size === 0) return;
+  if (observers.size === 1) {
+    observers.values().next().value?.invalidate();
+    return;
+  }
+  for (const observer of [...observers]) observer.invalidate();
+}
+
 function observe(source: Source): void {
   const frame = activeFrame;
   if (frame === null || (frame.observer instanceof EffectNode && frame.observer.disposed)) return;
@@ -155,7 +169,7 @@ class SignalNode<T> implements WritableSignal<T> {
     if (this.equals(this.current, next)) return;
     this.current = next;
     this.version++;
-    for (const observer of [...this.observers]) observer.invalidate();
+    invalidateObservers(this.observers);
   }
   peek(): T { return this.current; }
   revision(): number { return this.version; }
@@ -222,7 +236,7 @@ class ComputedNode<T> implements ComputedSignal<T> {
     if (this.dirty && !this.errored) return;
     this.dirty = true;
     this.version++;
-    for (const observer of [...this.observers]) observer.invalidate();
+    invalidateObservers(this.observers);
   }
   addObserver(observer: Observer): void {
     if (this.observers.has(observer)) return;

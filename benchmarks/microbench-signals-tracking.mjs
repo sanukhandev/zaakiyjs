@@ -8,8 +8,12 @@ const output = resolve(process.argv[3] ?? "benchmark-artifacts/signals-tracking.
 const { computed, effect, flushSync, signal } =
   await import(pathToFileURL(resolve(root, "packages/signals/dist/index.js")).href);
 
-const fanout = 400;
-const updates = 150;
+const workloads = [
+  { mode: "direct", fanout: 400, updates: 150 },
+  { mode: "computed", fanout: 400, updates: 150 },
+  { mode: "single-direct", fanout: 1, updates: 25000 },
+  { mode: "single-computed", fanout: 1, updates: 25000 }
+];
 const warmups = 2;
 const repetitions = 12;
 const percentile = (items, fraction) => {
@@ -18,9 +22,9 @@ const percentile = (items, fraction) => {
   const low = Math.floor(index), high = Math.ceil(index);
   return values[low] + (values[high] - values[low]) * (index - low);
 };
-function sample(mode) {
+function sample({ mode, fanout, updates }) {
   const source = signal(0);
-  const observed = mode === "direct" ? source : computed(() => source.value * 2);
+  const observed = mode.endsWith("computed") ? computed(() => source.value * 2) : source;
   let executions = 0;
   const handles = Array.from({ length: fanout }, () =>
     effect(() => { void observed.value; executions++; }));
@@ -43,10 +47,11 @@ function sample(mode) {
   return elapsed;
 }
 const modes = [];
-for (const mode of ["direct", "computed"]) {
-  for (let i = 0; i < warmups; i++) sample(mode);
+for (const workload of workloads) {
+  const { mode, fanout, updates } = workload;
+  for (let i = 0; i < warmups; i++) sample(workload);
   const samples = [];
-  for (let i = 0; i < repetitions; i++) samples.push(sample(mode));
+  for (let i = 0; i < repetitions; i++) samples.push(sample(workload));
   modes.push({
     mode, fanout, updates, warmups, repetitions,
     p50_ms: percentile(samples, .5),
@@ -56,7 +61,7 @@ for (const mode of ["direct", "computed"]) {
     postDisposeRuns: 0
   });
 }
-const result = { schemaVersion: 1, fixture: "signals-direct-vs-computed-v1",
+const result = { schemaVersion: 1, fixture: "signals-direct-vs-computed-v2",
   node: process.version, root, modes };
 await mkdir(resolve(output, ".."), { recursive: true });
 await writeFile(output, JSON.stringify(result, null, 2) + "\n");
