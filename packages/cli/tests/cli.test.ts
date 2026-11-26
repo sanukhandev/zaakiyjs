@@ -1,5 +1,5 @@
 import {afterEach, describe, expect, it} from "vitest";
-import {mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile} from "node:fs/promises";
+import {cp, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join, dirname} from "node:path";
 import {fileURLToPath} from "node:url";
@@ -10,6 +10,7 @@ import {generatorPlan, generateFiles} from "../src/generators";
 import {safeRelativePath, validateProjectName} from "../src/fs-safe";
 import {assertFrameworkReady, getInstalledVersions, scaffoldPlan, scaffoldProject, type Versions} from "../src/scaffold";
 import {diagnoseProject} from "../src/doctor";
+const cliRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const tempRoots: string[] = [];
 const versions: Versions = {core: "workspace:^", dom: "workspace:^", signals: "workspace:^", styles: "workspace:^", "vite-plugin": "workspace:^"};
 async function temp(): Promise<string> {
@@ -33,7 +34,9 @@ describe("CLI commands", () => {
     expect(c.output().stdout).toContain("start --project");
     const version = capture(root);
     expect(await runCli(["--version"], version.io)).toBe(0);
-    expect(version.output().stdout.trim()).toMatch(/^\d+\.\d+\.\d+$/);
+    const manifest = JSON.parse(await readFile(join(cliRoot, "package.json"), "utf8")) as {version: string};
+    expect(manifest.version).toMatch(/^\d+\.\d+\.\d+(?:-(?:alpha|beta|gamma|rc)\.\d+)?$/);
+    expect(version.output().stdout.trim()).toBe(manifest.version);
     const unknown = capture(root);
     expect(await runCli(["create"], unknown.io)).toBe(1);
     expect(unknown.output().stderr).toContain("UNKNOWN_COMMAND");
@@ -49,15 +52,51 @@ describe("CLI commands", () => {
     }
     expect(validateProjectName("my-app")).toBe("my-app");
   });
-  it("does not silently scaffold a standalone app before framework publication", async () => {
+  it("rejects installed placeholder versions and scaffolds valid prereleases without querying npm", async () => {
+    // Copy the actual CLI build/templates and provide isolated framework contract fixtures.
+    // Do not mutate workspace manifests or depend on which version the checkout has.
     const root = await temp();
-    const cliRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-    const execution = spawnSync(process.execPath,
-      [join(cliRoot, "dist", "bin.js"), "start", "--project", "my-app", "--template", "minimal"],
+    const installed = join(root, "cli");
+    await mkdir(installed);
+    await cp(join(cliRoot, "dist"), join(installed, "dist"), {recursive: true});
+    await cp(join(cliRoot, "templates"), join(installed, "templates"), {recursive: true});
+    await cp(join(cliRoot, "package.json"), join(installed, "package.json"));
+    const modules = {
+      core: "export const foundationStatus = {implemented:true};",
+      dom: "export function mount() {}",
+      signals: "export function signal() {}",
+      styles: "export const foundationStatus = {implemented:true};",
+      "vite-plugin": "export function zaakiyPlugin() {}"
+    };
+    async function install(version: string) {
+      for (const [name, source] of Object.entries(modules)) {
+        const dir = join(installed, "node_modules", "@zaakiyjs", name);
+        await mkdir(dir, {recursive: true});
+        await writeFile(join(dir, "package.json"), JSON.stringify({
+          name: "@zaakiyjs/" + name, version, type: "module", exports: "./index.js"
+        }));
+        await writeFile(join(dir, "index.js"), source);
+      }
+    }
+    const invoke = () => spawnSync(process.execPath,
+      [join(installed, "dist", "bin.js"), "start", "--project", "my-app", "--template", "minimal", "--package-manager", "npm"],
       {cwd: root, encoding: "utf8"});
-    expect(execution.status).toBe(1);
-    expect(execution.stderr).toMatch(/UNPUBLISHED_FRAMEWORK|MISSING_FRAMEWORK_DEPENDENCY/);
+    await install("0.0.0");
+    const rejected = invoke();
+    expect(rejected.status).toBe(1);
+    expect(rejected.stderr).toContain("UNPUBLISHED_FRAMEWORK");
     await expect(stat(join(root, "my-app"))).rejects.toThrow();
+    await install("0.1.0-beta.0");
+    const accepted = invoke();
+    expect(accepted.stderr).toBe("");
+    expect(accepted.status).toBe(0);
+    const manifest = JSON.parse(await readFile(join(root, "my-app", "package.json"), "utf8")) as {
+      dependencies: Record<string, string>; devDependencies: Record<string, string>;
+    };
+    const all = {...manifest.dependencies, ...manifest.devDependencies};
+    for (const name of Object.keys(modules)) expect(all["@zaakiyjs/" + name]).toBe("^0.1.0-beta.0");
+    expect(await readFile(join(root, "my-app", "src/App.tsx"), "utf8")).toContain('@zaakiyjs/signals');
+    // This proves local CLI scaffolding, not that the beta exists on the registry.
   });
   it("refuses workspace output outside the declared pnpm workspace globs", async () => {
     const root = await temp();
@@ -334,14 +373,16 @@ describe("doctor and process delegation", () => {
     expect(archive).toBeDefined();
     execFileSync("tar", ["-xzf", join(unpacked, archive ?? ""), "-C", unpacked]);
     const manifest = JSON.parse(await readFile(join(unpacked, "package", "package.json"), "utf8")) as {
-      bin: Record<string, string>; dependencies: Record<string, string>;
+      version: string; bin: Record<string, string>; dependencies: Record<string, string>;
     };
     expect(manifest.bin.zaakiy).toBe("./dist/bin.js");
     for (const version of Object.values(manifest.dependencies)) expect(version).not.toContain("workspace:");
     const output = execFileSync(process.execPath, [join(unpacked, "package", "dist", "bin.js"), "--version"], {
       cwd: unpacked, encoding: "utf8"
     });
-    expect(output.trim()).toMatch(/^\d+\.\d+\.\d+$/);
+    const source = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as {version: string};
+    expect(manifest.version).toBe(source.version);
+    expect(output.trim()).toBe(manifest.version);
   });
   it("forwards a subprocess nonzero exit code", async () => {
     const root = await temp();
