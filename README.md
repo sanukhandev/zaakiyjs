@@ -323,6 +323,10 @@ Reproduce using the pinned workflows at the certified tree with locked dependenc
 
 Application UAT on integrated main, manual screen-reader testing, supported browser-version policy, broader feature coverage and final public-beta review remain open. The packed-consumer report explicitly identifies 49 publication blockers: 24 placeholder `0.0.0` versions, 24 missing package license declarations, and one missing approved root LICENSE. Ownership of the `@zaakiyjs` npm scope is unverified. No npm publication or release tag is authorized by this certificate. The automated security and memory results are scoped to the tested workloads and are not guarantees for arbitrary applications.
 
+## Agentic application development
+
+Use the portable [ZaakiyJS Builder skill](.agents/skills/zaakiyjs-builder/SKILL.md) with Codex, Antigravity, Claude Code and Cursor. It provides source-grounded application scaffolding, native TSX and MVVM workflows, API/SSR constraints, test and UAT gates, plus a local installer and read-only project inspector. It adds no browser runtime dependency and does not require a marketplace or npm release. See the [installation guide and validation commands](docs/development/agent-skills.md).
+
 ## Development roadmap
 
 | Phase | Deliverables |
