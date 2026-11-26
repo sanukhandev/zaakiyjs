@@ -1,6 +1,6 @@
 {
   "name": "@zaakiyjs/core",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "license": "MIT",
   "author": {
     "name": "Sanu Khan",
@@ -9,11 +9,24 @@
   "description": "ZaakiyJS component ownership, context and typed TSX foundation",
   "type": "module",
   "sideEffects": false,
-  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-    "./jsx-runtime": { "types": "./dist/jsx-runtime.d.ts", "import": "./dist/jsx-runtime.js" },
-    "./jsx-dev-runtime": { "types": "./dist/jsx-dev-runtime.d.ts", "import": "./dist/jsx-dev-runtime.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./jsx-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "import": "./dist/jsx-runtime.js"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./dist/jsx-dev-runtime.d.ts",
+      "import": "./dist/jsx-dev-runtime.js"
+    }
   },
   "types": "./dist/index.d.ts",
   "main": "./dist/index.js",
@@ -23,6 +36,19 @@
     "build": "tsc --project tsconfig.build.json",
     "test": "vitest run test"
   },
-  "publishConfig": { "access": "public" },
-  "dependencies": { "@zaakiyjs/signals": "workspace:^" }
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@zaakiyjs/signals": "workspace:^"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sanukhandev/zaakiyjs.git",
+    "directory": "packages/core"
+  },
+  "homepage": "https://github.com/sanukhandev/zaakiyjs",
+  "bugs": {
+    "url": "https://github.com/sanukhandev/zaakiyjs/issues"
+  }
 }

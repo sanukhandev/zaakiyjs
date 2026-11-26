@@ -1,6 +1,6 @@
 {
   "name": "@zaakiyjs/analytics",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "license": "MIT",
   "author": {
     "name": "Sanu Khan",
@@ -41,5 +41,14 @@
   "dependencies": {},
   "publishConfig": {
     "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sanukhandev/zaakiyjs.git",
+    "directory": "packages/analytics"
+  },
+  "homepage": "https://github.com/sanukhandev/zaakiyjs",
+  "bugs": {
+    "url": "https://github.com/sanukhandev/zaakiyjs/issues"
   }
 }

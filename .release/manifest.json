@@ -1,0 +1,275 @@
+{
+  "schema": "zaakiy.release/1",
+  "sourceSha": "d1441051bec503b311ff3e8cc6d77615be385900",
+  "mode": "bootstrap",
+  "channel": "beta",
+  "stable": {
+    "@zaakiyjs/signals": "0.0.0",
+    "@zaakiyjs/core": "0.0.0",
+    "@zaakiyjs/ads": "0.0.0",
+    "@zaakiyjs/analytics": "0.0.0",
+    "@zaakiyjs/async": "0.0.0",
+    "@zaakiyjs/dom": "0.0.0",
+    "@zaakiyjs/seo": "0.0.0",
+    "@zaakiyjs/styles": "0.0.0",
+    "@zaakiyjs/compat": "0.0.0",
+    "@zaakiyjs/compiler": "0.0.0",
+    "@zaakiyjs/vite-plugin": "0.0.0",
+    "@zaakiyjs/cli": "0.0.0",
+    "@zaakiyjs/consent": "0.0.0",
+    "@zaakiyjs/forms": "0.0.0",
+    "@zaakiyjs/http": "0.0.0",
+    "@zaakiyjs/image": "0.0.0",
+    "@zaakiyjs/motion": "0.0.0",
+    "@zaakiyjs/proxy": "0.0.0",
+    "@zaakiyjs/router": "0.0.0",
+    "@zaakiyjs/ssr": "0.0.0",
+    "@zaakiyjs/store": "0.0.0",
+    "@zaakiyjs/templates": "0.0.0",
+    "@zaakiyjs/ui-primitives": "0.0.0",
+    "@zaakiyjs/ui": "0.0.0"
+  },
+  "sources": [],
+  "releases": [
+    {
+      "name": "@zaakiyjs/signals",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/core",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/ads",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/analytics",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/async",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/dom",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/seo",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/styles",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/compat",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/compiler",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/vite-plugin",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/cli",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/consent",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/forms",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/http",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/image",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/motion",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/proxy",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/router",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/ssr",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/store",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/templates",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/ui-primitives",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    },
+    {
+      "name": "@zaakiyjs/ui",
+      "from": "0.0.0",
+      "version": "0.1.0-beta.0",
+      "bump": "minor",
+      "tag": "beta",
+      "reasons": [
+        "Initial public prerelease"
+      ]
+    }
+  ]
+}

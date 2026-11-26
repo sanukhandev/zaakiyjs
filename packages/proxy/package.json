@@ -1,6 +1,6 @@
 {
   "name": "@zaakiyjs/proxy",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "license": "MIT",
   "author": {
     "name": "Sanu Khan",
@@ -9,9 +9,18 @@
   "description": "Deny-by-default, server-only named-upstream HTTP proxy for ZaakiyJS",
   "type": "module",
   "sideEffects": false,
-  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "exports": {
-    ".": { "node": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } }
+    ".": {
+      "node": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
   },
   "types": "./dist/index.d.ts",
   "main": "./dist/index.js",
@@ -22,7 +31,22 @@
     "test": "vitest run --root ../.. packages/proxy/test",
     "pack:check": "npm pack --dry-run --json"
   },
-  "publishConfig": { "access": "public" },
-  "engines": { "node": ">=22" },
-  "devDependencies": { "@types/node": "^22.15.0" }
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sanukhandev/zaakiyjs.git",
+    "directory": "packages/proxy"
+  },
+  "homepage": "https://github.com/sanukhandev/zaakiyjs",
+  "bugs": {
+    "url": "https://github.com/sanukhandev/zaakiyjs/issues"
+  }
 }

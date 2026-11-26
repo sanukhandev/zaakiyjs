@@ -1,6 +1,6 @@
 {
   "name": "@zaakiyjs/motion",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "license": "MIT",
   "author": {
     "name": "Sanu Khan",
@@ -9,11 +9,24 @@
   "description": "Optional owner-scoped native motion controllers for ZaakiyJS",
   "type": "module",
   "sideEffects": false,
-  "files": ["dist", "README.md", "CHANGELOG.md"],
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
   "exports": {
-    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
-    "./route": { "types": "./dist/route.d.ts", "import": "./dist/route.js" },
-    "./dom": { "types": "./dist/dom-regions.d.ts", "import": "./dist/dom-regions.js" }
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./route": {
+      "types": "./dist/route.d.ts",
+      "import": "./dist/route.js"
+    },
+    "./dom": {
+      "types": "./dist/dom-regions.d.ts",
+      "import": "./dist/dom-regions.js"
+    }
   },
   "types": "./dist/index.d.ts",
   "main": "./dist/index.js",
@@ -24,7 +37,24 @@
     "test": "vitest run --root ../.. packages/motion/test",
     "pack:check": "npm pack --dry-run --json"
   },
-  "publishConfig": { "access": "public" },
-  "dependencies": { "@zaakiyjs/core": "workspace:^", "@zaakiyjs/dom": "workspace:^", "@zaakiyjs/signals": "workspace:^" },
-  "devDependencies": { "jsdom": "^26.1.0" }
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@zaakiyjs/core": "workspace:^",
+    "@zaakiyjs/dom": "workspace:^",
+    "@zaakiyjs/signals": "workspace:^"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sanukhandev/zaakiyjs.git",
+    "directory": "packages/motion"
+  },
+  "homepage": "https://github.com/sanukhandev/zaakiyjs",
+  "bugs": {
+    "url": "https://github.com/sanukhandev/zaakiyjs/issues"
+  }
 }
