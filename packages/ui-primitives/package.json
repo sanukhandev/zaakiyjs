@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/ui-primitives",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Owner-scoped, accessible native DOM behavior controllers for ZaakiyJS",
   "type": "module",
   "sideEffects": false,

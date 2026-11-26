@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/styles",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "ZaakiyJS deterministic brand-first atomic CSS compiler",
   "type": "module",
   "sideEffects": false,

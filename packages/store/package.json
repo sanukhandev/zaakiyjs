@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/store",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Owner-scoped fine-grained reactive state with explicit typed actions",
   "type": "module",
   "sideEffects": false,

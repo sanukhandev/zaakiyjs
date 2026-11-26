@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/vite-plugin",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "First-party Vite compiler and styles integration for ZaakiyJS (draft pending upstream runtime)",
   "type": "module",
   "sideEffects": false,

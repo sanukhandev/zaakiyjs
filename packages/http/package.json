@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/http",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Typed Fetch transport and secure interceptor pipeline for ZaakiyJS",
   "type": "module",
   "sideEffects": false,

@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/proxy",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Deny-by-default, server-only named-upstream HTTP proxy for ZaakiyJS",
   "type": "module",
   "sideEffects": false,

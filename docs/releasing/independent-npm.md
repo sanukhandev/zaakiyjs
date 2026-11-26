@@ -1,6 +1,6 @@
 # Independent npm Deployment and Release Runbook
 
-> **Design rule:** one repository, **individually versioned** npm modules, package-specific deployment. No modules have been built or published yet. Release pipelines and npm trusted-publisher associations still need to be implemented.
+> **Design rule:** one repository, **individually versioned** npm modules, package-specific deployment. The 24 source packages have packed-consumer evidence; no public npm release is verified. Release publishing workflows and npm trusted-publisher associations still need to be implemented.
 
 ## 1. Versioning strategy
 
@@ -71,8 +71,12 @@ If a package change introduces a breaking protocol incompatibility, pause depend
 
 ## 8. What is deliberately NOT configured yet
 
-There are no actual package manifests, build scripts, npm credentials, Trusted Publishing associations, or release GitHub Actions in the repository today. Only documentation and a policy configuration file exist. They become operational during bootstrap, and must be tested before use.
+Package manifests, build scripts, and release-hardening CI exist. Changesets CLI, authorized npm credentials or Trusted Publishing associations, and actual publishing workflows remain unconfigured or unverified. They must be implemented and validated before publication.
 
 ## Verified pre-release gates (P1 hardening)
 
-The independent [packed consumer and browser audit](../../tests/release/README.md) covers tarball exports, actual outside-workspace installation, TypeScript import/typecheck, same-runner deterministic build hashes, CSP, automated axe WCAG checks and a bounded Chromium GC regression. The verification script's strict `--enforce-release` mode rejects release blockers; normal PR CI allows the development stage's known placeholder versions while recording them as explicit blockers. **The repository currently has no approved root LICENSE and packages still use `0.0.0`, so publication is prohibited.** Verify npm scope control, trusted publishing association and release approval separately before enabling `npm publish`.
+The independent [packed consumer and browser audit](../../tests/release/README.md) covers tarball exports, actual outside-workspace installation, TypeScript import/typecheck, same-runner deterministic build hashes, CSP, automated axe WCAG checks and a bounded Chromium GC regression. The verification script's strict `--enforce-release` mode rejects release blockers; normal PR CI allows the development stage's known placeholder versions while recording them as explicit blockers. **Packages still use `0.0.0`, so publication is prohibited.** Verify npm scope control, trusted publishing association and release approval separately before enabling `npm publish`.
+
+## R0/R1 — License approval record (2026-11-26)
+
+The owner explicitly approved the MIT license, confirmed the necessary licensing rights, and authorized Copyright (c) 2026 Sanu Khan for ZaakiyJS. The approved text is in [LICENSE](../../LICENSE); all 24 package directories carry identical copies and each manifest declares `license: MIT` and author Sanu Khan (`https://sanukhan.dev`). Third-party dependencies retain their own licenses. This is the owner's authorization, not independent legal verification of copyright title or third-party license compliance. Verify the license text and metadata inside actual tarballs using the release-hardening gate. This change has no runtime, API, dependency, version, or release-tag impact; no changeset bump is needed for the unpublished placeholder packages. **No npm publication was authorized.**

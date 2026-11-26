@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/image",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Secure offline responsive image optimization and native picture rendering for ZaakiyJS",
   "type": "module",
   "sideEffects": false,

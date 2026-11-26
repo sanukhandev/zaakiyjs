@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/analytics",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Opt-in privacy-aware analytics for ZaakiyJS (draft P3 contract integration)",
   "type": "module",
   "sideEffects": false,

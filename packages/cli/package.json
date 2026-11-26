@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/cli",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "First-party ZaakiyJS application scaffolding, generators and toolchain commands",
   "type": "module",
   "sideEffects": false,

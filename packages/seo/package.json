@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/seo",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Pure SEO metadata, structured data and sitemap engine",
   "type": "module",
   "sideEffects": false,

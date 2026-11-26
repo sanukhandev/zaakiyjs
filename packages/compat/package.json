@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/compat",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "type": "module",
   "description": "Deterministic compiler-managed browser compatibility analysis, manifest planning and scoped AbortSignal helpers",
   "sideEffects": false,

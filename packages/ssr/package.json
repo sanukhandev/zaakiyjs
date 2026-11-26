@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/ssr",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Contract-first server rendering, static generation and isolated revalidation foundation",
   "type": "module",
   "sideEffects": false,

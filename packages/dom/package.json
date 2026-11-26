@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/dom",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Owner-scoped targeted native DOM runtime for compiled ZaakiyJS views",
   "type": "module",
   "sideEffects": false,
