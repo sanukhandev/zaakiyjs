@@ -3,9 +3,9 @@
 
 > **AI-assisted. Compiler-first. Signal-driven. Native DOM.**
 >
-> **Project status: 23 source packages are present; none is a verified public npm release.** The seven foundation modules and selected application/runtime integrations have automated unit, consumer and real-browser acceptance. Coverage varies by package; compiler-first SSR/hydration, full TSX composition, supported browser-version policy, manual accessibility certification and release authorization remain open. Green CI is not proof that the entire framework is production-certified.
+> **Project status: runtime frozen on `main` for UAT (2026-11-26).** PRs #99 and #100 are merged; the integrated runtime tree exactly matches the CI-certified candidate. All 29 pre-merge workflows passed across the two PRs. 24 internal packages passed packed-consumer validation. The supported compiler-first native DOM and SSR/hydration slices have automated browser evidence; broader TSX composition, browser-version policy, manual accessibility review, application UAT and publication authorization remain open. No public npm release has been verified. See [main integration certificate](#main-integration-certificate--2026-11-26).
 
-ZaakiyJS is a proposed, independent **TypeScript/TSX frontend framework** inspired by React, Angular and Vue, designed to compile declarative components into precise native DOM updates. It combines a fine-grained reactive runtime, SOLID/MVVM application architecture, brand-driven CSS, integrated networking/async primitives, hybrid SEO rendering and optional **reviewed Gemini optimization**.
+ZaakiyJS is an independent **TypeScript/TSX frontend framework** inspired by React, Angular and Vue, designed to compile declarative components into precise native DOM updates. It combines a fine-grained reactive runtime, SOLID/MVVM application architecture, brand-driven CSS, integrated networking/async primitives, hybrid SEO rendering and optional **reviewed Gemini optimization**.
 
 **Repository:** [sanukhandev/zaakiyjs](https://github.com/sanukhandev/zaakiyjs) · **Proposed npm scope:** `@zaakiyjs/*` (ownership not yet verified) · **Engineering rules:** [AGENTS.md](AGENTS.md)
 
@@ -28,7 +28,7 @@ The product goal is not to copy existing framework APIs. It is to deliver an int
 
 ## Architecture at a glance
 
-GitHub renders the Mermaid source below directly in this README. This is the **planned architecture**, not an implemented build pipeline.
+GitHub renders the Mermaid source below directly in this README. This is the **architecture and product direction**; the implemented subsets and certification evidence are described below. Not every capability in the diagram is released.
 
 ```mermaid
 flowchart TB
@@ -194,14 +194,14 @@ The intended runtime updates only the two dependent text bindings; the component
 
 ## npm package ecosystem
 
-The proposed **26 individually versioned** `@zaakiyjs/*` packages are organized as follows.
+The proposed **27 individually versioned** `@zaakiyjs/*` package boundaries are organized below. The certified packed-consumer report covers 24 internal packages, including `image`; `ai`, `devtools` and `testing` are not part of that validated package set.
 
 | Domain | Modules |
 | --- | --- |
 | Framework foundation (7) | `core`, `signals`, `dom`, `compiler`, `styles`, `vite-plugin`, `cli` |
 | Application architecture (5) | `store`, `forms`, `router`, `compat`, `async` |
 | Networking (2) | `http`, `proxy` |
-| UI and motion (4) | `ui-primitives`, `ui`, `templates`, `motion` |
+| UI, image and motion (5) | `ui-primitives`, `ui`, `templates`, `image`, `motion` |
 | Rendering and monetization (5) | `ssr`, `seo`, `analytics`, `ads`, `consent` |
 | AI and quality (3) | `ai`, `devtools`, `testing` |
 
@@ -215,13 +215,13 @@ ZaakiyJS uses a **single repository** and plans **independent SemVer and npm pub
 - Changesets track package-specific updates and dependency-induced version changes.
 - CI validates affected packages **and their dependents**; publication requires pack/install verification, security and API review.
 - Publish only changed modules, in dependency order when necessary, using verified npm ownership and preferably npm Trusted Publishing (OIDC).
-- No package publication, CI workflow or automated release pipeline is currently configured.
+- CI and release-hardening workflows are configured. Public publication is not authorized; no verified public npm release exists.
 
 Read the [release runbook](docs/releasing/independent-npm.md) and [package boundary guide](docs/development/monorepo-packages.md).
 
 ## Performance and quality targets
 
-**Targets only — no benchmarks have been run.**
+The original engineering targets below remain design budgets. The [measured results](#measured-performance) apply to the specific pinned production fixtures, not every application or supported API.
 
 | Metric | Initial target |
 | --- | --- |
@@ -236,6 +236,93 @@ Read the [release runbook](docs/releasing/independent-npm.md) and [package bound
 
 Quality gates include strict TypeScript, unit tests, compiler golden/behavioral tests, real DOM and Playwright integration, security/privacy checks, SSR/SEO and accessibility tests, and independent package install validation.
 
+
+## Main integration certificate — 2026-11-26
+
+**Verdict: `CERTIFIED_FOR_MAIN_INTEGRATION_AND_UAT` — public beta and npm publication not certified.**
+
+The runtime is frozen for application UAT. Only confirmed correctness, security, compatibility or certification blockers may reopen the frozen scope. This is an engineering evidence record, not a third-party accreditation.
+
+| Integration record | Pinned evidence |
+| --- | --- |
+| Signals PR | [#99](https://github.com/sanukhandev/zaakiyjs/pull/99), reviewed head [afb71fd8](https://github.com/sanukhandev/zaakiyjs/commit/afb71fd8e9f175271e832fac34c776c2570c51ed), 11/11 workflows passed |
+| Signals merge | [1ef1ed3](https://github.com/sanukhandev/zaakiyjs/commit/1ef1ed38264576979fbd5d3962898b1c2c70e054) |
+| Final runtime PR | [#100](https://github.com/sanukhandev/zaakiyjs/pull/100), reviewed head [e1a72096](https://github.com/sanukhandev/zaakiyjs/commit/e1a72096b86db8700d7ab222a099e080b8857c0c), 18/18 workflows and 54/54 check runs passed |
+| Tested CI merge commit | [c99536fd](https://github.com/sanukhandev/zaakiyjs/commit/c99536fd1c631258880a712614c0be5ecf8c5731) |
+| Integrated runtime on main | [d9db3fdd](https://github.com/sanukhandev/zaakiyjs/commit/d9db3fddd8638fb680e609e92331c7b52efdefea) |
+| Exact certified Git tree | `a3bdca5c8ea76af38e98dc8bb99c01a4cafa780a` |
+| Reviews | [#99](https://github.com/sanukhandev/zaakiyjs/pull/99#pullrequestreview-6069622207), [#100](https://github.com/sanukhandev/zaakiyjs/pull/100#pullrequestreview-6069622562) |
+
+PR #99 was merged first; PR #100 was then retargeted to main, marked ready, and merged against its reviewed head. The retargeted synthetic merge and resulting main merge both have the same Git tree as the tested CI merge commit (no file differences). Certification is anchored to that tested tree, not a claim of a separate fresh successful run on the post-merge commit. Post-merge CI and application UAT remain separate acceptance gates.
+
+### Measured performance
+
+All numbers below are from the pinned CI artifacts, not estimated targets. H4 compares production SSR/hydration for a reference scalar-list application, with 100, 1,000 and 10,000 rows, 50 measured samples and 10 warmups per case, 36 cases across Chromium 156.0.8078.4, Firefox 157.0 and WebKit 27.2. Node 22.23.5; React 19.2.4, Vue 3.5.44 and Angular 21.2.26. Timing is the fixture's hydration metric, not total navigation, rendering or network latency.
+
+| 10,000-row hydration p95 (ms), lower is better | ZaakiyJS | React | Vue | Angular |
+| --- | ---: | ---: | ---: | ---: |
+| Chromium | 22.86 | 30.86 | 32.00 | 1,813.90 |
+| Firefox | 17.00 | 19.55 | 26.00 | 2,278.10 |
+| WebKit | 24.00 | 438.00 | 40.00 | 1,184.65 |
+
+These comparisons are specific to the tested workload and framework versions. Angular's fixture performs additional DOM mutations; do not infer general framework superiority from this matrix.
+
+| Controlled 10K p95 median reduction across three independent trials per browser | vs historical main | vs previous compact-v3 |
+| --- | ---: | ---: |
+| Chromium | 79.79% | 14.48% |
+| Firefox | 83.58% | 11.67% |
+| WebKit | 78.52% | 8.11% |
+
+The paired run uses five pinned source versions (historical main `b0da54d2`, #99 `afb71fd8`, compact-v2 `185478c`, compact-v3 `78c1e3c` and the tested final candidate), 1K and 10K sizes, 50 measured samples per variant/size/trial, nine independent trials and 4,500 measured samples. Identical fixture and lockfile hashes and Node version were verified. Trial percentiles were recomputed from raw samples. No persistent p95 increase above 5% was flagged under the configured all-three-trials gate. Against previous compact-v3, 1K median p95 increased 4.25% in Chromium and 8.11% in Firefox; one Firefox 10K trial was 30.55 ms, just above the 30 ms target. These limitations remain documented, not hidden by the aggregate verdict.
+
+| Metric | Measured | Target | Result |
+| --- | ---: | ---: | --- |
+| Chromium 10K hydration p95 (H4) | 22.86 ms | ≤35 ms | Met |
+| Firefox 10K hydration p95 (H4) | 17.00 ms | ≤30 ms | Met |
+| WebKit 10K hydration p95 (H4) | 24.00 ms | ≤40 ms | Met |
+| 10K SSR HTML + full hydration JS gzip | 62.26 KiB (63,754 B) | ≤85 KiB | Met |
+| Clean application hydration JS gzip | 11.28 KiB (11,552 B) | ≤12 KiB | Met |
+| Full hydration benchmark JS gzip | 13.40 KiB (13,723 B) | ≤12 KiB | Missed |
+| CSR application JS + CSS gzip | 8.44 KiB (8,643 B) | ≤8 KiB | Missed |
+
+The clean application bundle excludes benchmark instrumentation; the full harness is retained for historical comparison. The production CSR JavaScript alone is 7,919 bytes gzip; the target above includes CSS. The 10K HTML is 50,031 bytes gzip. All KiB use 1,024 bytes. The remaining size targets are not waived for beta; existing CI regression budgets passed.
+
+| Full comparative hydration JS | Raw bytes | Gzip bytes | Brotli bytes |
+| --- | ---: | ---: | ---: |
+| ZaakiyJS | 48,695 | 13,723 | 12,066 |
+| React | 319,662 | 72,613 | 61,288 |
+| Vue | 131,496 | 41,295 | 36,133 |
+| Angular | 217,482 | 68,362 | 60,536 |
+
+The compiler emits a static browser entry for supported flat-v3 routes. The production fixture uses the restricted `@zaakiyjs/ssr/client/flat` entry, with the generic attachment module absent from Rollup's retained module report. Complex routes retain the generic path. See the [compact-v3 ADR](docs/adr/compact-v3-flat-keyed-hydration.md) and [SSR package documentation](packages/ssr/README.md).
+
+### Quality and release evidence
+
+| Validation | Certified candidate result |
+| --- | --- |
+| Quality | 131/131 test files; 1,035 tests passed, 1 skipped; zero failed |
+| H4 hydration matrix | 36/36 cases passed; zero initial ZaakiyJS hydration DOM mutations |
+| H4 owner disposal | 600 cycles over 100/1,000-row cases and three engines; zero retained disposed owner weak references, stale events or incorrect adopted roots in those cases |
+| Packed consumer/reproducibility | 24 internal packages validated; 184 matching build hash entries |
+| CSP, text injection, keyboard and automated axe checks | Passed in all three browsers for tested release fixtures |
+| Manual screen-reader testing | Not verified |
+| Vite build and browser behavior | Passed |
+
+**Evidence links (GitHub access and artifact retention apply):**
+
+- [Quality workflow](https://github.com/sanukhandev/zaakiyjs/actions/runs/45557294946)
+- [H4 comparative workflow](https://github.com/sanukhandev/zaakiyjs/actions/runs/45557295178) · [matrix artifact](https://github.com/sanukhandev/zaakiyjs/actions/runs/45557295178/artifacts/14999866983) · [owner disposal artifact](https://github.com/sanukhandev/zaakiyjs/actions/runs/45557295178/artifacts/14996711900)
+- [Paired benchmark and profiling](https://github.com/sanukhandev/zaakiyjs/actions/runs/45557295139) · [paired review](https://github.com/sanukhandev/zaakiyjs/actions/runs/45557295139/artifacts/14996764259) · [candidate build and module attribution](https://github.com/sanukhandev/zaakiyjs/actions/runs/45557295139/artifacts/14997315086)
+- [Production CSR comparison](https://github.com/sanukhandev/zaakiyjs/actions/runs/45557295214) · [CSR artifact](https://github.com/sanukhandev/zaakiyjs/actions/runs/45557295214/artifacts/14997545932)
+- [Vite production profiling](https://github.com/sanukhandev/zaakiyjs/actions/runs/45557295315)
+- [Release hardening](https://github.com/sanukhandev/zaakiyjs/actions/runs/45557295072) · [package evidence](https://github.com/sanukhandev/zaakiyjs/actions/runs/45557295072/artifacts/14996611004) · [security/heap evidence](https://github.com/sanukhandev/zaakiyjs/actions/runs/45557295072/artifacts/14995389402)
+
+Reproduce using the pinned workflows at the certified tree with locked dependencies, production builds and the declared browser matrix. GitHub artifact downloads may expire; this record preserves the key measurements, exact commit identities and limitations.
+
+### Remaining release gates
+
+Application UAT on integrated main, manual screen-reader testing, supported browser-version policy, broader feature coverage and final public-beta review remain open. The packed-consumer report explicitly identifies 49 publication blockers: 24 placeholder `0.0.0` versions, 24 missing package license declarations, and one missing approved root LICENSE. Ownership of the `@zaakiyjs` npm scope is unverified. No npm publication or release tag is authorized by this certificate. The automated security and memory results are scoped to the tested workloads and are not guarantees for arbitrary applications.
+
 ## Development roadmap
 
 | Phase | Deliverables |
@@ -248,7 +335,7 @@ Quality gates include strict TypeScript, unit tests, compiler golden/behavioral 
 | M5 — Verified runtime and AI | Lifecycle diagnostics, causal traces, validated Gemini proposals and measured quality contracts |
 | M6 — Beta and ecosystem | Docs, benchmarks, migration, analytics/ads/consent and independent npm releases |
 
-The first implementation slice should be **one typed TSX counter** proving signal → compiler → targeted DOM write → owner cleanup, not a simultaneous implementation of all 26 packages.
+The initial compiler/reactivity slices and selected application integrations have passed automated validation. The frozen runtime now moves to integrated application UAT; outstanding feature and release work remains governed by its own contracts.
 
 ## Documentation and contribution
 
@@ -265,7 +352,7 @@ The first implementation slice should be **one typed TSX counter** proving signa
 - [Testing and quality gates](docs/development/testing-and-quality.md)
 - [Independent npm release policy](docs/releasing/independent-npm.md)
 
-**Current status:** The monorepo contains 23 source packages with varying levels of integration maturity. The [M1 browser matrix](tests/browser/README.md) exercises compiled native DOM behavior in Chromium, Firefox and WebKit, with further acceptance being added on the hardening branch. Several release-critical gates remain open: full TSX composition, compiler-generated SSR/hydration, browser-version declarations, broad accessibility/security review, full performance comparisons, and authorized npm publication. Consult [PR #61](https://github.com/sanukhandev/zaakiyjs/pull/61) for the current hardening evidence and unresolved gates.
+**Current status:** The frozen runtime is integrated into `main`; application UAT and public beta authorization remain pending. See the certificate and limitations below, [M1 browser matrix](tests/browser/README.md), and [final optimization checkpoint](docs/development/o1-o7-performance-checkpoint.md).
 
 ---
 
