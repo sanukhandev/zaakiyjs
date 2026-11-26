@@ -1,0 +1,81 @@
+name: Prepare npm Release PR
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Bootstrap first versions, aggregate merged changes, or promote active prereleases
+        type: choice
+        options: [bootstrap, changes, promote]
+        default: bootstrap
+      channel:
+        description: Release channel (stable is the only latest tag)
+        type: choice
+        options: [alpha, beta, gamma, rc, stable]
+        default: beta
+      create_pr:
+        description: Create a release PR (requires repository Actions PR permissions)
+        type: boolean
+        default: true
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: release-prepare-main
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main' && github.repository == 'sanukhandev/zaakiyjs'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.5'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: node --test scripts/release/version-policy.test.mjs
+      - name: Generate versions and independent changelogs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_MODE: ${{ inputs.mode }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(gh api repos/$GITHUB_REPOSITORY/branches/main --jq .commit.sha)"
+          node scripts/release/version-policy.mjs prepare
+          pnpm install --frozen-lockfile --ignore-scripts
+          git add .release/manifest.json packages
+          mkdir -p .generated
+          git diff --cached --binary > .generated/release.patch
+          test -s .generated/release.patch
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proposed-release
+          path: |
+            .release/manifest.json
+            .generated/release.patch
+          include-hidden-files: true
+          if-no-files-found: error
+      - name: Open reviewable release PR
+        if: inputs.create_pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_CHANNEL: ${{ inputs.channel }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$(gh api repos/$GITHUB_REPOSITORY/branches/main --jq .commit.sha)"
+          branch="release/auto-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          git switch -c "$branch"
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "release: prepare $RELEASE_CHANNEL packages"
+          gh auth setup-git
+          git push origin "HEAD:refs/heads/$branch"
+          gh pr create --base main --head "$branch" --title "release: prepare $RELEASE_CHANNEL packages" --body "Generated release metadata. Review .release/manifest.json and changelogs. No publishing or release tag is authorized by this PR. If Actions-created PR checks are not triggered, an owner must trigger normal PR validation before merging."

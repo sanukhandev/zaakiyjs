@@ -1,0 +1,111 @@
+name: npm Release Certification and Staging
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact approved release commit currently on main
+        required: true
+        type: string
+      mode:
+        type: choice
+        options: [dry-run, stage]
+        default: dry-run
+      confirmation:
+        description: For stage only, enter STAGE APPROVED RELEASE
+        type: string
+        default: ''
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+concurrency:
+  group: npm-release-main
+  cancel-in-progress: false
+jobs:
+  certify:
+    if: github.ref == 'refs/heads/main' && github.repository == 'sanukhandev/zaakiyjs'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require exact current main and passing post-merge CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$(gh api repos/$GITHUB_REPOSITORY/branches/main --jq .commit.sha)" = "$RELEASE_SHA"
+          test -f .release/manifest.json
+          # The release commit must itself be a merged generated release PR, not an arbitrary later main commit.
+          gh api "repos/$GITHUB_REPOSITORY/commits/$RELEASE_SHA/pulls" | jq -e --arg sha "$RELEASE_SHA" '[.[] | select(.merged_at != null and .base.ref == "main" and (.title | startswith("release:")) and .merge_commit_sha == $sha)] | if length == 1 then .[0] else error("not a unique merged release PR") end' > "$RUNNER_TEMP/release-pr.json"
+          pr_head="$(jq -r .head.sha "$RUNNER_TEMP/release-pr.json")"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$pr_head" --jq .tree.sha)" = "$(git rev-parse HEAD^{tree})"
+          test "$(jq -r .sourceSha .release/manifest.json)" = "$(git rev-parse HEAD^1)"
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$pr_head&event=pull_request&per_page=100" | jq -e '[.[].workflow_runs[] | select(.name == "Release Version Policy")] | max_by(.run_number, .run_attempt) | .status == "completed" and .conclusion == "success"'
+          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$RELEASE_SHA&event=push&per_page=100" > "$RUNNER_TEMP/release-ci.json"
+          jq -e '[.[].workflow_runs[]] | group_by(.workflow_id) | map(max_by(.run_number, .run_attempt)) | . as $runs |
+            ($runs | length > 0) and ($runs | all(.status == "completed" and .conclusion == "success")) and
+            (["Quality","Release Hardening","Production React Benchmark","M1 Browser Matrix","CLI Generated App Acceptance"] | all(. as $required | $runs | any(.name == $required)))' "$RUNNER_TEMP/release-ci.json"
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.5'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm ci
+      - run: node --test scripts/release/version-policy.test.mjs scripts/release/npm-stage.test.mjs
+      - run: pnpm audit --prod --audit-level high
+      - name: Strict certification of exact tarballs
+        env:
+          ZAAKIY_RELEASE_ARCHIVES: .generated/npm-release/archives
+          ZAAKIY_RELEASE_REPORT: .generated/npm-release/packed-consumer-report.json
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: |
+          node scripts/release/verify-packages.mjs --enforce-release
+          node scripts/release/npm-stage.mjs dry-run .generated/npm-release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: certified-npm-artifacts
+          path: .generated/npm-release/
+          if-no-files-found: error
+          retention-days: 14
+  stage:
+    needs: certify
+    if: inputs.mode == 'stage' && inputs.confirmation == 'STAGE APPROVED RELEASE' && vars.NPM_PUBLISH_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: npm-production
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.5'
+      - run: npm install --global npm@11.21.3 --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: certified-npm-artifacts
+          path: .generated/npm-release
+      - name: Verify exact main and stage only approved packages with OIDC
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          NPM_STAGE_AUTHORIZED: 'true'
+        run: |
+          set -euo pipefail
+          test "$(gh api repos/$GITHUB_REPOSITORY/branches/main --jq .commit.sha)" = "$RELEASE_SHA"
+          node scripts/release/npm-stage.mjs stage .generated/npm-release
