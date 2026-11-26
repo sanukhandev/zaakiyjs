@@ -1,0 +1,47 @@
+name: Verify Published npm Release
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact release commit certified by npm-publish workflow
+        required: true
+        type: string
+      run_id:
+        description: Successful npm-publish certification workflow run ID
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    if: github.ref == 'refs/heads/main' && github.repository == 'sanukhandev/zaakiyjs'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Validate evidence run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: ${{ inputs.release_sha }}
+          RUN_ID: ${{ inputs.run_id }}
+        run: |
+          [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$RUN_ID" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" | jq -e --arg sha "$RELEASE_SHA" '.head_sha == $sha and .path == ".github/workflows/npm-publish.yml" and .head_branch == "main" and .conclusion == "success"'
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.5'
+      - uses: actions/download-artifact@v4
+        with:
+          name: certified-npm-artifacts
+          path: .generated/npm-release
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run_id }}
+      - name: Verify registry hashes and distribution tags
+        env:
+          RELEASE_SHA: ${{ inputs.release_sha }}
+        run: node scripts/release/npm-stage.mjs verify .generated/npm-release

@@ -1,6 +1,6 @@
 # Independent npm Deployment and Release Runbook
 
-> **Design rule:** one repository, **individually versioned** npm modules, package-specific deployment. The 24 source packages have packed-consumer evidence; no public npm release is verified. Release publishing workflows and npm trusted-publisher associations still need to be implemented.
+> **Design rule:** one repository, **individually versioned** npm modules, package-specific deployment. The 24 source packages have packed-consumer evidence; no public npm release is verified. The PR-driven release workflow is described in [the automation runbook](pr-driven-release.md); npm trusted-publisher associations and actual publication still require owner configuration.
 
 ## 1. Versioning strategy
 
@@ -8,7 +8,7 @@ Every `@zaakiyjs/*` package owns its own SemVer version, changelog and published
 
 Example: `@zaakiyjs/signals@0.3.1` can publish independently while `@zaakiyjs/styles@0.2.4` stays unchanged. Conversely, changing a compiler/runtime protocol may require coordinating several releases even though their version numbers remain independent.
 
-Use Changesets in independent mode: `fixed: []` and `linked: []`. For each user-visible change, create a package-specific changeset or record a no-release decision. During 0.x releases, document breaking API conventions explicitly.
+Use the [PR-driven independent release policy](pr-driven-release.md). Each PR is classified from its title and actual package paths; each generated release plan records version intent, dependency-induced updates and a source SHA. During 0.x releases, document breaking API conventions explicitly.
 
 ## 2. Package contract
 
@@ -23,8 +23,8 @@ Unpublished apps, examples and fixture packages remain `private: true`.
 
 ## 3. Release change flow
 
-1. **Code PR:** identify changed packages; add independent changesets with intended SemVer bump; run unit/golden/browser/security and dependent compatibility tests.
-2. **Release PR:** use Changesets to compute exact package versions, dependency-range updates and per-package changelogs. Review changes, including peer dependency policies.
+1. **Code PR:** validate title, package changes and proposed independent bump; run unit/golden/browser/security and dependent compatibility tests.
+2. **Release PR:** generate exact versions, changelogs and dependency-aware manifest from merged PR history using Prepare npm Release PR. Review and certify the exact release tree.
 3. **Build in dependency order:** topologically build and pack changed packages. Test each packed artifact in a clean consumer fixture.
 4. **Approve publication:** publish **only** packages that need a new registry version and have passing gates; changed dependent ranges may necessitate dependent releases.
 5. **Verify:** check exact npm versions, dist tags and registry artifacts, install from registry and run consumer tests.
@@ -32,20 +32,9 @@ Unpublished apps, examples and fixture packages remain `private: true`.
 
 Never run `npm publish -ws` blindly. A docs-only commit or unrelated module change must not release all packages.
 
-## 4. Changesets implementation
+## 4. PR-driven version automation
 
-The repository includes an independent-mode `.changeset/config.json` as a bootstrap policy. Installing/configuring Changesets CLI and release workflows is a later development task. Proposed future steps, not currently executable here:
-
-```bash
-pnpm changeset
-pnpm changeset status
-pnpm changeset version
-pnpm -r build
-pnpm --filter @zaakiyjs/signals exec npm pack --dry-run --json
-# Publish through reviewed CI workflow, not arbitrary local bulk publishing.
-```
-
-Choose a compatible Changesets version and review peer/dependency update behavior. Avoid release loops from workspace protocol ranges. Keep `workspace:^` or explicit ranges consistent with the supported pnpm/Changesets versions and verify resolved package manifests before publishing.
+The independent-mode Changesets configuration remains a policy marker. The PR-driven planner uses locked node-semver and explicit release channels as the single version writer. See [PR-driven independent releases](pr-driven-release.md) for the custom feat/change/fix taxonomy, prerelease counter/promotion rules, generated release PR and staging workflows. Do not run two version writers.
 
 ## 5. Credentials and provenance
 
@@ -71,7 +60,7 @@ If a package change introduces a breaking protocol incompatibility, pause depend
 
 ## 8. What is deliberately NOT configured yet
 
-Package manifests, build scripts, and release-hardening CI exist. Changesets CLI, authorized npm credentials or Trusted Publishing associations, and actual publishing workflows remain unconfigured or unverified. They must be implemented and validated before publication.
+Package manifests, build scripts, and release-hardening CI exist. The PR-driven preparation and guarded staging workflows are proposed in the release-pipeline PR. Authorized npm scope ownership, initial package registration, per-package Trusted Publisher associations, deployment environment settings and live staging remain unverified. Validate them before publication.
 
 ## Verified pre-release gates (P1 hardening)
 

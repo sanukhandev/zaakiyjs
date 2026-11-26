@@ -1,0 +1,48 @@
+name: Release Version Policy
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited, labeled, unlabeled]
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: release-policy-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  version-preview:
+    name: release / PR version preview
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.5'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: node --test scripts/release/version-policy.test.mjs scripts/release/npm-stage.test.mjs
+      - name: Calculate and validate PR version intent
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .generated
+          node scripts/release/version-policy.mjs preview > .generated/pr-release-preview.json
+          cat .generated/pr-release-preview.json
+          {
+            echo '### Proposed release versions'
+            echo '```json'
+            cat .generated/pr-release-preview.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr-release-preview
+          path: .generated/pr-release-preview.json
+          if-no-files-found: error

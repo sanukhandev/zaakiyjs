@@ -74,7 +74,7 @@ CI blocks on failed correctness tests, ownership leaks, unsafe sinks/URLs, priva
 
 ## npm publishing policy
 
-- Package versions are **independent SemVer**. Use Changesets in independent mode (`fixed: []`, `linked: []`), documenting dependency-induced bumps when compatibility requires them.
+- Package versions are **independent SemVer**. Use the reviewed [PR-driven release policy](docs/releasing/pr-driven-release.md) and its independent package ledger; document dependency-induced bumps. The independent Changesets config is retained as a policy marker, not a second version writer.
 - Every publishable package gets its own `name`, `version`, `exports`, `types`, `files`, `sideEffects` (accurate for CSS), `publishConfig.access: public`, README/changelog and artifact validation. Internal apps remain `private: true`.
 - Build and test affected packages plus dependent compatibility tests; check `npm pack --dry-run`, exports/type declarations, package contents, license, and artifact provenance.
 - Publish changed packages independently after approval, preferably using npm Trusted Publishing (OIDC) from GitHub-hosted Actions. Configure trusted-publisher authorization **for each npm package**. No long-lived write token in CI by default.

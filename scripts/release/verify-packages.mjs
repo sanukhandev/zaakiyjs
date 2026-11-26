@@ -6,7 +6,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,6 +21,8 @@ const temp = mkdtempSync(join(tmpdir(), "zaakiy-packed-consumer-"));
 const output = process.env.ZAAKIY_RELEASE_REPORT || join(root, ".generated", "packed-consumer-report.json");
 const findings = [];
 const archives = {};
+const archiveOutput = process.env.ZAAKIY_RELEASE_ARCHIVES;
+if (archiveOutput && !verifyRelease) throw new Error("Retaining publishable archives requires strict release validation");
 // Owner authorization is recorded in docs/releasing/independent-npm.md (2026-11-26).
 // These checks verify the distributed notice, not legal title or third-party licensing.
 const rootLicensePath = join(root, "LICENSE");
@@ -156,6 +158,15 @@ try {
     npmScopeOwnershipVerified: false,
     releaseBlockers: [...findings]
   };
+  if (archiveOutput) {
+    mkdirSync(archiveOutput, { recursive: true });
+    report.archives = Object.fromEntries(Object.entries(archives).map(([name, path]) => {
+      const filename = path.split("/").at(-1);
+      const bytes = readFileSync(path);
+      copyFileSync(path, join(archiveOutput, filename));
+      return [name, { filename, sha256: createHash("sha256").update(bytes).digest("hex"), integrity: "sha512-" + createHash("sha512").update(bytes).digest("base64") }];
+    }));
+  }
   mkdirSync(dirname(output), { recursive: true });
   writeFileSync(output, JSON.stringify(report, null, 2) + "\n");
   console.log("RESULT " + JSON.stringify(report));
