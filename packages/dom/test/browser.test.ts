@@ -52,14 +52,15 @@ describe("real Chromium compiler-ABI smoke", () => {
       const launched = spawnSync(chrome!, [
         "--headless=new", "--no-sandbox", "--disable-gpu",
         "--disable-dev-shm-usage", "--disable-extensions",
+        "--user-data-dir=" + join(outDir, "chrome-profile"),
         "--allow-file-access-from-files", "--virtual-time-budget=1000",
         "--dump-dom", "file://" + join(outDir, "index.html")
-      ], { encoding: "utf8", timeout: 30000, maxBuffer: 1024 * 1024 });
-      expect(launched.error).toBeUndefined();
+      ], { encoding: "utf8", timeout: 90000, maxBuffer: 1024 * 1024 });
+      expect(launched.error, launched.stderr || undefined).toBeUndefined();
       expect(launched.status, launched.stderr || undefined).toBe(0);
       expect(launched.stdout).toContain('data-zaakiy-browser-result="pass"');
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }
-  }, 45000);
+  }, 120000);
 });

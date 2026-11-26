@@ -40,7 +40,7 @@ describe("review regression: scope, cancellation and disposal races", () => {
     // Core's OwnerScope deliberately does not expose children. This white-box
     // assertion protects against unbounded owner registrations on hot paths.
     const childCount = (): number =>
-      (root as unknown as { children: Set<unknown> }).children.size;
+      ((root as unknown as { children?: Set<unknown> }).children?.size ?? 0);
     const baseline = childCount();
     for (let n = 0; n < 150; n++) {
       const resource = createResource({ owner: root, load: async () => n });

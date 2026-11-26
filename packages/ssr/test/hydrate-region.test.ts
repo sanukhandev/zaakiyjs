@@ -101,6 +101,29 @@ describe("H4 compiler-region client adoption", () => {
     again.dispose();
     container.remove();
   });
+  it("preserves a validated prefix on truncation, insertion and duplicate-key rejection", () => {
+    const container=fixture();
+    const app=signal(state());
+    const handle=hydrateRegionPage(container,plan,envelope,manifest,routeId,{
+      read:path=>app.value[path[0] as keyof ReturnType<typeof state>]
+    });
+    try {
+      const initial=container.querySelectorAll("button");
+      const [a,b]=app.value.rows;
+      flushSync(()=>{app.value={...app.value,rows:[a!,b!]};});
+      expect(container.querySelectorAll("button")[1]).toBe(initial[1]);
+      flushSync(()=>{app.value={...app.value,rows:[a!]};});
+      expect(container.querySelectorAll("button")).toHaveLength(1);
+      expect(container.querySelector("button")).toBe(initial[0]);
+      expect(()=>flushSync(()=>{app.value={...app.value,rows:[a!,a!]};})).toThrow(/Duplicate key/);
+      expect(container.querySelectorAll("button")).toHaveLength(1);
+      expect(container.querySelector("button")).toBe(initial[0]);
+      flushSync(()=>{app.value={...app.value,rows:[a!,{id:"c",label:"Gamma"}]};});
+      expect(container.querySelectorAll("button")[0]).toBe(initial[0]);
+      expect(container.querySelectorAll("button")[1]?.textContent).toBe("Gamma");
+    } finally {handle.dispose();}
+  });
+
   it("transactionally adopts keyed/conditional SSR regions; stale navigation cannot attach listeners", () => {
     const coordinator = createHydrationTransitionCoordinator();
     const container = fixture();
@@ -168,6 +191,35 @@ describe("H4 compiler-region client adoption", () => {
     second.dispose();
     expect(container.querySelectorAll("button")[0]).toBe(a);
   });
+  it("rejects duplicate scoped element identities before resolving any event", () => {
+    const container=fixture();
+    const duplicate:RegionHydrationPlanV2={
+      ...plan,
+      nodes:plan.nodes.map(root=>root.kind==="element"?{
+        ...root,events:[{name:"click",path:["onRoot"]}],
+        children:root.children.map(child=>child.kind==="conditional"?{
+          ...child,yes:child.yes.map(node=>node.kind==="element"?{...node,id:rootId}:node)
+        }:child)
+      }:root)
+    };
+    const original=container.innerHTML;
+    let resolutions=0;
+    expect(()=>hydrateRegionPage(container,duplicate,envelope,manifest,routeId,{
+      read:path=>state()[path[0] as keyof ReturnType<typeof state>],
+      resolveEvent:()=>{resolutions++;return ()=>undefined;}
+    })).toThrow(/duplicate element ID/);
+    expect(resolutions).toBe(0);
+    expect(container.innerHTML).toBe(original);
+  });
+  it("rejects unexpected native attributes on elements with no compiled attributes", () => {
+    const container=fixture();
+    container.querySelector("main")!.setAttribute("data-extra","untrusted");
+    const original=container.innerHTML;
+    expect(()=>hydrateRegionPage(container,plan,envelope,manifest,routeId,{
+      read:path=>state()[path[0] as keyof ReturnType<typeof state>]
+    })).toThrow(/unexpected native attributes/);
+    expect(container.innerHTML).toBe(original);
+  });
   it("refuses unresolved compiler JSX events before attaching any owner", () => {
     const container=fixture();
     const withEvents:RegionHydrationPlanV2={
@@ -182,6 +234,87 @@ describe("H4 compiler-region client adoption", () => {
     })).toThrow(/resolver/);
     expect(container.innerHTML).toBe(original);
   });
+  it("preserves tracked descriptor reads by default for item text", () => {
+    const container=fixture();
+    const label=signal("Alpha");
+    const item=new Proxy({id:"a",label:"Alpha"},{
+      getOwnPropertyDescriptor(target,key){
+        const descriptor=Reflect.getOwnPropertyDescriptor(target,key);
+        return key==="label" && descriptor ? {...descriptor,value:label.value} : descriptor;
+      }
+    });
+    const data={...state(),rows:[item,{id:"b",label:"Beta"}]};
+    const handle=hydrateRegionPage(container,plan,envelope,manifest,routeId,{
+      read:path=>data[path[0] as keyof typeof data]
+    });
+    try{
+      const first=container.querySelector("button")!;
+      flushSync(()=>{label.value="Alpha updated";});
+      expect(first.textContent).toBe("Alpha updated");
+    }finally{handle.dispose();}
+  });
+  it("supports explicit immutable item snapshots with direct keyed text updates", () => {
+    const container=fixture();
+    const app=signal(state());
+    const handle=hydrateRegionPage(container,plan,envelope,manifest,routeId,{
+      read:path=>app.value[path[0] as keyof ReturnType<typeof state>],
+      itemDataMode:"snapshot"
+    });
+    try{
+      const first=container.querySelector("button")!;
+      const text=Array.from(first.childNodes).find(node=>node.nodeType===3);
+      flushSync(()=>{app.value={...app.value,rows:[{id:"a",label:"New"},app.value.rows[1]!]};});
+      expect(container.querySelector("button")).toBe(first);
+      expect(first.textContent).toBe("New");
+      expect(Array.from(first.childNodes).find(node=>node.nodeType===3)).toBe(text);
+    }finally{handle.dispose();}
+  });
+
+  it("adopts opt-in markerless scalar rows and retains text identity on updates", () => {
+    const container=fixture();
+    const compact:RegionHydrationPlanV2={
+      ...plan,markerFormat:"compact-v2",
+      limits:{maxRows:10000,maxNodes:50000,maxHtmlBytes:8388608}
+    };
+    for(const node of Array.from(container.querySelectorAll("button"))){
+      for(const child of Array.from(node.childNodes))
+        if(child.nodeType===8) child.remove();
+    }
+    const walker=document.createTreeWalker(container,128);
+    for(let node=walker.nextNode();node;node=walker.nextNode()){
+      if(node.nodeValue?.startsWith("zaakiy-d2:")){
+        node.nodeValue=node.nodeValue.replace(/^zaakiy-d2:([0-9a-f]{16})[0-9a-f]{16}:(start|end)$/,
+          (_,id,side)=>"z-d:"+id+":"+(side==="start"?"s":"e"));
+      } else if(node.nodeValue?.startsWith("zaakiy-k2:")){
+        node.nodeValue=node.nodeValue.replace(/^zaakiy-k2:[0-9a-f]{32}:([^:]+):(start|end)$/,
+          (_,key,side)=>"z-k:"+key+":"+(side==="start"?"s":"e"));
+      }
+    }
+    const app=signal(state());
+    const initial=container.querySelector("button")!;
+    const text=initial.firstChild;
+    const html=container.innerHTML;
+    const hydrate=()=>hydrateRegionPage(container,compact,envelope,manifest,routeId,{
+      read:path=>app.value[path[0] as keyof ReturnType<typeof state>]
+    });
+    const handle=hydrate();
+    try{
+      expect(container.innerHTML).toBe(html);
+      flushSync(()=>{app.value={...app.value,rows:[{id:"a",label:""},{id:"b",label:"Beta"}]};});
+      expect(initial.firstChild).toBe(text);
+      expect(initial.textContent).toBe("");
+      flushSync(()=>{app.value={...app.value,rows:[{id:"a",label:"<safe>"},{id:"c",label:"Gamma"}]};});
+      expect(initial.firstChild).toBe(text);
+      expect(initial.textContent).toBe("<safe>");
+      expect(initial.querySelector("safe")).toBeNull();
+      expect(container.querySelectorAll("button")[1]?.childNodes).toHaveLength(1);
+    }finally{handle.dispose();}
+    initial.appendChild(document.createComment("unexpected"));
+    const tampered=container.innerHTML;
+    expect(hydrate).toThrow(/mismatch/);
+    expect(container.innerHTML).toBe(tampered);
+  });
+
   it("aborts before mutation when keyed state disagrees with SSR", () => {
     const container = fixture();
     const html = container.innerHTML;
@@ -215,5 +348,141 @@ describe("H4 compiler-region client adoption", () => {
     expect(() => hydrateRegionPage(container, plan, envelope,manifest,routeId,{
       read:path=>data[path[0] as keyof typeof data],signal:abort.signal
     })).toThrow();
+  });
+});
+
+describe("compact-v3 resource-free native keyed hydration",()=>{
+  const flatPlan:RegionHydrationPlanV2={
+    ...plan,markerFormat:"compact-v3",
+    limits:{maxRows:10000,maxNodes:50000,maxHtmlBytes:8388608},
+    nodes:plan.nodes.map(node=>node.kind==="element"?{
+      ...node,children:node.children.map(child=>child.kind==="keyed"?{...child,flat:true as const}:child)
+    }:node)
+  };
+  const flatFixture=()=>{
+    const host=document.createElement("section");
+    host.innerHTML=`<!--zaakiy-h:${markerId}:${digest}--><main><!--zaakiy-r2:${conditionalId}:start--><h2><!--z-d:${titleSlot.slice(0,16)}:s-->Products<!--z-d:${titleSlot.slice(0,16)}:e--></h2><!--zaakiy-r2:${conditionalId}:end--><!--zaakiy-r2:${listId}:start--><button data-zk="a">Alpha</button><button data-zk="b">Beta</button><!--zaakiy-r2:${listId}:end--></main>`;
+    return host;
+  };
+  it("uses no row owners, preserves focus and native identity, and tears down its one list effect",()=>{
+    const host=flatFixture();document.body.appendChild(host);
+    const app=signal(state());
+    const original=host.innerHTML;
+    const buttons=[...host.querySelectorAll("button")];
+    buttons[1]!.focus();
+    const handle=hydrateRegionPage(host,flatPlan,envelope,manifest,routeId,{
+      itemDataMode:"snapshot",read:path=>app.value[path[0] as keyof ReturnType<typeof state>]
+    });
+    try{
+      expect(host.innerHTML).toBe(original);
+      // Only the non-flat conditional branch owns a child scope.
+      expect((handle.owner as unknown as {children?:Set<unknown>}).children?.size??0).toBe(1);
+      flushSync(()=>{app.value={...app.value,rows:[app.value.rows[1]!,app.value.rows[0]!]};});
+      expect(host.querySelectorAll("button")[0]).toBe(buttons[1]);
+      expect(document.activeElement).toBe(buttons[1]);
+      flushSync(()=>{app.value={...app.value,rows:[{id:"b",label:""},{id:"c",label:"<safe>"}]};});
+      expect(host.querySelectorAll("button")[0]).toBe(buttons[1]);
+      expect(buttons[1]!.textContent).toBe("");
+      expect(host.querySelectorAll("button")[1]?.textContent).toBe("<safe>");
+      expect(host.querySelector("safe")).toBeNull();
+      const before=host.innerHTML;
+      expect(()=>flushSync(()=>{app.value={...app.value,rows:[{id:"b",label:"Changed"},{id:"b",label:"Duplicate"}]};})).toThrow(/Duplicate key/);
+      expect(host.innerHTML).toBe(before);
+      flushSync(()=>{app.value={...app.value,rows:[{id:"b",label:"Restored"}]};});
+      expect(host.querySelector("button")).toBe(buttons[1]);
+      expect(buttons[1]!.textContent).toBe("Restored");
+    }finally{
+      handle.dispose();
+      const disposed=host.innerHTML;
+      flushSync(()=>{app.value={...app.value,rows:[]};});
+      expect(host.innerHTML).toBe(disposed);
+      host.remove();
+    }
+  });
+  it("rejects wrong keys, unexpected attributes and nested nodes before attaching",()=>{
+    const data=state();
+    for(const corrupt of [
+      (node:Element)=>node.setAttribute("data-zk","wrong"),
+      (node:Element)=>node.setAttribute("data-extra","wrong"),
+      (node:Element)=>node.appendChild(node.ownerDocument.createElement("span")),
+      (node:Element)=>{node.textContent="Wrong";}
+    ]){
+      const host=flatFixture();corrupt(host.querySelector("button")!);
+      const before=host.innerHTML;
+      expect(()=>hydrateRegionPage(host,flatPlan,envelope,manifest,routeId,{
+        itemDataMode:"snapshot",read:path=>data[path[0] as keyof typeof data]
+      })).toThrow(/mismatch/);
+      expect(host.innerHTML).toBe(before);
+    }
+  });
+  it("rejects duplicate root markers and mismatched build identity without a separate DOM probe",()=>{
+    const data=state();
+    const read=(path:readonly string[])=>data[path[0] as keyof typeof data];
+    const host=flatFixture();
+    host.querySelector("button")!.appendChild(document.createComment("zaakiy-h:"+markerId+":"+digest));
+    const before=host.innerHTML;
+    expect(()=>hydrateRegionPage(host,flatPlan,envelope,manifest,routeId,{read,itemDataMode:"snapshot"})).toThrow(/mismatch/);
+    expect(host.innerHTML).toBe(before);
+    const valid=flatFixture();
+    expect(()=>hydrateRegionPage(valid,flatPlan,envelope,{...manifest,buildId:"9".repeat(64)},routeId,{
+      read,itemDataMode:"snapshot"
+    })).toThrow(/build\/route\/marker identity/);
+  });
+  it("keeps the existing scoped event path for non-flat rows in compact-v3",()=>{
+    const eventPlan:RegionHydrationPlanV2={
+      ...flatPlan,nodes:flatPlan.nodes.map(node=>node.kind==="element"?{
+        ...node,children:node.children.map(child=>{
+          if(child.kind!=="keyed")return child;
+          return {kind:"keyed" as const,id:child.id,path:child.path,itemName:child.itemName,key:child.key,
+            ...(child.source!==undefined?{source:child.source}:{}),rows:child.rows.map(row=>row.kind==="element"?{
+            ...row,events:[{name:"click",path:["onRow"]}]
+          }:row)};
+        })
+      }:node)
+    };
+    const host=flatFixture();
+    for(const button of host.querySelectorAll("button")){
+      const key=button.getAttribute("data-zk")!;
+      button.removeAttribute("data-zk");
+      button.before(document.createComment("z-k:"+key+":s"));
+      button.after(document.createComment("z-k:"+key+":e"));
+    }
+    let calls=0;const data=state();
+    const handle=hydrateRegionPage(host,eventPlan,envelope,manifest,routeId,{
+      itemDataMode:"snapshot",read:path=>data[path[0] as keyof typeof data],
+      resolveEvent:()=>()=>{calls++;}
+    });
+    const button=host.querySelector("button")!;
+    try{button.click();expect(calls).toBe(1);}
+    finally{handle.dispose();}
+    button.click();expect(calls).toBe(1);
+  });
+
+  it("requires explicit immutable snapshots and refuses externally registered row events",()=>{
+    const host=flatFixture(),data=state(),read=(path:readonly string[])=>data[path[0] as keyof typeof data];
+    const before=host.innerHTML;
+    expect(()=>hydrateRegionPage(host,flatPlan,envelope,manifest,routeId,{read})).toThrow(/immutable snapshots/);
+    expect(()=>hydrateRegionPage(host,flatPlan,envelope,manifest,routeId,{
+      read,itemDataMode:"snapshot",events:[{elementId:rowId+":a",name:"click",handler:()=>undefined}]
+    })).toThrow(/compiler-declared events/);
+    expect(host.innerHTML).toBe(before);
+  });
+  it("adopts empty scalar text without creating a node and validates future data before mutation",()=>{
+    const host=flatFixture();
+    host.querySelector("button")!.textContent="";
+    const app=signal({...state(),rows:[{id:"a",label:""},{id:"b",label:"Beta"}]});
+    const before=host.innerHTML;
+    const handle=hydrateRegionPage(host,flatPlan,envelope,manifest,routeId,{
+      itemDataMode:"snapshot",read:path=>app.value[path[0] as keyof ReturnType<typeof state>]
+    });
+    try{
+      expect(host.innerHTML).toBe(before);
+      expect(host.querySelector("button")!.firstChild).toBeNull();
+      const bad={id:"b",get label():string {throw Error("must not execute getter");}};
+      expect(()=>flushSync(()=>{app.value={...app.value,rows:[{id:"a",label:"New"},bad]};})).toThrow(/getter in flat row data/);
+      expect(host.innerHTML).toBe(before);
+      flushSync(()=>{app.value={...app.value,rows:[{id:"a",label:"New"},{id:"b",label:"Beta"}]};});
+      expect(host.querySelector("button")!.textContent).toBe("New");
+    }finally{handle.dispose();}
   });
 });

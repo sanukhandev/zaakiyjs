@@ -109,6 +109,23 @@ describe("owner-scoped lifecycle", () => {
     expect(root.state).toBe("disposed");
   });
 
+  it("mounts and disposes resource-free leaf scopes, with late provider registration", () => {
+    const app = createOwner();
+    const leaf = createOwner(app);
+    const token = createContext<number>("late");
+    expect(useContext(leaf, token)).toBeUndefined();
+    provide(app, token, 1);
+    expect(requireContext(leaf, token)).toBe(1);
+    provide(leaf, token, 2);
+    expect(requireContext(leaf, token)).toBe(2);
+    const providerMap = getOwnerProviders(leaf);
+    mountOwner(app);
+    expect(leaf.state).toBe("active");
+    disposeOwner(app);
+    expect(leaf.parent).toBeNull();
+    expect(providerMap.size).toBe(0);
+  });
+
   it("mounts nested route, feature and component owners before their ancestors", () => {
     const order: string[] = [];
     const app = createOwner();

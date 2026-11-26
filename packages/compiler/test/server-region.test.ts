@@ -39,6 +39,71 @@ describe("H4 compiler-backed region SSR target", () => {
     expect(()=>largeModule.render(context(10001))).toThrow();
   });
 
+  it("emits deterministic flat-v3 client entrypoints and falls back for scoped rows",()=>{
+    const request={fileName,routeId:"products",hydrationScale:"large" as const,hydrationMarkerFormat:"compact-v3" as const};
+    const source='function Page(props:{rows:{id:string;label:string}[];count:number;shown:boolean;onClick:()=>void}){return <main><button onClick={props.onClick}>{props.count}</button>{props.shown?<p>Visible</p>:<p>Hidden</p>}<ul>{props.rows.map(item=><li key={item.id}>{item.label}</li>)}</ul></main>;}';
+    const result=compileRegionServer({...request,source});
+    expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    expect(result.clientCapability).toBe("flat-v3");
+    expect(result.clientHydration?.fileName).toBe(fileName.replace(/\.tsx$/,"")+".region.client.js");
+    expect(result.clientHydration?.code).toContain('from "@zaakiyjs/ssr/client/flat"');
+    expect(result.clientHydration?.code).toContain("export function hydrateCompiledRegion");
+    expect(compileRegionServer({...request,source}).clientHydration).toEqual(result.clientHydration);
+    const complex=source.replace('<li key={item.id}>','<li key={item.id} onClick={props.onClick}>');
+    const fallback=compileRegionServer({...request,source:complex});
+    expect(fallback.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    expect(fallback.clientCapability).toBe("generic");
+    expect(fallback.clientHydration?.code).toContain('from "@zaakiyjs/ssr/client"');
+    expect(compileRegionServer({...request,source,hydrationMarkerFormat:"compact-v2"}).clientCapability).toBe("generic");
+  });
+
+  it("specializes opt-in compact-v2 sole item scalars without changing legacy plans",async()=>{
+    const source='function Page(props:{rows:{id:string;label:string}[]}){return <main><ul>{props.rows.map(item=><li key={item.id}>{item.label}</li>)}</ul></main>;}';
+    const v1=compileRegionServer({fileName,routeId:"products",source,hydrationScale:"large"});
+    const v2=compileRegionServer({fileName,routeId:"products",source,hydrationScale:"large",hydrationMarkerFormat:"compact-v2"});
+    expect(v2.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    expect(v2.hydrationPlan?.markerFormat).toBe("compact-v2");
+    expect(v2.hydrationPlan?.templateDigest).not.toBe(v1.hydrationPlan?.templateDigest);
+    const load=async(code:string)=>import("data:text/javascript;base64,"+Buffer.from(code).toString("base64"));
+    const [a,b]=await Promise.all([load(v1.js[0]!.code),load(v2.js[0]!.code)]);
+    const context={schema:"zaakiy.render/1",route:{id:"products"},request:{signal:{aborted:false}},
+      loaderData:{rows:[{id:"a",label:"<safe>"},{id:"b",label:""}]}};
+    const legacy=a.render(context).body as string;
+    const compact=b.render(context).body as string;
+    expect(legacy).toContain("<!--z-d:");
+    expect(compact).not.toContain("<!--z-d:");
+    expect(compact).toContain("<li>&lt;safe&gt;</li>");
+    expect(compact).toContain("<li></li>");
+    expect(compact).toContain("<!--z-k:a:s-->");
+    expect(compact.length).toBeLessThan(legacy.length);
+    expect(compileRegionServer({fileName,routeId:"products",source,hydrationMarkerFormat:"compact-v2"}).diagnostics.some(d=>d.severity==="error")).toBe(true);
+  });
+
+  it("selects compact-v3 only for resource-free single-element scalar rows",async()=>{
+    const source='function Page(props:{rows:{id:string;label:string}[];onClick:()=>void}){return <main><ul>{props.rows.map(item=><li key={item.id} data-key="row">{item.label}</li>)}</ul><div>{props.rows.map(item=><button key={item.id} onClick={props.onClick}>{item.label}</button>)}</div></main>;}';
+    const result=compileRegionServer({fileName,routeId:"products",source,hydrationScale:"large",hydrationMarkerFormat:"compact-v3"});
+    expect(result.diagnostics.filter(d=>d.severity==="error")).toEqual([]);
+    const plan=result.hydrationPlan!;
+    expect(plan.markerFormat).toBe("compact-v3");
+    const root=plan.nodes[0];
+    if(root?.kind!=="element")throw Error("Expected root");
+    const ul=root.children[0],div=root.children[1];
+    if(ul?.kind!=="element"||div?.kind!=="element")throw Error("Expected list containers");
+    const flat=ul.children[0],owned=div.children[0];
+    if(flat?.kind!=="keyed"||owned?.kind!=="keyed")throw Error("Expected keyed lists");
+    expect(flat.flat).toBe(true);
+    expect(owned.flat).toBeUndefined();
+    const server=await import("data:text/javascript;base64,"+Buffer.from(result.js[0]!.code).toString("base64"));
+    const html=server.render({schema:"zaakiy.render/1",route:{id:"products"},request:{signal:{aborted:false}},
+      loaderData:{rows:[{id:"a",label:"<safe>"},{id:"b",label:""}]}}).body as string;
+    expect(html).toContain('<li data-key="row" data-zk="a">&lt;safe&gt;</li>');
+    expect(html).toContain('<li data-key="row" data-zk="b"></li>');
+    expect(html).toContain("<!--z-k:a:s--><button>");
+    expect(html.match(/<!--z-k:/g)).toHaveLength(4);
+    expect(()=>server.render({schema:"zaakiy.render/1",route:{id:"products"},request:{signal:{aborted:false}},
+      loaderData:{rows:[{id:"a",label:"A"},{id:"a",label:"B"}]}})).toThrow(/duplicate/);
+  });
+
   it("bounds aggregate UTF-8 SSR output after valid per-scalar checks",async()=>{
     const source='function Page(props:{rows:{id:string;label:string}[]}){return <main>{props.rows.map(item=><p key={item.id}>{item.label}</p>)}</main>;}';
     const compiled=compileRegionServer({fileName,routeId:"products",source,hydrationScale:"large"});

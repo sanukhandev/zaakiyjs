@@ -140,7 +140,7 @@ describe("focus, layers, dialogs", () => {
     const first = document.createElement("button");
     modal.append(first); f.host.append(modal); f.launch.focus();
     const dialog = createDialog({ owner: f.owner, element: modal, overlays: f.overlays, ariaLabel: "Repeat" });
-    const scopedChildren = () => (f.owner as unknown as { children: Set<unknown> }).children.size;
+    const scopedChildren = () => ((f.owner as unknown as { children?: Set<unknown> }).children?.size ?? 0);
     const baseline = scopedChildren();
     for (let index = 0; index < 30; index++) {
       dialog.setOpen(true); flushSync();

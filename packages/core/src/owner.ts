@@ -17,10 +17,11 @@ let currentOwner: OwnerScope | null = null;
 class Scope implements OwnerScope {
   parent: Scope | null;
   state: OwnerState = "created";
-  private readonly children = new Set<Scope>();
-  private readonly cleanups: Cleanup[] = [];
-  private readonly mountCallbacks: Cleanup[] = [];
-  readonly providers = new Map<symbol, unknown>();
+  private children: Set<Scope> | undefined;
+  private cleanups: Cleanup[] | undefined;
+  private mountCallbacks: Cleanup[] | undefined;
+  private providerMap: Map<symbol, unknown> | undefined;
+  get providers(): Map<symbol, unknown> { return this.providerMap ??= new Map(); }
   componentInitialized = false;
   /** Provider reads remain valid while teardown callbacks execute. */
   private cleanupInProgress = false;
@@ -29,7 +30,7 @@ class Scope implements OwnerScope {
 
   constructor(parent: Scope | null) {
     this.parent = parent;
-    parent?.children.add(this);
+    if (parent) (parent.children ??= new Set()).add(this);
   }
 
   get disposed(): boolean {
@@ -38,7 +39,7 @@ class Scope implements OwnerScope {
 
   addCleanup(cleanup: Cleanup): void {
     this.ensureAlive();
-    this.cleanups.push(cleanup);
+    (this.cleanups ??= []).push(cleanup);
   }
 
   addMount(callback: Cleanup): void {
@@ -46,7 +47,7 @@ class Scope implements OwnerScope {
     if (this.state !== "created" && this.state !== "initialized") {
       throw new Error("Mount callbacks must be registered before mounting");
     }
-    this.mountCallbacks.push(callback);
+    (this.mountCallbacks ??= []).push(callback);
   }
 
   ensureAlive(): void {
@@ -76,7 +77,7 @@ class Scope implements OwnerScope {
     try {
       // Mount descendants before ancestors, after the DOM subtree has been inserted.
       // Dynamic owners created later must be mounted explicitly by the DOM adapter.
-      for (const child of [...this.children]) {
+      if (this.children?.size) for (const child of [...this.children]) {
         if (child.disposed) continue;
         if (child.state === "created" || child.state === "initialized") {
           child.mount();
@@ -84,8 +85,9 @@ class Scope implements OwnerScope {
         if (this.disposed) return;
       }
       this.state = "mounted";
-      const callbacks = this.mountCallbacks.splice(0);
-      for (const callback of callbacks) {
+      const callbacks = this.mountCallbacks;
+      this.mountCallbacks = undefined;
+      if (callbacks) for (const callback of callbacks) {
         runWithOwner(this, callback);
         if (this.disposed) return;
       }
@@ -113,14 +115,14 @@ class Scope implements OwnerScope {
       if (cursor === this) throw new Error("Owner transfer would create a cycle");
     }
     if (this.parent === parent) return;
-    this.parent.children.delete(this);
+    this.parent.children?.delete(this);
     this.parent = parent;
-    parent.children.add(this);
+    (parent.children ??= new Set()).add(this);
   }
 
   /** True if a descendant is executing cleanup and still needs our providers. */
   private hasActiveDescendantCleanup(): boolean {
-    for (const child of this.children) {
+    if (this.children) for (const child of this.children) {
       if (child.cleanupInProgress || child.hasActiveDescendantCleanup()) return true;
     }
     return false;
@@ -146,25 +148,26 @@ class Scope implements OwnerScope {
     this.cleanupInProgress = true;
     const errors: unknown[] = [];
     try {
-      const children = [...this.children].reverse();
-      this.children.clear();
-      for (const child of children) {
+      const children = this.children?.size ? [...this.children].reverse() : undefined;
+      this.children?.clear();
+      this.children = undefined;
+      if (children) for (const child of children) {
         try { child.dispose(); } catch (error) { errors.push(error); }
       }
-      this.mountCallbacks.length = 0;
-      for (let index = this.cleanups.length - 1; index >= 0; index--) {
+      this.mountCallbacks = undefined;
+      for (let index = (this.cleanups?.length ?? 0) - 1; index >= 0; index--) {
         try {
           // A teardown always runs in its own lexical owner, never the caller's.
           // Registration remains forbidden because this scope is already disposed.
-          withLexicalOwner(this, () => this.cleanups[index]?.());
+          withLexicalOwner(this, () => this.cleanups?.[index]?.());
         } catch (error) { errors.push(error); }
       }
     } finally {
       // Ancestry and provider values must survive through the last cleanup,
       // including child cleanup when an ancestor is already disposing.
-      this.mountCallbacks.length = 0;
-      this.cleanups.length = 0;
-      this.providers.clear();
+      this.mountCallbacks = undefined;
+      this.cleanups = undefined;
+      this.providerMap?.clear();
       const parent = this.parent;
       // Capture the complete ancestry before severing this link. A teardown
       // request can be pending on a grandparent even if the intermediate
@@ -173,7 +176,7 @@ class Scope implements OwnerScope {
       for (let cursor = parent; cursor !== null; cursor = cursor.parent) {
         ancestors.push(cursor);
       }
-      parent?.children.delete(this);
+      parent?.children?.delete(this);
       this.parent = null; // Retained disposed scopes must not retain their app.
       this.cleanupInProgress = false;
       // Every pending ancestor now gets a chance to finish, child-first.

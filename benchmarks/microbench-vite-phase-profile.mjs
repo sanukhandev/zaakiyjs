@@ -1,16 +1,18 @@
 import {performance} from "node:perf_hooks";
 import {createHash} from "node:crypto";
 import {gzipSync} from "node:zlib";
-import {mkdtemp,mkdir,writeFile,rm} from "node:fs/promises";
-import {join,resolve} from "node:path";
+import {mkdtemp,mkdir,writeFile,rm,readFile} from "node:fs/promises";
+import {join,resolve,relative} from "node:path";
 import {pathToFileURL} from "node:url";
 import {build} from "vite";
 import {Buffer} from "node:buffer";
+import {canonicalManifest,productionEvidence,digest} from "./vite-production-evidence.mjs";
+import {verifyProductionBrowser} from "./vite-production-browser.mjs";
 
 const root=resolve(process.argv[2]??".");
 const outputFile=resolve(process.argv[3]??"benchmark-artifacts/vite-production.json");
 const {zaakiyPlugin}=await import(pathToFileURL(join(root,"packages/vite-plugin/dist/index.js")).href);
-function instrumentPlugin(plugin, metrics) {
+function instrumentPlugin(plugin, metrics, project) {
   const transform = plugin.transform;
   const generateBundle = plugin.generateBundle;
   if (typeof transform !== "function" || typeof generateBundle !== "function") {
@@ -18,10 +20,19 @@ function instrumentPlugin(plugin, metrics) {
   }
   plugin.transform = async function (...args) {
     const start = performance.now();
-    try { return await transform.apply(this, args); }
+    let elapsed;
+    try {
+      const result=await transform.apply(this,args);
+      elapsed=performance.now()-start;
+      if (/\.[cm]?tsx(?:\?|$)/.test(args[1]??"")) {
+        if(!result||typeof result.code!=="string")throw Error("Missing compiler output for "+args[1]);
+        metrics.compiled.push({file:relative(project,args[1]),sha256:digest(result.code)});
+      }
+      return result;
+    }
     finally {
       if (/\.[cm]?tsx(?:\?|$)/.test(args[1] ?? "")) {
-        metrics.transformMs += performance.now() - start;
+        metrics.transformMs += elapsed??(performance.now()-start);
         metrics.transformCalls++;
       }
     }
@@ -57,32 +68,20 @@ async function generate(count){
   await writeFile(join(folder,"src/main.js"),imports.join("\n")+"\n");
   return folder;
 }
-function canonicalManifest(content) {
-  const parsed=JSON.parse(content);
-  if(parsed.schemaVersion!==1||!Array.isArray(parsed.assets))throw Error("Invalid versioned asset manifest");
-  const unique=new Map();
-  for(const entry of parsed.assets){
-    if(!entry||typeof entry.fileName!=="string"||typeof entry.kind!=="string")
-      throw Error("Malformed asset metadata");
-    const old=unique.get(entry.fileName);
-    if(old!==undefined&&JSON.stringify(old)!==JSON.stringify(entry))
-      throw Error("Conflicting duplicate asset records");
-    unique.set(entry.fileName,entry);
-  }
-  return JSON.stringify({...parsed,
-    assets:[...unique.values()].sort((a,b)=>a.fileName.localeCompare(b.fileName))});
-}
 async function measure(count){
   const project=await generate(count),samples=[],profiles=[];
-  let assetHash="", semanticAssetHash="", outputGzipBytes=0;
+  let assetHash="", semanticAssetHash="", outputGzipBytes=0, compilerHash="", evidence, lastAssets;
+  const fixtureFiles=["index.html","src/main.js",...Array.from({length:count},(_,i)=>"src/component-"+i+".tsx")];
+  const fixtureSha256=digest(JSON.stringify(await Promise.all(fixtureFiles.map(async file=>({file,sha256:digest(await readFile(join(project,file)))})))));
+  let browser;
   try{
     for(let i=-1;i<4;i++){
-      const metrics={transformMs:0,transformCalls:0,cssGenerateMs:0,cssGenerateCalls:0};
+      const metrics={transformMs:0,transformCalls:0,cssGenerateMs:0,cssGenerateCalls:0,compiled:[]};
       const start=performance.now();
       const result=await build({
         configFile:false,
         root:project,
-        plugins:[instrumentPlugin(zaakiyPlugin(),metrics)],
+        plugins:[instrumentPlugin(zaakiyPlugin(),metrics,project)],
         logLevel:"silent",
         build:{write:false,emptyOutDir:false,sourcemap:false,minify:true}
       });
@@ -100,25 +99,32 @@ async function measure(count){
       const checksum=hash.digest("hex");
       if(assetHash&&checksum!==assetHash)throw Error("Non-reproducible production build at "+count+" modules");
       assetHash=checksum;
-      // The sole reviewed manifest change is duplicate-record removal; all other
-      // production files and the canonical manifest must remain byte-identical.
+      // Retain full hashes, including executable content. Separately record
+      // normalized asset structure and compiler output for runtime-change review.
       const semantic=createHash("sha256");
       for(const item of assets){
         semantic.update(item.name+"\0"+(item.name==="zaakiy-assets.json"
-          ?canonicalManifest(item.content):item.content)+"\0");
+          ?JSON.stringify(canonicalManifest(item.content)):item.content)+"\0");
       }
       const semanticChecksum=semantic.digest("hex");
       if(semanticAssetHash&&semanticChecksum!==semanticAssetHash)
         throw Error("Non-reproducible semantic production output at "+count+" modules");
       semanticAssetHash=semanticChecksum;
+      const compiled=digest(JSON.stringify(metrics.compiled.sort((a,b)=>a.file.localeCompare(b.file))));
+      if(compilerHash&&compiled!==compilerHash)throw Error("Non-reproducible compiler output");
+      compilerHash=compiled;
+      evidence=productionEvidence(assets);
+      lastAssets=assets;
       outputGzipBytes=assets.filter(item=>item.name.endsWith(".js")||item.name.endsWith(".css"))
         .reduce((sum,item)=>sum+gzipSync(item.content).length,0);
       if(i>=0){samples.push(elapsed);profiles.push(metrics);}
     }
+    browser=await verifyProductionBrowser(lastAssets,count);
   }finally{await rm(project,{recursive:true,force:true});}
   const record={modules:count,samples:4,warmups:1,
     p50_ms:percentile(samples,.5),p95_ms:percentile(samples,.95),
     assetSha256:assetHash,semanticAssetSha256:semanticAssetHash,appJsCssGzipBytes:outputGzipBytes,
+    fixtureSha256,compilerSha256:compilerHash,production:evidence,browser,
     samples_ms:samples,
     transformP50_ms:percentile(profiles.map(p=>p.transformMs),.5),
     cssGenerationP50_ms:percentile(profiles.map(p=>p.cssGenerateMs),.5),
@@ -130,7 +136,7 @@ async function measure(count){
 }
 const scenarios=[];
 for(const count of [1,8,24])scenarios.push(await measure(count));
-const report={schemaVersion:1,node:process.version,root,scenarios,
+const report={schemaVersion:2,node:process.version,root,scenarios,
   method:"B8 real Vite production builds with measured Zaakiy plugin transform time and CSS generation time; attribution is inclusive and excludes external Vite/Rollup phases"};
 await mkdir(resolve(outputFile,".."),{recursive:true});
 await writeFile(outputFile,JSON.stringify(report,null,2)+"\n");

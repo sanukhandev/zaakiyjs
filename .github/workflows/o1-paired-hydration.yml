@@ -1,0 +1,257 @@
+name: O0 O1 Paired Hydration Baseline
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'benchmarks/h4-hydration/**'
+      - 'packages/compiler/**'
+      - 'packages/ssr/**'
+      - 'packages/signals/**'
+      - 'packages/core/**'
+      - 'packages/dom/**'
+      - '.github/workflows/o1-paired-hydration.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: o1-paired-hydration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: paired / build ${{ matrix.label }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: main
+            ref: b0da54d2bdfb9c984cf0409755fafc98b940f183
+            format: compact-v2
+          - label: pr99
+            ref: afb71fd8e9f175271e832fac34c776c2570c51ed
+            format: compact-v2
+          - label: prior
+            ref: 185478cc8f5361b8cec780c42b5d7d7ffd89b991
+            format: compact-v2
+          - label: flat
+            ref: 78c1e3c6307c3315d4b3386c08638138b7874b26
+            format: compact-v3
+          - label: candidate
+            ref: ${{ github.sha }}
+            format: compact-v3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: harness
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ matrix.ref }}
+          path: source
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.20.0
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.23.5'
+      - name: Build exact source with frozen dependencies
+        working-directory: source
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${{ matrix.ref }}"
+          pnpm install --frozen-lockfile
+          pnpm build
+      - name: Apply identical benchmark fixture to each compiled workspace
+        run: cp harness/benchmarks/h4-hydration/build-zaakiy.mjs source/benchmarks/h4-hydration/build-zaakiy.mjs
+      - name: Generate native SSR and hydration assets
+        working-directory: source
+        env:
+          H4_SITE: ${{ github.workspace }}/paired-site
+          H4_MARKER_FORMAT: ${{ matrix.format }}
+          NODE_ENV: production
+        run: node benchmarks/h4-hydration/build-zaakiy.mjs
+      - name: Record build provenance and compressed assets
+        working-directory: source
+        env:
+          H4_SITE: ${{ github.workspace }}/paired-site
+          SOURCE_SHA: ${{ matrix.ref }}
+        run: |
+          node --input-type=module <<'JS'
+          import {readFile,writeFile} from "node:fs/promises";
+          import {join} from "node:path";
+          import {createHash} from "node:crypto";
+          import {gzipSync,brotliCompressSync} from "node:zlib";
+          const site=process.env.H4_SITE;
+          const sha=bytes=>createHash("sha256").update(bytes).digest("hex");
+          const stats=bytes=>({raw:bytes.length,gzip:gzipSync(bytes,{level:9}).length,brotli:brotliCompressSync(bytes).length,sha256:sha(bytes)});
+          const build=JSON.parse(await readFile(join(site,"zaakiyjs-build.json"),"utf8"));
+          if(build.rejectedCases.length || build.generatedCases.join(",")!=="100,1000,10000") throw Error("Incomplete native SSR build");
+          const html={};
+          for(const size of [100,1000,10000]){
+            const bytes=await readFile(join(site,"zaakiyjs",String(size),"index.html"));
+            if(!bytes.includes(Buffer.from("data-key")))throw Error("Missing pre-rendered list");
+            html[size]=stats(bytes);
+          }
+          const js=stats(await readFile(join(site,"zaakiyjs.js")));
+          if(js.sha256!==build.clientSha256)throw Error("Unexpected client bundle");
+          const manifest={schema:"zaakiy.h4-paired-build/1",commit:process.env.SOURCE_SHA,node:process.version,
+            lockSha256:sha(await readFile("pnpm-lock.yaml")),
+            fixtureSha256:sha(await readFile("benchmarks/h4-hydration/build-zaakiy.mjs")),
+            variants:{zaakiyjs:{html,bundleBytes:js,build}}};
+          await writeFile(join(site,"build-manifest.json"),JSON.stringify(manifest,null,2)+"\n");
+          JS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: paired-site-${{ matrix.label }}-${{ github.sha }}
+          path: paired-site/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Instrument separate diagnostic build (candidate only)
+        if: matrix.label == 'candidate'
+        working-directory: source
+        run: |
+          node benchmarks/h4-hydration/profile-source.mjs
+          pnpm --filter @zaakiyjs/ssr build
+      - name: Build isolated profile fixture
+        if: matrix.label == 'candidate'
+        working-directory: source
+        env:
+          H4_SITE: ${{ github.workspace }}/profile-site
+          NODE_ENV: production
+        run: node benchmarks/h4-hydration/build-zaakiy.mjs
+      - uses: actions/upload-artifact@v4
+        if: matrix.label == 'candidate'
+        with:
+          name: profile-site-${{ github.sha }}
+          path: profile-site/
+          if-no-files-found: error
+          retention-days: 14
+
+
+  measure:
+    name: paired / ${{ matrix.browser }} trial ${{ matrix.trial }}
+    needs: build
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.64.1-noble
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+        trial: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: paired-site-main-${{ github.sha }}
+          path: paired-sites/main
+      - uses: actions/download-artifact@v4
+        with:
+          name: paired-site-pr99-${{ github.sha }}
+          path: paired-sites/pr99
+      - uses: actions/download-artifact@v4
+        with:
+          name: paired-site-prior-${{ github.sha }}
+          path: paired-sites/prior
+      - uses: actions/download-artifact@v4
+        with:
+          name: paired-site-flat-${{ github.sha }}
+          path: paired-sites/flat
+      - uses: actions/download-artifact@v4
+        with:
+          name: paired-site-candidate-${{ github.sha }}
+          path: paired-sites/candidate
+      - name: Install pinned real browsers
+        run: bash scripts/ci/install-playwright-browsers.sh
+      - name: Compare all five builds in alternating blocks on one worker
+        run: |
+          mkdir -p benchmark-artifacts/paired
+          uname -a > benchmark-artifacts/paired/runner.txt
+          cat /proc/cpuinfo >> benchmark-artifacts/paired/runner.txt
+          python3 benchmarks/h4-hydration/paired.py \
+            --site-root paired-sites --output benchmark-artifacts/paired \
+            --engine "${{ matrix.browser }}" --candidate "${{ github.sha }}" | tee benchmark-artifacts/paired/log.txt
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: paired-hydration-${{ matrix.browser }}-${{ matrix.trial }}-${{ github.sha }}
+          path: benchmark-artifacts/paired/
+          if-no-files-found: error
+          retention-days: 14
+
+  profile:
+    name: profile / ${{ matrix.browser }} hydration phases
+    needs: build
+    runs-on: ubuntu-24.04
+    container:
+      image: mcr.microsoft.com/playwright/python:v1.64.1-noble
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: profile-site-${{ github.sha }}
+          path: profile-site
+      - name: Install pinned native browsers
+        run: bash scripts/ci/install-playwright-browsers.sh
+      - name: Record diagnostic phase profiles (not production timings)
+        run: |
+          python3 benchmarks/h4-hydration/profile.py \
+            --site profile-site --output benchmark-artifacts/profile.json \
+            --engine "${{ matrix.browser }}" --head "${{ github.sha }}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hydration-profile-${{ matrix.browser }}-${{ github.sha }}
+          path: benchmark-artifacts/profile.json
+          if-no-files-found: error
+          retention-days: 14
+
+  paired-review:
+    name: paired / validate three independent trials per browser
+    needs: measure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: paired-hydration-*-${{ github.sha }}
+          path: paired-evidence
+      - name: Validate repeated paired evidence and flag persistent regressions
+        run: python3 benchmarks/h4-hydration/paired-review.py --source paired-evidence --head "${{ github.sha }}" --output benchmark-artifacts/paired-review.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: paired-review-${{ github.sha }}
+          path: benchmark-artifacts/paired-review.json
+          if-no-files-found: error
+          retention-days: 14

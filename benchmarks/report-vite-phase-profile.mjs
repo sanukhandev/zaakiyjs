@@ -1,47 +1,33 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import { validateComparison } from "./vite-production-evidence.mjs";
 const dir = resolve(process.argv[2] ?? "benchmark-artifacts");
+const mode=process.argv[3]??"strict";
+if(!["strict","reviewed-runtime-delta"].includes(mode))throw Error("Unknown B8 comparison mode");
 const read = async file => JSON.parse(await readFile(resolve(dir, file), "utf8"));
 const frozen = await read("b8-vite-frozen.json");
 const candidate = await read("b8-vite-candidate.json");
-if (frozen.schemaVersion !== 1 || candidate.schemaVersion !== 1 ||
-    frozen.scenarios.length !== 3 || candidate.scenarios.length !== 3) {
-  throw new Error("Missing Vite phase benchmark scenarios");
-}
+const comparisons=validateComparison(frozen,candidate,mode);
 const lines = [
   "# B8 — Vite build phase profiling",
   "",
   "Same-run pinned Vite production builds for both the frozen B0–B5 consolidated implementation and PR candidate.",
-  "Per-case plugin timings include actual TSX transformations and the generateBundle hook, not all Vite/Rollup work.",
+  "Comparison mode: "+mode+". All fixture sources, compiler output, CSS, normalized HTML/manifest metadata and native browser behavior must match.",
   "",
-  "| TSX modules | Frozen total p50 | Candidate total p50 | Candidate TSX transform p50 | Candidate CSS/manifest generation p50 |",
-  "| ---: | ---: | ---: | ---: | ---: |"
+  "| TSX modules | Frozen total p50 | Candidate total p50 | Candidate TSX transform p50 | Candidate CSS/manifest generation p50 | Frozen JS/CSS gzip | Candidate JS/CSS gzip |",
+  "| ---: | ---: | ---: | ---: | ---: | ---: | ---: |"
 ];
-for (let i = 0; i < 3; i++) {
-  const b = frozen.scenarios[i], c = candidate.scenarios[i];
-  if (![1,8,24].includes(c.modules) || c.modules !== b.modules ||
-      !b.semanticAssetSha256 || !c.semanticAssetSha256 ||
-      b.semanticAssetSha256 !== c.semanticAssetSha256 ||
-      b.appJsCssGzipBytes !== c.appJsCssGzipBytes) {
-    throw new Error("B8 production assets or benchmark fixtures differ");
-  }
-  for (const record of [b,c]) {
-    if (!Number.isFinite(record.p50_ms) || !Number.isFinite(record.p95_ms) ||
-        !Number.isFinite(record.transformP50_ms) ||
-        !Number.isFinite(record.cssGenerationP50_ms) ||
-        record.profiles.length !== 4 ||
-        record.transformCalls.some(count => count !== record.modules) ||
-        record.cssGenerationCalls.some(count => count !== 1)) {
-      throw new Error("Invalid B8 phase instrumentation for " + record.modules);
-    }
-  }
-  lines.push("| "+c.modules+" | "+b.p50_ms.toFixed(1)+" ms | "+
-    c.p50_ms.toFixed(1)+" ms | "+c.transformP50_ms.toFixed(1)+" ms | "+
-    c.cssGenerationP50_ms.toFixed(1)+" ms |");
+for(let i=0;i<3;i++){
+  const b=frozen.scenarios[i],c=candidate.scenarios[i];
+  lines.push("| "+c.modules+" | "+b.p50_ms.toFixed(1)+" ms | "+c.p50_ms.toFixed(1)+" ms | "+
+    c.transformP50_ms.toFixed(1)+" ms | "+c.cssGenerationP50_ms.toFixed(1)+" ms | "+b.appJsCssGzipBytes+" B | "+c.appJsCssGzipBytes+" B |");
 }
-lines.push("", "All executable asset contents and canonical manifest semantic hashes match; JS/CSS gzip byte counts match.",
-  "The raw manifest hash may change only where identical duplicate filename/kind records were removed. Both raw asset hashes remain recorded. The canonicalizer rejects conflicting duplicate asset metadata.",
-  "Phase totals overlap other build work and are *not* additive to wall time. HMR latency is not measured by this production-build fixture.", "");
-await mkdir(dir, { recursive: true });
-await writeFile(resolve(dir, "b8-vite-phase-report.md"), lines.join("\n"));
+lines.push("", mode==="strict"
+  ?"All executable asset contents and canonical manifest semantic hashes match; JS/CSS gzip byte counts match."
+  :"Executable entry bytes may differ only in explicit reviewed-runtime-delta mode. Full hashes, byte deltas and browser assertion evidence are retained; the comparison does not authorize arbitrary compiler, CSS, manifest or HTML changes. Bundle-size increases still require review.",
+  "Every variant independently produced identical raw assets over repeated builds. Conflicting duplicate manifest entries are rejected; only the validated entry filename is normalized for runtime comparisons.",
+  "Phase totals overlap other build work and are not additive to wall time. Browser verification is outside measured build time. HMR latency is not measured.", "");
+await mkdir(dir,{recursive:true});
+await writeFile(resolve(dir,"b8-vite-comparison.json"),JSON.stringify({schemaVersion:2,mode,comparisons},null,2)+"\n");
+await writeFile(resolve(dir,"b8-vite-phase-report.md"),lines.join("\n"));
 console.log(lines.join("\n"));

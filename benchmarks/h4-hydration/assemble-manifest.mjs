@@ -81,6 +81,14 @@ for(const framework of variants){
     }:{}
   };
 }
+const zaakiyBuild=JSON.parse(await readFile(join(site,"zaakiyjs-build.json"),"utf8"));
+if(!zaakiyBuild.cleanProduction||!zaakiyBuild.cleanProduction.assets["app.js"])throw Error("Missing clean app evidence");
+for(const [file,expected] of Object.entries(zaakiyBuild.cleanProduction.assets)){
+  const actual=stats(await readFile(join(site,"clean-production",file)));
+  if(JSON.stringify(actual)!==JSON.stringify(expected))throw Error("Clean production asset mismatch: "+file);
+}
+report.variants.zaakiyjs.cleanProduction=zaakiyBuild.cleanProduction;
+report.variants.zaakiyjs.markerFormat=zaakiyBuild.markerFormat;
 if(Object.keys(report.variants).length!==4) throw Error("Incomplete H4 matrix");
 await writeFile(join(site,"build-manifest.json"),JSON.stringify(report,null,2)+"\n");
 console.log(JSON.stringify({commit:report.commit,versions:Object.fromEntries(

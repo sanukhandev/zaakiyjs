@@ -29,6 +29,10 @@
         "types": "./dist/build-entry.d.ts",
         "import": "./dist/build-entry.js"
       }
+    },
+    "./client/flat": {
+      "types": "./dist/hydrate-flat.d.ts",
+      "import": "./dist/hydrate-flat.js"
     }
   },
   "types": "./dist/index.d.ts",

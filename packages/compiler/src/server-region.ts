@@ -15,7 +15,7 @@ type RegionNode =
   | { readonly kind: "literal"; readonly value: string }
   | { readonly kind: "data"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item" }
   | { readonly kind: "conditional"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item"; readonly yes: readonly RegionNode[]; readonly no: readonly RegionNode[] }
-  | { readonly kind: "keyed"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item"; readonly itemName: string; readonly key: string; readonly rows: readonly RegionNode[] };
+  | { readonly kind: "keyed"; readonly id: string; readonly path: readonly string[]; readonly source: "props" | "item"; readonly itemName: string; readonly key: string; readonly rows: readonly RegionNode[]; readonly flat?: true };
 export interface RegionHydrationPlanV2 {
   readonly schema: "zaakiy.region-hydration/2";
   readonly routeId: string;
@@ -25,7 +25,7 @@ export interface RegionHydrationPlanV2 {
   /** Optional explicit compiler-selected limits; standard plan omits this field. */
   readonly limits?: {readonly maxRows:10000;readonly maxNodes:50000;readonly maxHtmlBytes:8388608};
   /** Selected v2-only marker layout. Omission preserves prior long markers. */
-  readonly markerFormat?: "compact-v1";
+  readonly markerFormat?: "compact-v1" | "compact-v2" | "compact-v3";
 }
 export interface RegionServerRequest extends CompileRequest {
   readonly routeId: string;
@@ -33,6 +33,8 @@ export interface RegionServerRequest extends CompileRequest {
   readonly entryComponent?: string;
   /** Explicit large-list tier; standard remains 4,096 rows and 8,192 nodes. */
   readonly hydrationScale?: "standard" | "large";
+  /** Opt-in markerless scalar layout, valid only for the large-list tier. */
+  readonly hydrationMarkerFormat?: "compact-v1" | "compact-v2" | "compact-v3";
   /** Trusted build-time import sources; verified by SHA-256 and never executed. */
   readonly componentModules?: readonly {
     readonly specifier:string;readonly fileName:string;
@@ -45,6 +47,25 @@ export interface RegionServerCompileResult {
   readonly hydrationPlan?: RegionHydrationPlanV2;
   /** Trusted build-generated browser module; never included in SSR HTML. */
   readonly clientEvents?: readonly GeneratedAsset[];
+  /** Compiler-selected static client module. Existing plan API stays supported. */
+  readonly clientHydration?: GeneratedAsset;
+  readonly clientCapability?: "flat-v3" | "generic";
+}
+// Restricted capability mirrors the browser entry's fail-closed contract.
+const FLAT_CLIENT_TAG=/^(?:main|div|section|article|header|footer|nav|aside|p|span|strong|em|small|h[1-6]|ul|ol|li|dl|dt|dd|label|button|input|br|hr)$/;
+const FLAT_CLIENT_ATTR=/^ (?:class|role|title|tabindex|type|name|value|placeholder|id|for|data-[a-z0-9_-]+|aria-[a-z0-9_-]+)="[^"]*"$/;
+function supportsFlatClient(nodes:readonly RegionNode[],staticOnly=false):boolean{
+  return nodes.every(node=>{
+    if(node.kind==="literal")return true;
+    if(node.kind==="element")return FLAT_CLIENT_TAG.test(node.tag)&&
+      node.attrs.every(attr=>FLAT_CLIENT_ATTR.test(attr))&&
+      (!staticOnly||!node.events?.length)&&supportsFlatClient(node.children,staticOnly);
+    if(staticOnly)return false;
+    if(node.kind==="data")return node.source==="props";
+    if(node.kind==="conditional")return node.source==="props"&&
+      supportsFlatClient(node.yes,true)&&supportsFlatClient(node.no,true);
+    return node.kind==="keyed"&&node.flat===true&&node.source==="props";
+  });
 }
 const hash = (value: string): string => createHash("sha256").update(value).digest("hex");
 const ROUTE = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,199}$/;
@@ -74,6 +95,10 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
   if(request.hydrationScale !== undefined && !["standard","large"].includes(request.hydrationScale))
     return reject("Unknown H4 hydration scale");
   const large=request.hydrationScale==="large";
+  if(request.hydrationMarkerFormat!==undefined && (!large ||
+      !["compact-v1","compact-v2","compact-v3"].includes(request.hydrationMarkerFormat)))
+    return reject("H4 marker format requires the approved large-list tier");
+  const markerFormat=large ? request.hydrationMarkerFormat??"compact-v1" : undefined;
   const limits=large?{maxRows:10000 as const,maxNodes:50000 as const,maxHtmlBytes:8388608 as const}:undefined;
   const ir = optimizeIR(parseToIR(request).document);
   const sourceFile = ts.createSourceFile(request.fileName,request.source,
@@ -313,8 +338,16 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           if (rows.length !== 1 || rows[0]?.kind !== "element")
             throw new TypeError("H4 keyed row must have exactly one native root");
           const collection=resolve(node.collection.source,itemName,aliases);
+          const row=rows[0];
+          const child=row.children[0];
+          const flat=markerFormat==="compact-v3" && collection.source==="props" &&
+            !itemName && !row.events?.length && /^(?:li|span|p|div|button|h[1-6])$/.test(row.tag) &&
+            row.attrs.every(attr=>/^ (?:class|role|title|tabindex|data-[a-z0-9_-]+|aria-[a-z0-9_-]+)="[^"]*"$/.test(attr) &&
+              !attr.startsWith(' data-zk="')) &&
+            row.children.length===1 && child?.kind==="data" && child.source==="item" &&
+            child.path.length===1;
           output.push({ kind: "keyed", id, path: collection.path,source:collection.source,
-            itemName: node.itemParameter, key: key[0]!, rows });
+            itemName: node.itemParameter, key: key[0]!, rows, ...(flat?{flat:true as const}:{}) });
           break;
         }
         case "ComponentCall": {
@@ -375,11 +408,11 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       };
       inspectMarkers(nodes);
     }
-    const templateDigest = hash(JSON.stringify(limits ? {nodes,limits,markerFormat:"compact-v1"} : nodes));
+    const templateDigest = hash(JSON.stringify(limits ? {nodes,limits,markerFormat} : nodes));
     const markerId = hash("zaakiy-region-root:" + request.routeId + ":" + templateDigest).slice(0, 32);
     const hydrationPlan: RegionHydrationPlanV2 = {
       schema: "zaakiy.region-hydration/2", routeId: request.routeId, markerId, templateDigest, nodes,
-      ...(limits ? {limits,markerFormat:"compact-v1" as const}: {})
+      ...(limits && markerFormat ? {limits,markerFormat}: {})
     };
     // Only compiler-validated data literals are embedded. The code has no
     // TSX evaluator, dynamic import, arbitrary JavaScript or client dependency.
@@ -408,7 +441,13 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " if (node.kind === 'literal') result += escape(node.value);",
       " else if (node.kind === 'data') result += '<!--' + dataMarker(node.id,'start') + '-->' + text(own(node.source === 'item' ? item : props, node.path)) + '<!--' + dataMarker(node.id,'end') + '-->';",
       " else if (node.kind === 'element') { result += '<' + node.tag + node.attrs.join('') + '>';",
-      " if (node.children.length) result += draw(node.children,props,item,budget,depth+1);",
+      ...(markerFormat==="compact-v2" || markerFormat==="compact-v3" ? [
+        " const child = node.children.length===1 ? node.children[0] : null;",
+        " if (child && child.kind==='data' && child.source==='item' && /^(?:li|span|p|div|button|h[1-6])$/.test(node.tag)) {",
+        " if (++budget.count > " + String(limits?.maxNodes??8192) + " || depth+1>64) throw new RangeError('H4 scalar bound');",
+        " result += text(own(item,child.path));",
+        " } else if (node.children.length) result += draw(node.children,props,item,budget,depth+1);"
+      ] : [" if (node.children.length) result += draw(node.children,props,item,budget,depth+1);"]),
       " if (!" + JSON.stringify([...SSR_VOID_TAGS]) + ".includes(node.tag)) result += '</' + node.tag + '>'; }",
       " else if (node.kind === 'component') { result += '<!--zaakiy-r2:' + node.id + ':start-->';",
       " result += draw(node.children,props,item,budget,depth+1);",
@@ -422,7 +461,12 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
       " for (const row of rows) { const key = own(row,[node.key]);",
       " if (typeof key !== 'string' && typeof key !== 'number') throw new TypeError('H4 key type');",
       " const name = String(key); if (!/^[A-Za-z0-9_.:]{1,64}$/.test(name) || keys.has(name)) throw new TypeError('H4 duplicate/unsafe key');",
-      " keys.add(name); result += '<!--' + keyedMarker(node.id,name,'start') + '-->';",
+      " keys.add(name);",
+      ...(markerFormat==="compact-v3" ? [
+        " if (node.flat) { const leaf=node.rows[0]; if ((budget.count+=2)>"+String(limits?.maxNodes??8192)+" || depth+2>64) throw new RangeError('H4 flat row bound');",
+        " result += '<'+leaf.tag+leaf.attrs.join('')+' data-zk=\\\"'+name+'\\\">'+text(own(row,leaf.children[0].path))+'</'+leaf.tag+'>'; continue; }"
+      ]:[]),
+      " result += '<!--' + keyedMarker(node.id,name,'start') + '-->';",
       " result += draw(node.rows, props, row, budget, depth+1);",
       " result += '<!--' + keyedMarker(node.id,name,'end') + '-->'; }",
       " result += '<!--zaakiy-r2:' + node.id + ':end-->'; }",
@@ -444,7 +488,16 @@ export function compileRegionServer(request: RegionServerRequest): RegionServerC
           ")return "+handler.body+";").join("")+
         "return undefined;};}\n"
     }] : [];
-    return { diagnostics: base.diagnostics, hydrationPlan,clientEvents,
+    const specialized=markerFormat==="compact-v3"&&nodes.length===1&&nodes[0]?.kind==="element"&&supportsFlatClient(nodes);
+    const clientCapability=specialized?"flat-v3":"generic";
+    const clientHydration={
+      fileName:request.fileName.replace(/\.[cm]?tsx?$/i,"")+".region.client.js",
+      code:"import {"+(specialized?"hydrateFlatPage":"hydrateRegionPage")+" as hydrate} from "+
+        JSON.stringify(specialized?"@zaakiyjs/ssr/client/flat":"@zaakiyjs/ssr/client")+";\n"+
+        "const plan="+JSON.stringify(hydrationPlan)+";\n"+
+        "export function hydrateCompiledRegion(container,envelope,manifest,bindings){return hydrate(container,plan,envelope,manifest,plan.routeId,bindings); }\n"
+    };
+    return { diagnostics: base.diagnostics, hydrationPlan,clientEvents,clientHydration,clientCapability,
       js: [{ fileName: request.fileName.replace(/\.[cm]?tsx?$/i, "") + ".region.server.js", code }] };
   } catch (error) {
     return reject(error instanceof Error ? error.message : "Unsafe H4 region source", root.span);

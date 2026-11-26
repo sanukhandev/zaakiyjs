@@ -3,14 +3,15 @@
  * The v2 path reuses the existing DOM keyed/conditional reconciler and owner
  * lifecycle; it does not ship a TSX interpreter or a virtual DOM.
  */
-import { bindText, listen, setText, setAttribute, bindConditionalRegion, bindKeyedRegion } from "@zaakiyjs/dom/compiler";
+import { bindText, listen, setText, setAttribute, bindConditionalRegion, bindKeyedRegion, bindFlatKeyedRegion } from "@zaakiyjs/dom/compiler";
+import type { FlatKeyedRow } from "@zaakiyjs/dom/compiler";
 import { hydrate } from "@zaakiyjs/dom";
-import { signal } from "@zaakiyjs/signals";
+import { signal, untrack } from "@zaakiyjs/signals";
 import type { WritableSignal } from "@zaakiyjs/signals";
 import type { HydrationMountHandle } from "@zaakiyjs/dom";
 import { createOwner, disposeOwner, initializeOwnedComponent, mountOwner, onMount, runWithOwner } from "@zaakiyjs/core";
 import type { OwnerScope } from "@zaakiyjs/core";
-import { inspectHydration } from "./client.js";
+import { inspectHydration, validateHydrationIdentity } from "./hydration-probe.js";
 import type { HydrationEnvelopeV1, TrustedServerBuildManifestV1 } from "./protocol.js";
 
 export type RegionNodeV2 =
@@ -19,7 +20,7 @@ export type RegionNodeV2 =
   | { readonly kind: "literal"; readonly value: string }
   | { readonly kind: "data"; readonly id: string; readonly source: "props" | "item"; readonly path: readonly string[] }
   | { readonly kind: "conditional"; readonly id: string; readonly path: readonly string[]; readonly source?: "props" | "item"; readonly yes: readonly RegionNodeV2[]; readonly no: readonly RegionNodeV2[] }
-  | { readonly kind: "keyed"; readonly id: string; readonly path: readonly string[]; readonly source?: "props" | "item"; readonly itemName: string; readonly key: string; readonly rows: readonly RegionNodeV2[] };
+  | { readonly kind: "keyed"; readonly id: string; readonly path: readonly string[]; readonly source?: "props" | "item"; readonly itemName: string; readonly key: string; readonly rows: readonly RegionNodeV2[]; readonly flat?: true };
 export interface RegionHydrationPlanV2 {
   readonly schema: "zaakiy.region-hydration/2";
   readonly routeId: string;
@@ -28,7 +29,7 @@ export interface RegionHydrationPlanV2 {
   readonly nodes: readonly RegionNodeV2[];
   readonly limits?: {readonly maxRows:10000;readonly maxNodes:50000;readonly maxHtmlBytes:8388608};
   /** Omission deliberately selects the original full-length v2 markers. */
-  readonly markerFormat?: "compact-v1";
+  readonly markerFormat?: "compact-v1" | "compact-v2" | "compact-v3";
 }
 export interface RegionHydrationEventV2 {
   /** Compiler element ID; keyed item elements use id:key. */
@@ -43,103 +44,18 @@ export interface RegionHydrationBindingsV2 {
   /** Resolve compiled onClick={props.handle} references from trusted client code. */
   readonly resolveEvent?: (path:readonly string[], currentItem?:()=>unknown) => EventListener;
   readonly signal?: AbortSignal;
+  /** Opt-in: item paths are immutable plain data snapshots without proxies or
+   * reactive descriptor reads. Replace changed keyed items; never mutate them.
+   * Default attachment retains tracked reads for backward compatibility. */
+  readonly itemDataMode?: "snapshot";
 }
-const ID = /^[a-f0-9]{32}$/;
-const HASH = /^[a-f0-9]{64}$/;
-const FIELD = /^[A-Za-z_$][\w$]*$/;
-const SAFE_KEY = /^[A-Za-z0-9_.:]{1,64}$/;
-const ATTR = /^ ([a-z][a-z0-9:_-]*)="([^"]*)"$/;
-const EVENT = /^[a-z][a-z0-9:_-]*$/;
-const DENIED = new Set(["__proto__", "constructor", "prototype"]);
-const MAX_NODES = 8192;
-function dataMarker(plan:RegionHydrationPlanV2,id:string,side:"start"|"end"):string{
-  return plan.markerFormat==="compact-v1"
-    ? "z-d:"+id.slice(0,16)+":"+(side==="start"?"s":"e")
-    : "zaakiy-d2:"+id+":"+side;
-}
-function keyedMarker(plan:RegionHydrationPlanV2,id:string,key:string,side:"start"|"end"):string{
-  return plan.markerFormat==="compact-v1"
-    ? "z-k:"+key+":"+(side==="start"?"s":"e")
-    : "zaakiy-k2:"+id+":"+key+":"+side;
-}
+import {ID, HASH, FIELD, ATTR, EVENT, DENIED, dataMarker, keyedMarker, getBudgets, scalarChild, mismatch, textOf, own, rowKey, decodeAttr, attributes, flatTemplate, describeFlat, createFlat, validateFlatPlan, inspectFlatRows} from "./region-validation.js";
+import type {ComponentNode, ConditionalNode, KeyedNode, DataNode, FlatTemplate} from "./region-validation.js";
 
-function getBudgets(plan:RegionHydrationPlanV2){
-  if(plan.markerFormat!==undefined && plan.markerFormat!=="compact-v1")
-    mismatch("unsupported hydration marker format");
-  if(plan.markerFormat==="compact-v1" && !plan.limits)
-    mismatch("compact markers require an approved large-list plan");
-  if(plan.limits===undefined) return {maxRows:4096,maxNodes:MAX_NODES};
-  const limits=plan.limits;
-  if(!limits || limits.maxRows!==10000 || limits.maxNodes!==50000 ||
-      limits.maxHtmlBytes!==8388608 || Object.keys(limits).length!==3)
-    mismatch("invalid compiler-selected hydration scale");
-  return limits;
-}
-
-type ComponentNode = Extract<RegionNodeV2, {kind:"component"}>;
-type ConditionalNode = Extract<RegionNodeV2, {kind:"conditional"}>;
-type KeyedNode = Extract<RegionNodeV2, {kind:"keyed"}>;
-type DataNode = Extract<RegionNodeV2, {kind:"data"}>;
-
-function mismatch(reason: string): never { throw new TypeError("Region hydration mismatch: " + reason); }
-function textOf(value: unknown): string {
-  if (value == null || typeof value === "boolean") return "";
-  if (typeof value !== "string" && typeof value !== "number" && typeof value !== "bigint")
-    return mismatch("nonprimitive data text");
-  const text = String(value);
-  if (text.length > 65536) return mismatch("data text budget");
-  return text;
-}
-function own(item: unknown, path: readonly string[]): unknown {
-  let current: unknown = item;
-  if (!Array.isArray(path) || path.length < 1 || path.length > 4)
-    return mismatch("invalid data path");
-  for (const key of path) {
-    if (typeof key !== "string" || !FIELD.test(key) || DENIED.has(key))
-      return mismatch("unsafe data path");
-    if (typeof current !== "object" || !current || Array.isArray(current)) return null;
-    const proto = Object.getPrototypeOf(current);
-    if (proto !== Object.prototype && proto !== null) return mismatch("nonplain item data");
-    const field = Object.getOwnPropertyDescriptor(current, key);
-    if (!field) return null;
-    if (!Object.hasOwn(field, "value")) return mismatch("getter in item data");
-    current = field.value;
-  }
-  return current;
-}
-function rowKey(item: unknown, name: string): string {
-  const key = own(item,[name]);
-  if (typeof key !== "string" && typeof key !== "number")
-    return mismatch("invalid keyed identity");
-  const text = String(key);
-  if (!SAFE_KEY.test(text)) return mismatch("unsafe keyed identity");
-  return text;
-}
-function encoded(value: string): string {
-  return value.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
-}
-function decodeAttr(value: string): string {
-  return value.replace(/&quot;/g,'"').replace(/&#39;/g,"'")
-    .replace(/&lt;/g,"<").replace(/&gt;/g,">").replace(/&amp;/g,"&");
-}
-function attributes(element: Element, values: readonly string[]): void {
-  if (!Array.isArray(values)) mismatch("invalid static attributes");
-  const names = new Set<string>();
-  for (const raw of values) {
-    if (typeof raw !== "string") mismatch("invalid static attribute");
-    const parsed = ATTR.exec(raw);
-    if (!parsed || names.has(parsed[1]!)) mismatch("compiled attribute format");
-    names.add(parsed[1]!);
-    const actual = element.getAttribute(parsed[1]!);
-    if (actual === null || encoded(actual) !== parsed[2]) mismatch("native attribute");
-  }
-  if (element.attributes.length !== names.size) mismatch("unexpected native attributes");
-}
 interface Slot {
   readonly spec: DataNode;
   text: Text | null;
-  readonly end: Comment;
+  readonly anchor: Comment | Element;
   item: unknown;
 }
 interface ComponentScope {
@@ -168,10 +84,12 @@ interface Keyed {
   readonly start: Comment;
   readonly end: Comment;
   readonly rows: readonly Row[];
+  readonly flat?: {readonly template:FlatTemplate;readonly rows:readonly FlatKeyedRow<unknown>[]};
 }
 interface Zone {
   readonly key: string;
-  readonly item: WritableSignal<unknown>;
+  itemValue: unknown;
+  itemSignal?: WritableSignal<unknown>;
   readonly elements: Map<string, Element>;
   readonly slots: Slot[];
   readonly compiledEvents: {readonly elementId:string;readonly name:string;readonly path:readonly string[]}[];
@@ -180,7 +98,11 @@ interface Zone {
   readonly keyed: Keyed[];
 }
 function zone(key = "", item:unknown=null): Zone {
-  return {key,item:signal(item), elements:new Map(),slots:[],compiledEvents:[],components:[],conditions:[],keyed:[]};
+  return {key,itemValue:item, elements:new Map(),slots:[],compiledEvents:[],components:[],conditions:[],keyed:[]};
+}
+/** Only region predicates, nested lists and event closures need a reactive item cell. */
+function readItem(target:Zone):unknown {
+  return (target.itemSignal ??= signal(target.itemValue)).value;
 }
 function scopedKey(parent:string, key:string):string {
   return parent ? parent.length+"_"+parent+"_"+key : key;
@@ -188,7 +110,7 @@ function scopedKey(parent:string, key:string):string {
 
 /** No user callbacks are registered and no native mutations occur in preflight. */
 function inspect(container: Element, plan: RegionHydrationPlanV2,
-  read: RegionHydrationBindingsV2["read"], item:unknown=null, scopeKey=""): Zone {
+  read: RegionHydrationBindingsV2["read"], item:unknown=null, scopeKey="", syntheticRoot=false): Zone {
   if (container.childNodes.length !== 2 || container.childNodes[0]?.nodeType !== 8 ||
       container.childNodes[0]?.nodeValue !== "zaakiy-h:" + plan.markerId + ":" + plan.templateDigest)
     mismatch("route root marker");
@@ -230,7 +152,17 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
               });
             }
           }
-          if (scan(element,element.firstChild,null,spec.children,item,target,depth+1) !== null)
+          const scalar=syntheticRoot && depth===0 ? undefined : scalarChild(plan,spec);
+          if(scalar){
+            if(++budget>limits.maxNodes || depth+1>64 || !ID.test(scalar.id))
+              mismatch("scalar region budget or identity");
+            const expected=textOf(own(item,scalar.path));
+            const first=element.firstChild;
+            if(first && (first.nodeType!==3 || first.nextSibling || first.nodeValue!==expected))
+              mismatch("scalar native text");
+            if(!first && expected) mismatch("missing scalar native text");
+            target.slots.push({spec:scalar,text:first as Text|null,anchor:element,item});
+          }else if (scan(element,element.firstChild,null,spec.children,item,target,depth+1) !== null)
             mismatch("unlisted native children");
           cursor=element.nextSibling;
           break;
@@ -258,7 +190,7 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
           if (!cursor || cursor === end || cursor.nodeType !== 8 ||
               cursor.nodeValue !== dataMarker(plan,spec.id,"end"))
             mismatch("dynamic text end");
-          target.slots.push({spec,text,end:cursor as Comment,item});
+          target.slots.push({spec,text,anchor:cursor as Comment,item});
           cursor=cursor.nextSibling;
           break;
         }
@@ -305,6 +237,18 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
           cursor=cursor.nextSibling;
           const rows:Row[]=[];
           const seen=new Set<string>();
+          if(spec.flat!==undefined){
+            const template=flatTemplate(plan,spec);
+            if((budget+=2*data.length)>limits.maxNodes || (data.length>0 && depth+2>64))mismatch("flat row budget");
+            const verified=inspectFlatRows(template,data,cursor,end);
+            const nativeRows=verified.rows;
+            cursor=verified.cursor;
+            if(!cursor||cursor===end||cursor.nodeType!==8||cursor.nodeValue!=="zaakiy-r2:"+spec.id+":end")
+              mismatch("flat list end");
+            target.keyed.push({spec,parent,start,end:cursor as Comment,rows,flat:{template,rows:nativeRows}});
+            cursor=cursor.nextSibling;
+            break;
+          }
           for (const item of data) {
             const key=rowKey(item,spec.key);
             if (seen.has(key)) mismatch("duplicate keyed identity");
@@ -340,15 +284,22 @@ function inspect(container: Element, plan: RegionHydrationPlanV2,
   return tree;
 }
 
-function allElements(target:Zone, output:Map<string,Element>):void {
+type DiscoveredEvent = {
+  readonly event: Zone["compiledEvents"][number];
+  readonly item: () => unknown;
+};
+/** Preserve the existing zone order and validate every identity before resolving callbacks. */
+function discoverBindings(target:Zone, output:Map<string,Element>, events:DiscoveredEvent[]):void {
   for (const [id,node] of target.elements) {
     if (output.has(id)) mismatch("duplicate element ID");
     output.set(id,node);
   }
-  for (const component of target.components) allElements(component.child,output);
-  for (const conditional of target.conditions) allElements(conditional.child,output);
+  for (const event of target.compiledEvents)
+    events.push({event,item:()=>readItem(target)});
+  for (const component of target.components) discoverBindings(component.child,output,events);
+  for (const conditional of target.conditions) discoverBindings(conditional.child,output,events);
   for (const keyed of target.keyed)
-    for (const row of keyed.rows) allElements(row.child,output);
+    for (const row of keyed.rows) discoverBindings(row.child,output,events);
 }
 /** Adopt exactly matching server markup; a mismatched region is never replaced. */
 export function hydrateRegionPage(
@@ -360,26 +311,28 @@ export function hydrateRegionPage(
       plan.schema!=="zaakiy.region-hydration/2" || plan.routeId!==routeId ||
       !ID.test(plan.markerId) || !HASH.test(plan.templateDigest) ||
       !Array.isArray(plan.nodes) || !bindings || typeof bindings.read!=="function" ||
+      (bindings.itemDataMode!==undefined && bindings.itemDataMode!=="snapshot") ||
       !Array.isArray(envelope?.boundaries) || envelope.boundaries.length!==1 ||
       envelope.boundaries[0]?.markerId!==plan.markerId ||
       envelope.boundaries[0]?.templateDigest!==plan.templateDigest)
     mismatch("plan and envelope identity");
   if (bindings.signal?.aborted) mismatch("navigation canceled");
-  if (!inspectHydration(container,envelope,manifest,routeId).compatible)
-    mismatch("build/route/marker identity");
+  // v3 structural preflight validates the sole root marker and every native
+  // descendant (including comment boundaries). Avoid a separate tree walk.
+  const identity=plan.markerFormat==="compact-v3"
+    ? validateHydrationIdentity(envelope,manifest,routeId)
+    : inspectHydration(container,envelope,manifest,routeId);
+  if(!identity.compatible)mismatch("build/route/marker identity");
+  if(plan.markerFormat==="compact-v3"){
+    if(bindings.itemDataMode!=="snapshot" || (bindings.events?.length??0)!==0)
+      mismatch("compact-v3 requires immutable snapshots and compiler-declared events");
+    validateFlatPlan(plan);
+  }
   const tree=inspect(container,plan,bindings.read);
   const targetElements=new Map<string,Element>();
-  allElements(tree,targetElements);
+  const compiledEvents:DiscoveredEvent[]=[];
+  discoverBindings(tree,targetElements,compiledEvents);
   const events=[...(bindings.events??[])];
-  const compiledEvents:Array<{event:Zone["compiledEvents"][number];item:()=>unknown}> = [];
-  const collectEvents=(target:Zone):void=>{
-    for(const event of target.compiledEvents)
-      compiledEvents.push({event,item:()=>target.item.value});
-    for(const comp of target.components) collectEvents(comp.child);
-    for(const condition of target.conditions) collectEvents(condition.child);
-    for(const list of target.keyed) for(const row of list.rows) collectEvents(row.child);
-  };
-  collectEvents(tree);
   if(compiledEvents.length && typeof bindings.resolveEvent!=="function")
     mismatch("compiler event resolver required");
   for(const {event,item} of compiledEvents){
@@ -406,12 +359,13 @@ export function hydrateRegionPage(
   const read=bindings.read;
   const attachElements=(owner:OwnerScope,target:Zone):void=>{
     for(const [id,node] of target.elements){
-      for(const event of eventMap.get(id)??[])
+      const explicit=eventMap.get(id);
+      if(explicit) for(const event of explicit)
         listen(owner,node,event.name,event.handler,event.options);
       for(const descriptor of target.compiledEvents){
         if(descriptor.elementId!==id ||
-            eventMap.get(id)?.some(event=>event.name===descriptor.name)) continue;
-        const handler=bindings.resolveEvent?.(descriptor.path,()=>target.item.value);
+            explicit?.some(event=>event.name===descriptor.name)) continue;
+        const handler=bindings.resolveEvent?.(descriptor.path,()=>readItem(target));
         if(typeof handler!=="function") mismatch("missing compiled event handler");
         listen(owner,node,descriptor.name,handler);
       }
@@ -420,20 +374,27 @@ export function hydrateRegionPage(
   const attachSlots=(owner:OwnerScope,slots:readonly Slot[]):void=>{
     for (const slot of slots) {
       if (!slot.text) {
-        slot.text=slot.end.ownerDocument.createTextNode("");
-        slot.end.parentNode!.insertBefore(slot.text,slot.end);
+        slot.text=slot.anchor.ownerDocument.createTextNode("");
+        if(slot.anchor.nodeType===8) slot.anchor.parentNode!.insertBefore(slot.text,slot.anchor);
+        else slot.anchor.appendChild(slot.text);
         inserted.push(slot.text);
       }
-      bindText(owner,slot.text,()=>slot.spec.source==="props"
+      if(slot.spec.source==="item" && bindings.itemDataMode==="snapshot"){
+        // No reactive descriptor reads are permitted by this explicit contract.
+        // Keyed replacement still uses updateSlots with full scalar validation.
+        untrack(()=>setText(slot.text!,textOf(own(slot.item,slot.spec.path))));
+      }else bindText(owner,slot.text,()=>slot.spec.source==="props"
         ? read(slot.spec.path):own(slot.item,slot.spec.path));
     }
   };
   const updateSlots=(target:Zone,item:unknown):void=>{
-    target.item.value=item;
-    const changes=target.slots.filter(slot=>slot.spec.source==="item").map(slot=>({
-      slot,value:textOf(own(item,slot.spec.path))
-    }));
-    for(const change of changes){
+    target.itemValue=item;
+    if(target.itemSignal) target.itemSignal.value=item;
+    let changes:{slot:Slot;value:string}[]|undefined;
+    for(const slot of target.slots) {
+      if(slot.spec.source==="item") (changes??=[]).push({slot,value:textOf(own(item,slot.spec.path))});
+    }
+    if(changes) for(const change of changes){
       change.slot.item=item;
       if(change.slot.text) setText(change.slot.text,change.value);
     }
@@ -471,7 +432,12 @@ export function hydrateRegionPage(
             if(!parsed) mismatch("invalid compiled attribute");
             setAttribute(el,parsed[1]!,decodeAttr(parsed[2]!));
           }
-          el.appendChild(draw(spec.children,row,depth+1));
+          const scalar=scalarChild(plan,spec);
+          if(scalar){
+            if(++nodes>limits.maxNodes || depth+1>64 || !ID.test(scalar.id)) mismatch("scalar region budget or identity");
+            const value=textOf(own(row,scalar.path));
+            if(value) el.appendChild(doc.createTextNode(value));
+          }else el.appendChild(draw(spec.children,row,depth+1));
           fragment.appendChild(el);
         } else if(spec.kind==="component"){
           fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":start"));
@@ -487,7 +453,14 @@ export function hydrateRegionPage(
             mismatch("invalid nested keyed data");
           const keys=new Set<string>();
           fragment.appendChild(doc.createComment("zaakiy-r2:"+spec.id+":start"));
+          const flat=spec.flat!==undefined?flatTemplate(plan,spec):undefined;
           for(const entry of rows){
+            if(flat){
+              if((nodes+=2)>limits.maxNodes||depth+2>64)mismatch("flat staged row budget");
+              const {key,value}=describeFlat(flat,entry);
+              if(keys.has(key))mismatch("duplicate nested keyed identity");
+              keys.add(key);fragment.appendChild(createFlat(doc,flat,key,value));continue;
+            }
             const rowKeyValue=rowKey(entry,spec.key);
             if(keys.has(rowKeyValue)) mismatch("duplicate nested keyed identity");
             keys.add(rowKeyValue);
@@ -508,7 +481,7 @@ export function hydrateRegionPage(
       ...plan,nodes:[{kind:"element",id:"0".repeat(32),
         tag:"div",attrs:[],children:specs}]
     };
-    const discovered=inspect(fake,synthetic,read,item,key);
+    const discovered=inspect(fake,synthetic,read,item,key,true);
     const fragment=doc.createDocumentFragment();
     while(root.firstChild) fragment.appendChild(root.firstChild);
     return {fragment,discovered};
@@ -546,16 +519,28 @@ export function hydrateRegionPage(
     for (const condition of target.conditions) {
       bindConditionalRegion(owner,
         {parent:condition.start.parentNode!,start:condition.start,end:condition.end},
-        ()=>Boolean(condition.spec.source==="item" ? own(target.item.value,condition.spec.path) : read(condition.spec.path)),
-        child=>buildBranch(condition.spec.yes,child,target.item.value,target.key),
-        child=>buildBranch(condition.spec.no,child,target.item.value,target.key),
+        ()=>Boolean(condition.spec.source==="item" ? own(readItem(target),condition.spec.path) : read(condition.spec.path)),
+        child=>buildBranch(condition.spec.yes,child,readItem(target),target.key),
+        child=>buildBranch(condition.spec.no,child,readItem(target),target.key),
         {initialBranch:condition.shown,preserveMarkupOnDispose:true,
           adopt:child=>attachZone(child,condition.child)});
     }
     for (const list of target.keyed) {
+      if(list.flat){
+        const {template,rows}=list.flat;
+        const path=list.spec.path;
+        bindFlatKeyedRegion(owner,{parent:list.start.parentNode!,start:list.start,end:list.end},
+          ()=>{
+            const items=read(path);
+            if(!Array.isArray(items)||items.length>limits.maxRows)mismatch("unsafe flat collection");
+            return items as readonly unknown[];
+          },item=>describeFlat(template,item),
+          (key,value)=>createFlat(container.ownerDocument,template,key,value),rows);
+        continue;
+      }
       bindKeyedRegion(owner,{parent:list.start.parentNode!,start:list.start,end:list.end},
         ()=>{
-          const rows=list.spec.source==="item" ? own(target.item.value,list.spec.path) : read(list.spec.path);
+          const rows=list.spec.source==="item" ? own(readItem(target),list.spec.path) : read(list.spec.path);
           if (!Array.isArray(rows) || rows.length>limits.maxRows)
             return mismatch("keyed collection changed to unsafe data");
           return rows as readonly unknown[];

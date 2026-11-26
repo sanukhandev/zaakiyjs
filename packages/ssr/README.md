@@ -78,3 +78,80 @@ The `@zaakiyjs/ssr/node` subpath also exports `createByteAttestedNodeServerAdapt
 `@zaakiyjs/ssr/client` exposes `hydrateRegionRoute` and `hydrateRegionRouteWithState` for the supported `zaakiy.region-hydration/2` subset. Both require a current `HydrationTransition` with a matching plan/envelope/route identity. The state-aware method verifies a build/route-bound serialized **public** JSON packet, initializes trusted application signals only after the transaction commit gate, and adopts existing native DOM nodes without replacing them.
 
 On navigation supersession or abort, the transaction signal disposes both native hydration subscriptions and the caller's `disposeState` resources exactly once; explicit repeated disposal is idempotent. Stale routes never invoke the state initializer. Host loaders and backend authorization must complete before hydration. This does not provide general arbitrary TSX SSR, automatic Router loader integration, or private-state serialization.
+
+
+## Opt-in compact scalar hydration and immutable row snapshots (candidate)
+
+The compiler's large-list tier accepts `hydrationMarkerFormat: "compact-v2"`.
+The default large-list format remains `compact-v1`; standard plans are unchanged.
+For an eligible native `li`, `span`, `p`, `div`, `button`, or heading with exactly
+one item-derived scalar child, compact-v2 uses the already validated element
+as the text boundary and omits the two redundant text comments. All keyed,
+component, conditional and root identity checks remain. Other text slots
+retain the compact-v1 comments. Build the server and client from the same
+trusted plan; the format participates in the template digest. Existing
+clients cannot adopt a new format without the matching runtime.
+
+The independent client option `itemDataMode: "snapshot"` is for immutable
+plain row snapshots only. It avoids one effect per item-derived text slot.
+Do not use it for reactive proxies, accessor properties, in-place item
+mutation or descriptor traps that read signals. Supply a new keyed item
+object and publish the updated collection through the reactive read binding.
+The default continues tracking item reads and supports the prior behavior.
+The snapshot contract is explicit because JavaScript cannot reliably prove
+a supplied object is not a Proxy. Both modes still validate scalar values,
+retain keyed node identity, and own conditional/list subscriptions and events.
+
+```ts
+const compiled = compileRegionServer({
+  fileName: "Page.tsx", routeId: "products", source,
+  hydrationScale: "large", hydrationMarkerFormat: "compact-v2"
+});
+// Use the matching verified compiler plan, manifest and envelope.
+const handle = hydrateRegionPage(container, plan, envelope, manifest, "products", {
+  itemDataMode: "snapshot",
+  read: path => readPublicPageState(path)
+});
+```
+
+These are candidate APIs, not a claim of general SSR support or completed
+performance certification. Diagnostic phase profiling is built only in a
+disposable CI checkout, never included in the normal production package.
+
+
+## Compact-v3 native scalar lists (candidate)
+
+Set `hydrationScale: "large", hydrationMarkerFormat: "compact-v3"` in the
+region compiler and `itemDataMode: "snapshot"` in the client. The compiler
+selects flat rows only for a single native scalar root with a direct item
+field, safe static attributes, no events and no nested resource scopes.
+Each eligible row has a reserved `data-zk` attribute and no per-row comments;
+the list boundaries remain. The runtime validates the entire native structure
+before attachment and uses a single list-owned effect with lightweight row
+records. Empty scalar rows do not allocate a Text until a nonempty update.
+Rows that need their own resources keep the previous range-based path.
+Compact-v3 does not support caller-supplied explicit element-ID event lists;
+compiler-declared events on other elements continue to work. Use the older
+formats for external row events or reactive proxy item data. Deploy matching
+compiler, server and client artifacts. See the compact-v3 ADR. This is a
+restricted additive optimization, not a general hydration API replacement.
+
+
+### Compiler-selected browser entry (final optimization candidate)
+
+`compileRegionServer` additionally returns `clientHydration` (a generated JS
+asset) and `clientCapability` (`"flat-v3"` or `"generic"`). Bundle the
+asset with the application, and call its `hydrateCompiledRegion(container,
+envelope, manifest, bindings)` export with the matching build artifacts.
+For compact-v3, pass the explicit `itemDataMode: "snapshot"` contract.
+The generated module imports only the selected entry. The flat entry supports
+safe static native elements, props scalar text, compiled events outside
+rows, static conditional branches and resource-free flat lists. Complex or
+legacy templates select the generic entry. Unsupported plans passed directly
+to the specialized entry are rejected; there is no runtime fallback that
+silently hides mismatches. Existing `hydrateRegionPage` callers remain valid.
+Do not construct generated code from network data or execute it dynamically.
+Both paths share strict scalar, marker and row checks. The final layout and
+snapshot check runs after reading the reactive collection, without a bypass
+flag. Production bundles must exclude the generic attachment module when
+the compiler selects the specialized entry.

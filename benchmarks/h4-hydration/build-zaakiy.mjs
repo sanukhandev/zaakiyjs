@@ -1,6 +1,6 @@
 /** Build real compiler-backed H4 server HTML + Vite hydration clients. */
-import {resolve,join,dirname} from "node:path";
-import {mkdir,writeFile,readFile} from "node:fs/promises";
+import {resolve,join,dirname,relative} from "node:path";
+import {mkdir,writeFile,readFile,readdir} from "node:fs/promises";
 import {createHash} from "node:crypto";
 import {gzipSync,brotliCompressSync} from "node:zlib";
 import {build} from "vite";
@@ -15,9 +15,11 @@ const source=[
   '{props.shown ? <p>Visible</p> : <p>Hidden</p>}',
   '<ul>{props.rows.map(item=><li key={item.id} data-key="row">{item.label}</li>)}</ul></main>;}'
 ].join("\n");
+const requestedMarkerFormat=process.env.H4_MARKER_FORMAT??"compact-v3";
+if(!["compact-v2","compact-v3"].includes(requestedMarkerFormat))throw Error("Unsupported H4 requested format");
 const compiled=compileRegionServer({
   fileName:"benchmarks/h4-hydration/h4-benchmark.tsx",
-  source,routeId:"h4benchmark",hydrationScale:"large"
+  source,routeId:"h4benchmark",hydrationScale:"large",hydrationMarkerFormat:requestedMarkerFormat
 });
 if(compiled.diagnostics.some(x=>x.severity==="error") ||
   !compiled.hydrationPlan || !compiled.js[0])
@@ -58,9 +60,20 @@ const envelope={schema:"zaakiy.hydration/1",buildId:manifest.buildId,
   routeId:"h4benchmark",domAbiVersion:1,payload:null,
   boundaries:[{markerId:plan.markerId,templateDigest:plan.templateDigest}]};
 await mkdir(fixtureDir,{recursive:true});
+const generatedClient=compiled.clientHydration;
+const capability=compiled.clientCapability??"generic-legacy";
+if(generatedClient)await writeFile(join(fixtureDir,"compiled-region.mjs"),generatedClient.code);
+const clientImport=generatedClient
+  ? 'import {hydrateCompiledRegion as compiledHydrate} from "./compiled-region.mjs";'
+  : 'import {hydrateRegionPage as legacyHydrate} from "@zaakiyjs/ssr/client";';
+const attachAdapter=generatedClient
+  ? 'const hydrateRegionPage=(host,_plan,envelope,manifest,_route,bindings)=>compiledHydrate(host,envelope,manifest,bindings);'
+  : 'const hydrateRegionPage=legacyHydrate;';
+const clientAliases={"@zaakiyjs/ssr/client/flat":resolve("packages/ssr/dist/hydrate-flat.js"),
+  "@zaakiyjs/ssr/client":resolve("packages/ssr/dist/client.js")};
 const client=join(fixtureDir,"zaakiy-client.mjs");
 await writeFile(client,[
-  'import {hydrateRegionPage} from "@zaakiyjs/ssr/client";',
+  clientImport,attachAdapter,
   'import {signal,flushSync} from "@zaakiyjs/signals";',
   'const plan='+JSON.stringify(plan)+';',
   'const manifest='+JSON.stringify(manifest)+';',
@@ -76,13 +89,14 @@ await writeFile(client,[
   'const before=performance.now();',
   'let actions=0;let handle;',
   'try{handle=hydrateRegionPage(host,plan,envelope,manifest,"h4benchmark",{',
-  '  read:path=>state.value[path[0]],',
+  '  itemDataMode:"snapshot",read:path=>state.value[path[0]],',
   '  resolveEvent:path=>{if(path.join(".")!=="onCount")throw Error("Unexpected event");',
   '    return ()=>{actions++;state.value={...state.value,count:state.value.count+1};};}});',
   '  const hydrationMs=performance.now()-before;',
   '  const mutations=observe.takeRecords().length;observe.disconnect();',
+  '  const adoptedRows=host.querySelectorAll("[data-key]");',
   '  window.__h4={ready:true,hydrationMs,mutations,',
-  '    adopted:first.every((n,i)=>host.querySelectorAll("[data-key]")[i]===n),',
+  '    adopted:adoptedRows.length===first.length&&first.every((n,i)=>adoptedRows[i]===n),',
   '    preservedDraft:input.value==="visitor draft",',
   '    preservedFocus:document.activeElement===input,',
   '    get liveRows(){return host.querySelectorAll("[data-key]").length;},',
@@ -100,7 +114,7 @@ await writeFile(client,[
   '      if(handle){handle.dispose();handle=undefined;}',
   '      const ownerRefs=[];let leakedEvents=0;let wrongRoots=0;',
   '      const baseline=host.childNodes[1];',
-  '      const attach={read:path=>state.value[path[0]],resolveEvent:path=>{',
+  '      const attach={itemDataMode:"snapshot",read:path=>state.value[path[0]],resolveEvent:path=>{',
   '        if(path.join(".")!=="onCount")throw Error("Unexpected event");',
   '        return ()=>{actions++;};}};',
   '      for(let i=0;i<cycles;i++){',
@@ -117,11 +131,35 @@ await writeFile(client,[
   '  };',
   '}catch(error){observe.disconnect();window.__h4={ready:true,error:String(error)};}'
 ].join("\n")+"\n");
+const attribution=[];
 await build({configFile:false,root:resolve("."),publicDir:false,logLevel:"warn",
-  resolve:{alias:{"@zaakiyjs/ssr/client":resolve("packages/ssr/dist/client.js")}},
+  plugins:[{name:"h4-module-attribution",generateBundle(_options,bundle){
+    for(const [file,chunk] of Object.entries(bundle)){
+      if(chunk.type!=="chunk")continue;
+      for(const [id,info] of Object.entries(chunk.modules)){
+        attribution.push({file,module:id.charCodeAt(0)===0?id:relative(resolve("."),id),
+          renderedBytes:info.renderedLength,originalBytes:info.originalLength});
+      }
+    }
+  }}],
+  resolve:{alias:clientAliases},
   build:{outDir:root,emptyOutDir:false,minify:"esbuild",
     lib:{entry:client,formats:["es"],fileName:"zaakiyjs"}}});
-const variant={schema:"zaakiy.h4-reference/1",buildId:manifest.buildId,
+await writeFile(join(root,"zaakiy-module-attribution.json"),JSON.stringify({
+  schema:"zaakiy.h4-module-attribution/1",
+  metric:"Rollup rendered module lengths before final chunk compression; not additive gzip attribution",
+  modules:attribution.sort((a,b)=>b.renderedBytes-a.renderedBytes || a.module.localeCompare(b.module))
+},null,2)+"\n");
+function assertSpecializedBundle(modules){
+  if(capability!=="flat-v3")return;
+  const retained=modules.filter(m=>m.renderedBytes>0);
+  if(!retained.some(m=>m.module.endsWith("/hydrate-flat.js")) ||
+    retained.some(m=>m.module.endsWith("/hydrate-region.js")))
+    throw Error("Specialized bundle retained generic hydration or omitted flat entry");
+}
+assertSpecializedBundle(attribution);
+const variant={schema:"zaakiy.h4-reference/1",buildId:manifest.buildId,clientCapability:capability,
+  markerFormat:plan.markerFormat??"standard",requestedMarkerFormat,requestedItemDataMode:"snapshot",
   moduleSha256:createHash("sha256").update(bytes).digest("hex"),
   clientSha256:createHash("sha256").update(await readFile(join(root,"zaakiyjs.js"))).digest("hex"),
   generatedCases:[],rejectedCases:[]};
@@ -133,13 +171,15 @@ for(const size of [100,1000,10000]){
       loaderData:{count:0,shown:true,rows}}).body;
     const compact=sizeOf(html);
     const expanded=sizeOf(previousMarkerFormat(html));
-    markerImpact[size]={
+    markerImpact[size]=["compact-v2","compact-v3"].includes(plan.markerFormat) ? {
+      compact,comparison:"Compare actual paired build HTML; omitted scalar and keyed markers cannot be recovered by marker replacement alone."
+    } : {
       compact,unoptimizedV2Markers:expanded,
       savedRawBytes:expanded.raw-compact.raw,
       savedGzipBytes:expanded.gzip-compact.gzip,
       savedBrotliBytes:expanded.brotli-compact.brotli
     };
-    if(plan.limits && compact.raw>=expanded.raw)
+    if(plan.limits && !["compact-v2","compact-v3"].includes(plan.markerFormat) && compact.raw>=expanded.raw)
       throw new Error("H4 compact markers did not reduce raw SSR payload");
     const output=join(root,"zaakiyjs",String(size),"index.html");
     await mkdir(dirname(output),{recursive:true});
@@ -152,5 +192,68 @@ for(const size of [100,1000,10000]){
   }
 }
 variant.markerImpact=markerImpact;
+// Keep the full historical harness unchanged as a comparison metric.
+// Independently measure an ordinary application build without timing,
+// MutationObserver, WeakRef, test assertion or stress instrumentation.
+const cleanClient=join(fixtureDir,"zaakiy-clean.mjs");
+await writeFile(cleanClient,[
+  clientImport,attachAdapter,
+  'import {signal,flushSync} from "@zaakiyjs/signals";',
+  'const plan='+JSON.stringify(plan)+';',
+  'const manifest='+JSON.stringify(manifest)+';',
+  'const envelope='+JSON.stringify(envelope)+';',
+  'const host=document.querySelector("#app");const size=Number(host.dataset.size);',
+  'const rows=Array.from({length:size},(_,i)=>({id:"row_"+i,label:"Row "+i}));',
+  'const state=signal({count:0,shown:true,rows});',
+  'const handle=hydrateRegionPage(host,plan,envelope,manifest,"h4benchmark",{',
+  'itemDataMode:"snapshot",read:path=>state.value[path[0]],',
+  'resolveEvent:path=>{if(path.join(".")!=="onCount")throw Error("Unexpected event");',
+  'return ()=>{state.value={...state.value,count:state.value.count+1};};}});',
+  'window.zaakiyApp={updateRows(rows){flushSync(()=>{state.value={...state.value,rows};});},',
+  'setShown(shown){flushSync(()=>{state.value={...state.value,shown};});},',
+  'dispose(){handle.dispose();}};'
+].join("\n")+"\n");
+const cleanDir=join(root,"clean-production");
+const cleanAttribution=[];
+await build({configFile:false,root:resolve("."),publicDir:false,logLevel:"warn",
+  plugins:[{name:"h4-clean-module-attribution",generateBundle(_options,bundle){
+    for(const [file,chunk] of Object.entries(bundle))if(chunk.type==="chunk")
+      for(const [id,info] of Object.entries(chunk.modules))
+        cleanAttribution.push({file,module:id.charCodeAt(0)===0?id:relative(resolve("."),id),
+          renderedBytes:info.renderedLength,originalBytes:info.originalLength});
+  }}],
+  resolve:{alias:clientAliases},
+  build:{outDir:cleanDir,emptyOutDir:true,minify:"esbuild",
+    rollupOptions:{input:cleanClient,output:{entryFileNames:"app.js",chunkFileNames:"assets/[name]-[hash].js"}}}});
+assertSpecializedBundle(cleanAttribution);
+const cleanFiles=async dir=>{
+  const paths=[];
+  for(const entry of await readdir(dir,{withFileTypes:true})){
+    const file=join(dir,entry.name);
+    if(entry.isDirectory())paths.push(...await cleanFiles(file));
+    else if(entry.isFile()&&/\.(?:js|css)$/.test(entry.name))paths.push(file);
+  }
+  return paths.sort();
+};
+const cleanAssets={};const cleanTotals={raw:0,gzip:0,brotli:0};
+for(const file of await cleanFiles(cleanDir)){
+  const content=await readFile(file);const sizes=sizeOf(content);
+  cleanAssets[relative(cleanDir,file)]={...sizes,sha256:createHash("sha256").update(content).digest("hex")};
+  for(const kind of Object.keys(cleanTotals))cleanTotals[kind]+=sizes[kind];
+}
+if(!cleanAssets["app.js"])throw Error("Missing clean production entry");
+variant.cleanProduction={metric:"Application-mode JS/CSS, excludes benchmark instrumentation; separate from historical H4",
+  assets:cleanAssets,bundleBytes:cleanTotals};
+await writeFile(join(root,"zaakiy-clean-attribution.json"),JSON.stringify({
+  schema:"zaakiy.h4-module-attribution/1",metric:"Rollup rendered lengths, not additive gzip",
+  modules:cleanAttribution.sort((a,b)=>b.renderedBytes-a.renderedBytes || a.module.localeCompare(b.module))
+},null,2)+"\n");
+for(const size of variant.generatedCases){
+  const html=await readFile(join(root,"zaakiyjs",String(size),"index.html"),"utf8");
+  const output=join(cleanDir,String(size),"index.html");
+  await mkdir(dirname(output),{recursive:true});
+  await writeFile(output,html.replace('src="../../zaakiyjs.js"','src="../app.js"'));
+}
+
 await writeFile(join(root,"zaakiyjs-build.json"),JSON.stringify(variant,null,2)+"\n");
 console.log(JSON.stringify(variant));
