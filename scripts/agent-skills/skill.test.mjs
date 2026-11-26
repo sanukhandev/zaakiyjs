@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {mkdtempSync,mkdirSync,rmSync,writeFileSync,readFileSync,existsSync,symlinkSync} from "node:fs";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
-import {fileURLToPath} from "node:url";
+import {fileURLToPath,URL} from "node:url";
 import {install} from "../../.agents/skills/zaakiyjs-builder/scripts/install.mjs";
 import {inspect} from "../../.agents/skills/zaakiyjs-builder/scripts/inspect.mjs";
 
