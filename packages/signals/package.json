@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/signals",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Fine-grained zoneless reactive signals and deterministic scheduler for ZaakiyJS",
   "type": "module",
   "sideEffects": false,

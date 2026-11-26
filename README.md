@@ -7,7 +7,7 @@
 
 ZaakiyJS is an independent **TypeScript/TSX frontend framework** inspired by React, Angular and Vue, designed to compile declarative components into precise native DOM updates. It combines a fine-grained reactive runtime, SOLID/MVVM application architecture, brand-driven CSS, integrated networking/async primitives, hybrid SEO rendering and optional **reviewed Gemini optimization**.
 
-**Repository:** [sanukhandev/zaakiyjs](https://github.com/sanukhandev/zaakiyjs) · **Proposed npm scope:** `@zaakiyjs/*` (ownership not yet verified) · **Engineering rules:** [AGENTS.md](AGENTS.md)
+**Repository:** [sanukhandev/zaakiyjs](https://github.com/sanukhandev/zaakiyjs) · **Proposed npm scope:** `@zaakiyjs/*` (ownership not yet verified) · **License:** [MIT](LICENSE) · **Engineering rules:** [AGENTS.md](AGENTS.md)
 
 ## Why ZaakiyJS?
 
@@ -321,7 +321,7 @@ Reproduce using the pinned workflows at the certified tree with locked dependenc
 
 ### Remaining release gates
 
-Application UAT on integrated main, manual screen-reader testing, supported browser-version policy, broader feature coverage and final public-beta review remain open. The packed-consumer report explicitly identifies 49 publication blockers: 24 placeholder `0.0.0` versions, 24 missing package license declarations, and one missing approved root LICENSE. Ownership of the `@zaakiyjs` npm scope is unverified. No npm publication or release tag is authorized by this certificate. The automated security and memory results are scoped to the tested workloads and are not guarantees for arbitrary applications.
+Application UAT on integrated main, manual screen-reader testing, supported browser-version policy, broader feature coverage and final public-beta review remain open. The historical packed-consumer report identified 49 publication blockers: 24 placeholder `0.0.0` versions, 24 missing package license declarations, and one missing approved root LICENSE. On 2026-11-26 the owner authorized MIT licensing with Copyright (c) 2026 Sanu Khan; this licensing change adds the root and all 24 package LICENSE files plus license and author metadata. The 25 licensing blockers are addressed in source; packed-artifact validation must confirm them on the new commit. The 24 placeholder versions and separate publication gates remain. Ownership of the `@zaakiyjs` npm scope is unverified. No npm publication or release tag is authorized by this certificate. The automated security and memory results are scoped to the tested workloads and are not guarantees for arbitrary applications.
 
 ## Agentic application development
 
@@ -359,6 +359,12 @@ The initial compiler/reactivity slices and selected application integrations hav
 **Current status:** The frozen runtime is integrated into `main`; application UAT and public beta authorization remain pending. See the certificate and limitations below, [M1 browser matrix](tests/browser/README.md), and [final optimization checkpoint](docs/development/o1-o7-performance-checkpoint.md).
 
 ---
+
+## License
+
+ZaakiyJS is licensed under the [MIT License](LICENSE).
+
+Copyright (c) 2026 Sanu Khan. The framework owner approved this license and confirmed the necessary licensing rights on 2026-11-26. Each of the 24 source packages carries the same license and author metadata. Third-party dependencies remain subject to their respective licenses. This licensing decision does not authorize npm publication or signify public beta certification.
 
 ## About the creator
 

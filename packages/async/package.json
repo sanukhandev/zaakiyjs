@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/async",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Scoped cancellable reactive resources and tasks for ZaakiyJS",
   "type": "module",
   "sideEffects": false,

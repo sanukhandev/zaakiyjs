@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/forms",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Strongly typed signal-based forms, validation and submission orchestration",
   "type": "module",
   "sideEffects": false,

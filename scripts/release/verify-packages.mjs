@@ -21,6 +21,11 @@ const temp = mkdtempSync(join(tmpdir(), "zaakiy-packed-consumer-"));
 const output = process.env.ZAAKIY_RELEASE_REPORT || join(root, ".generated", "packed-consumer-report.json");
 const findings = [];
 const archives = {};
+// Owner authorization is recorded in docs/releasing/independent-npm.md (2026-11-26).
+// These checks verify the distributed notice, not legal title or third-party licensing.
+const rootLicensePath = join(root, "LICENSE");
+const approvedLicense = existsSync(rootLicensePath) ? readFileSync(rootLicensePath, "utf8") : null;
+let licenseFilesVerified = 0;
 function run(program, args, cwd = root) {
   return execFileSync(program, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
@@ -31,6 +36,8 @@ function listTar(path) { return run("tar", ["-tzf", path]).trim().split("\n").fi
 function readTar(path, entry) { return run("tar", ["-xOzf", path, entry]); }
 try {
   mkdirSync(join(temp, "packages"), { recursive: true });
+  if (!approvedLicense) warn("Repository has no approved root LICENSE; publication must not proceed");
+  else check(approvedLicense.startsWith("MIT License\n\nCopyright (c) 2026 Sanu Khan\n"), "Root LICENSE must retain the approved MIT copyright notice");
   for (const name of pkgs) {
     const source = join(root, "packages", name);
     const manifest = JSON.parse(readFileSync(join(source, "package.json"), "utf8"));
@@ -73,12 +80,17 @@ try {
         name + ": leaked workspace protocol in packed dependency " + dep);
     }
     if (manifest.version === "0.0.0") warn(name + " still has placeholder 0.0.0 version");
-    if (!packed.license) warn(name + " package.json lacks license metadata");
+    if (approvedLicense) {
+      check(manifest.license === "MIT" && packed.license === manifest.license, name + ": MIT license metadata missing or changed");
+      check(manifest.author?.name === "Sanu Khan" && manifest.author?.url === "https://sanukhan.dev" &&
+        packed.author?.name === manifest.author.name && packed.author?.url === manifest.author.url,
+        name + ": approved author metadata missing or changed");
+      check(contents.has("package/LICENSE"), name + ": tarball lacks LICENSE");
+      check(readTar(archive, "package/LICENSE") === approvedLicense, name + ": packed LICENSE differs from root LICENSE");
+      licenseFilesVerified++;
+    } else if (!packed.license) warn(name + " package.json lacks license metadata");
     console.log("PACK PASS " + name + " files=" + contents.size +
       " tarballSHA256=" + createHash("sha256").update(readFileSync(archive)).digest("hex"));
-  }
-  if (!existsSync(join(root, "LICENSE")) && !existsSync(join(root, "LICENSE.md"))) {
-    warn("Repository has no approved root LICENSE; publication must not proceed");
   }
   if (verifyRelease && findings.length) fail("Release preflight has " + findings.length + " unresolved blockers");
 
@@ -138,7 +150,10 @@ try {
   const report = {
     validated: true, internalPackageCount: pkgs.length,
     packedConsumption: true, esm: true, typescript: true,
-    npmPublished: false, licenseApproved: false, npmScopeOwnershipVerified: false,
+    npmPublished: false,
+    licenseApproved: approvedLicense !== null && licenseFilesVerified === pkgs.length,
+    licenseFilesVerified, licenseApprovalBasis: "Owner authorization recorded 2026-11-26; packed notices checked, legal title not independently verified",
+    npmScopeOwnershipVerified: false,
     releaseBlockers: [...findings]
   };
   mkdirSync(dirname(output), { recursive: true });

@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/ui",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "ZaakiyJS brand-aware native DOM UI foundation (draft P2 slice)",
   "type": "module",
   "sideEffects": [

@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/router",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Typed, cancellation-aware native routing for ZaakiyJS",
   "type": "module",
   "sideEffects": false,

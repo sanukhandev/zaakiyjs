@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/ads",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Optional consent-gated advertising slots for ZaakiyJS",
   "type": "module",
   "sideEffects": false,

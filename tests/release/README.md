@@ -6,7 +6,7 @@ This directory implements **pre-publication validation**. Passing the automated 
 
 `node scripts/release/verify-packages.mjs` discovers and packs every publishable workspace package without a hard-coded count with `pnpm pack`, checks each archive's public JS/types exports and CLI binaries, verifies that workspace-protocol dependencies are rewritten, and installs **actual tarballs outside the repository** using consumer-local file overrides. It imports all public ESM entrypoints, compiles a small TSX module and runs a strict TypeScript type check.
 
-`node scripts/release/verify-packages.mjs --enforce-release` additionally rejects placeholder `0.0.0` versions, missing explicit package licenses and missing root LICENSE; the current repository is intentionally **not release-ready**. This mode is for an approved future release PR, not an attempted automatic publication. The npm scope ownership and trusted-publisher identity must be verified by the owner separately; a local pack test cannot verify them.
+The pack gate also checks that every tarball contains the owner-approved MIT LICENSE, matching the root license byte-for-byte, and that packed author/license metadata match the source. `node scripts/release/verify-packages.mjs --enforce-release` additionally rejects placeholder `0.0.0` versions and missing root LICENSE; the current repository is intentionally **not release-ready**. This mode is for an approved future release PR, not an attempted automatic publication. The npm scope ownership and trusted-publisher identity must be verified by the owner separately; a local pack test cannot verify them.
 
 `scripts/release/hash-build.mjs` outputs canonical SHA-256 digests of each generated package file. The CI gate builds twice on the same pinned runner and compares all paths/hashes. It tests reproducibility under that runner and pinned inputs, not across operating systems or npm releases.
 
@@ -18,7 +18,7 @@ A Chromium CDP heap test runs 60 warm-up plus 600 measured compiler-generated mo
 
 ## Explicitly incomplete gates
 
-- **Human approval:** choose and apply a repository/package license; verify `@zaakiyjs/*` scope ownership; set approved independent package versions and npm trusted-publisher provenance.
+- **Human approval:** the owner authorized MIT, Copyright (c) 2026 Sanu Khan, on 2026-11-26 (see the [approval record](../../docs/releasing/independent-npm.md#r0r1--license-approval-record-2026-11-26)). Verify `@zaakiyjs/*` scope ownership, independent package versions, third-party license compliance and npm trusted-publisher provenance separately.
 - **Browser declarations:** define exact supported browser version ranges and compatibility transforms with `@zaakiyjs/compat`; the Playwright browser revision is not a product browser policy.
 - **Accessibility:** axe automated rules do not replace manual screen-reader testing, WCAG expert review or target-device coverage.
 - **Security:** test CSP and URL sinks broadly, review third-party advisories and handle all high severity production dependency findings; no claim of complete CSP/Trusted Types audit.

@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/compiler",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Node-only TypeScript/TSX to versioned IR and native ZaakiyJS DOM compiler (safe v1 subset)",
   "type": "module",
   "sideEffects": false,

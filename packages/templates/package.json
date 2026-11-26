@@ -1,6 +1,11 @@
 {
   "name": "@zaakiyjs/templates",
   "version": "0.0.0",
+  "license": "MIT",
+  "author": {
+    "name": "Sanu Khan",
+    "url": "https://sanukhan.dev"
+  },
   "description": "Deterministic editable ZaakiyJS application template catalog and materializer",
   "type": "module",
   "sideEffects": false,
