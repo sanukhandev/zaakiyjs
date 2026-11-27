@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       release_sha:
-        description: Exact release commit certified by npm-publish workflow
+        description: Exact current-main commit certified by npm-publish workflow
         required: true
         type: string
       run_id:

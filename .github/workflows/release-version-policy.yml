@@ -27,7 +27,7 @@ jobs:
           node-version: '22.23.5'
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: node --test scripts/release/version-policy.test.mjs scripts/release/npm-stage.test.mjs
+      - run: node --test scripts/release/version-policy.test.mjs scripts/release/npm-stage.test.mjs scripts/release/release-ci.test.mjs
       - name: Calculate and validate PR version intent
         env:
           GH_TOKEN: ${{ github.token }}
