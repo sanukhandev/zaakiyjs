@@ -1,6 +1,6 @@
 {
   "name": "@zaakiyjs/vite-plugin",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "license": "MIT",
   "author": {
     "name": "Sanu Khan",
@@ -43,5 +43,14 @@
   },
   "peerDependencies": {
     "vite": "^6.0.0 || ^7.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sanukhandev/zaakiyjs.git",
+    "directory": "packages/vite-plugin"
+  },
+  "homepage": "https://github.com/sanukhandev/zaakiyjs",
+  "bugs": {
+    "url": "https://github.com/sanukhandev/zaakiyjs/issues"
   }
 }

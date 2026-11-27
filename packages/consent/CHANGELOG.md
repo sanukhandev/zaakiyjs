@@ -1,3 +1,8 @@
+# @zaakiyjs/consent 0.1.0-beta.0
+
+- Initial public prerelease
+- Source: 45b950be3dfa6803d2ff58044c2bcd534955921c
+
 # @zaakiyjs/consent changelog
 
 ## Unreleased

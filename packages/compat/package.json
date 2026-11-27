@@ -1,6 +1,6 @@
 {
   "name": "@zaakiyjs/compat",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "license": "MIT",
   "author": {
     "name": "Sanu Khan",
@@ -40,5 +40,14 @@
   },
   "dependencies": {
     "typescript": "5.9.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sanukhandev/zaakiyjs.git",
+    "directory": "packages/compat"
+  },
+  "homepage": "https://github.com/sanukhandev/zaakiyjs",
+  "bugs": {
+    "url": "https://github.com/sanukhandev/zaakiyjs/issues"
   }
 }

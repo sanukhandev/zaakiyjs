@@ -1,6 +1,6 @@
 {
   "name": "@zaakiyjs/http",
-  "version": "0.0.0",
+  "version": "0.1.0-beta.0",
   "license": "MIT",
   "author": {
     "name": "Sanu Khan",
@@ -9,8 +9,17 @@
   "description": "Typed Fetch transport and secure interceptor pipeline for ZaakiyJS",
   "type": "module",
   "sideEffects": false,
-  "files": ["dist", "README.md", "CHANGELOG.md"],
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "types": "./dist/index.d.ts",
   "main": "./dist/index.js",
   "scripts": {
@@ -19,6 +28,19 @@
     "build": "tsc --project tsconfig.build.json",
     "test": "vitest run test"
   },
-  "publishConfig": { "access": "public" },
-  "devDependencies": { "@zaakiyjs/async": "workspace:^" }
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "@zaakiyjs/async": "workspace:^"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sanukhandev/zaakiyjs.git",
+    "directory": "packages/http"
+  },
+  "homepage": "https://github.com/sanukhandev/zaakiyjs",
+  "bugs": {
+    "url": "https://github.com/sanukhandev/zaakiyjs/issues"
+  }
 }
